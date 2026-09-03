@@ -36,16 +36,17 @@ Plugin that provides documentation skills for Markdown authoring and linting via
   mechanical suppression fallback for a broken test: hitting the attempt
   cap just stops blocking, it doesn't silence the failure.
 
-### Commands
-
-- **`/markdown:lint [path]`**: explicitly lint and auto-fix markdown at
-  `path` (or the whole project if omitted), including files this session
-  never touched. This is the deliberate escape hatch for linting
-  pre-existing docs.
-
 ### Skills
 
 This plugin provides the following skills:
+
+#### Linting
+
+- **lint** (`/markdown:lint [path]`): explicitly lint and auto-fix markdown at
+  `path` (or the whole project if omitted), including files this session
+  never touched. This is the deliberate escape hatch for linting
+  pre-existing docs. Manual invocation only — Claude won't trigger it on its
+  own.
 
 #### Markdown Fundamentals
 

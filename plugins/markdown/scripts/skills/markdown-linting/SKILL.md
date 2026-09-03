@@ -1,6 +1,8 @@
 ---
+name: lint
 description: Lint and auto-fix markdown files, including pre-existing files not touched this session
 argument-hint: '[file paths...] | [natural-language description of files to include]'
+disable-model-invocation: true
 ---
 
 Lint markdown files. Arguments given: `$ARGUMENTS`
