@@ -1,0 +1,14 @@
+# Normalize line endings to LF for everyone, regardless of OS/editor.
+* text=auto eol=lf
+
+*.md text
+*.json text
+*.js text
+*.yml text
+*.yaml text
+*.sh text eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
