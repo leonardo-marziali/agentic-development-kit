@@ -1,0 +1,9 @@
+{
+  "name": "markdown-plugin-tests",
+  "private": true,
+  "description": "Dev-only test tooling for the markdown plugin's hooks. Not a runtime dependency of the plugin itself — the hooks still just shell out to npx markdownlint-cli.",
+  "scripts": {
+    "test": "node --test \"scripts/hooks/__tests__/*.test.js\"",
+    "test:coverage": "mkdir -p coverage && node --test --experimental-test-coverage --test-coverage-exclude=\"**/__tests__/**\" --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info \"scripts/hooks/__tests__/*.test.js\""
+  }
+}

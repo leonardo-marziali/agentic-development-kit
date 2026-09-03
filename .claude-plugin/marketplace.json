@@ -1,0 +1,13 @@
+{
+  "name": "agentic-development-kit",
+  "owner": {
+    "name": "Leonardo Marziali",
+    "url": "https://github.com/leonardo-marziali"
+  },
+  "plugins": [
+    {
+      "name": "markdown",
+      "source": "./plugins/markdown"
+    }
+  ]
+}
