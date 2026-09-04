@@ -1,0 +1,17 @@
+{
+  "description": "Runs Prettier on each file immediately after Claude edits or writes it.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/format.js\"",
+            "async": false
+          }
+        ]
+      }
+    ]
+  }
+}

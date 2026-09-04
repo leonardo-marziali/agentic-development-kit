@@ -1,5 +1,7 @@
 {
+  "$schema": "https://www.schemastore.org/claude-code-marketplace.json",
   "name": "agentic-development-kit",
+  "description": "A collection of tools and plugins for agentic development.",
   "owner": {
     "name": "Leonardo Marziali",
     "url": "https://github.com/leonardo-marziali"
@@ -7,7 +9,17 @@
   "plugins": [
     {
       "name": "markdown",
-      "source": "./plugins/markdown"
+      "source": "./plugins/markdown",
+      "description": "Markdown authoring skills, marksman LSP integration, and a session-scoped markdownlint fix loop.",
+      "category": "documentation",
+      "keywords": ["markdown", "markdownlint", "documentation", "linting"]
+    },
+    {
+      "name": "prettier",
+      "source": "./plugins/prettier",
+      "description": "Formats every file with Prettier the moment Claude edits or writes it.",
+      "category": "formatting",
+      "keywords": ["prettier", "formatting", "hooks"]
     }
   ]
 }

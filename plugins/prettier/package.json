@@ -1,0 +1,9 @@
+{
+  "name": "prettier-plugin-tests",
+  "private": true,
+  "description": "Dev-only test tooling for the prettier plugin's hooks. Not a runtime dependency of the plugin itself — the hook still just shells out to npx prettier.",
+  "scripts": {
+    "test": "node --test \"scripts/hooks/__tests__/*.test.js\"",
+    "test:coverage": "mkdir -p coverage && node --test --experimental-test-coverage --test-coverage-exclude=\"**/__tests__/**\" --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info \"scripts/hooks/__tests__/*.test.js\""
+  }
+}
