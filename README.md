@@ -1,5 +1,7 @@
 # agentic-development-kit
 
+[![coverage](https://codecov.io/gh/leonardo-marziali/agentic-development-kit/branch/main/graph/badge.svg)](https://codecov.io/gh/leonardo-marziali/agentic-development-kit)
+
 An opinionated hosted collection of skills, plugins, agent definitions, and configs
 for agentic development with [Claude Code](https://claude.com/claude-code)
 
@@ -18,15 +20,23 @@ inside Claude Code, then install a plugin from it (for example `markdown`):
 ```text
 .claude-plugin/marketplace.json   Marketplace manifest listing available plugins
 .claude/commands/                 Repo-local Claude Code slash commands
+.claude/hooks/                    This repo's own development hooks (not shipped)
 plugins/                          Individual plugins hosted by this marketplace
-  markdown/                       Markdown authoring/linting skills, hooks, and commands
+  markdown/                       Authoring/linting skills, LSP config, and hooks
+  prettier/                       Format-on-edit hook and a manual formatting skill
   java/                           Reserved for a future Java plugin
 ```
 
 Each plugin under `plugins/` is self-contained with its own `plugin.json`,
-skills, hooks, and (where relevant) tests. See
+`skills/`, `hooks/`, and (where relevant) tests. See
 [plugins/markdown/README.md](plugins/markdown/README.md) for an example of a
 fully documented plugin.
+
+`.claude/hooks/` is deliberately **not** part of any plugin: those hooks
+enforce that a change to a plugin's hook source in this repo can't finish a
+session without that plugin's test suite having been run against it. They
+apply to anyone working in this repository, and ship to nobody who installs
+a plugin from it.
 
 Not yet present, but planned for this repo:
 
@@ -45,7 +55,7 @@ hooks, markdown linting) you need:
 
 - **[Node.js](https://nodejs.org/)** — v24.20.0 or later
 - **[pnpm](https://pnpm.io/)** — the only supported package manager for this repo.
-Do not use `npm` or `yarn`.
+  Do not use `npm` or `yarn`.
 - **Git** — with commit hooks enabled (installed automatically by `pnpm
 install`, see below).
 
@@ -90,18 +100,32 @@ Commit messages must follow [Conventional Commits](https://www.conventionalcommi
 enforced by `commitlint` via a Husky `commit-msg` hook — commits that don't
 match the format are rejected locally.
 
-### Testing a plugin
+### Testing
 
-Plugins with their own test suite are tested independently. For example,
-the `markdown` plugin:
+Each suite runs independently, with Node's built-in test runner:
 
 ```bash
-cd plugins/markdown
-npm test
+pnpm test
+cd plugins/markdown && pnpm test
+cd plugins/prettier && pnpm test
 ```
 
-See that plugin's [README](plugins/markdown/README.md) for details,
-including coverage and CI.
+The root `pnpm test` covers this repo's own hooks in `.claude/hooks/`. See a
+plugin's own README ([markdown](plugins/markdown/README.md),
+[prettier](plugins/prettier/README.md)) for what its suite covers.
+
+### Coverage & CI
+
+A single [`plugin-tests.yml`](.github/workflows/plugin-tests.yml) workflow
+runs whichever suites are affected by a given push or PR (via
+`dorny/paths-filter`, so an unrelated plugin's suite doesn't run on every
+change) and uploads each one's coverage to
+[Codecov](https://codecov.io/gh/leonardo-marziali/agentic-development-kit)
+under its own flag (`repo-hooks`, `markdown-plugin`, `prettier-plugin`).
+[`codecov.yml`](codecov.yml) carries each flag's last-known coverage forward
+on commits that don't re-upload it, so the badge above — the combined
+coverage across every flag — stays accurate even though the suites upload
+independently.
 
 ## License
 

@@ -1,2 +1,5 @@
 node_modules/
 coverage/
+.scratch/
+.DS_Store
+dist/

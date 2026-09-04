@@ -1,0 +1,92 @@
+name: Plugin Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      # No checkout: dorny/paths-filter falls back to the GitHub REST API to
+      # diff changed files, which works for both push and pull_request
+      # without needing local git history.
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            workflow:
+              - '.github/workflows/plugin-tests.yml'
+            repo-hooks:
+              - '.claude/hooks/**'
+              - 'scripts/**'
+            markdown:
+              - 'plugins/markdown/**'
+            prettier:
+              - 'plugins/prettier/**'
+
+      - name: Build test matrix
+        id: set-matrix
+        env:
+          WORKFLOW_CHANGED: ${{ steps.filter.outputs.workflow }}
+          REPO_HOOKS_CHANGED: ${{ steps.filter.outputs.repo-hooks }}
+          MARKDOWN_CHANGED: ${{ steps.filter.outputs.markdown }}
+          PRETTIER_CHANGED: ${{ steps.filter.outputs.prettier }}
+        run: |
+          entries='[]'
+          add() {
+            entries=$(echo "$entries" | jq -c --arg n "$1" --arg d "$2" --arg f "$3" \
+              '. + [{"name": $n, "dir": $d, "flag": $f}]')
+          }
+          # A change to the workflow itself is validated against every
+          # suite, not just the ones whose own files changed.
+          if [ "$WORKFLOW_CHANGED" = "true" ] || [ "$REPO_HOOKS_CHANGED" = "true" ]; then
+            add "repo-hooks" "." "repo-hooks"
+          fi
+          if [ "$WORKFLOW_CHANGED" = "true" ] || [ "$MARKDOWN_CHANGED" = "true" ]; then
+            add "markdown" "plugins/markdown" "markdown-plugin"
+          fi
+          if [ "$WORKFLOW_CHANGED" = "true" ] || [ "$PRETTIER_CHANGED" = "true" ]; then
+            add "prettier" "plugins/prettier" "prettier-plugin"
+          fi
+          echo "matrix=$entries" >> "$GITHUB_OUTPUT"
+
+  test:
+    needs: detect
+    if: needs.detect.outputs.matrix != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: ${{ fromJson(needs.detect.outputs.matrix) }}
+    name: test (${{ matrix.suite.name }})
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      # The plugins' hooks shell out to npx at runtime and their suites do
+      # the same, so the root devDependencies (Prettier in particular) need
+      # to be present for npx's local-bin lookup to resolve offline.
+      - name: Install root dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run tests with coverage
+        working-directory: ${{ matrix.suite.dir }}
+        run: pnpm test:coverage
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ${{ matrix.suite.dir }}/coverage/lcov.info
+          flags: ${{ matrix.suite.flag }}
+          fail_ci_if_error: false
