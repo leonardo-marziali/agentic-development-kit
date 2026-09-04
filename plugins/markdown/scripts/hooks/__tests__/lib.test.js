@@ -4,7 +4,13 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { resolveConfigDir, groupByConfigDir } = require('../lib');
+const {
+  resolveConfigDir,
+  groupByConfigDir,
+  parseViolationsJson,
+  resolveBin,
+  quoteForCmd,
+} = require('../lib');
 const { mkScratchDir, rmScratchDir } = require('./helpers');
 
 test("resolveConfigDir: finds a config in the file's own directory", (t) => {
@@ -65,4 +71,71 @@ test('groupByConfigDir: groups files that share a resolved config directory toge
 
   assert.equal(groups.size, 1);
   assert.deepEqual(groups.get(dir), [fileA, fileB]);
+});
+
+test('parseViolationsJson: parses a clean JSON array', () => {
+  const parsed = parseViolationsJson('[{"fileName":"a.md","lineNumber":3,"ruleNames":["MD025"]}]');
+  assert.equal(parsed.length, 1);
+  assert.equal(parsed[0].ruleNames[0], 'MD025');
+});
+
+test('parseViolationsJson: recovers the payload when npx prepends a notice', () => {
+  const noisy =
+    'Need to install the following packages:\nmarkdownlint-cli@0.45.0\nOk to proceed? (y)\n' +
+    '[{"fileName":"a.md","lineNumber":3,"ruleNames":["MD025"]}]';
+  const parsed = parseViolationsJson(noisy);
+  assert.ok(parsed, 'noise before the array must not defeat parsing');
+  assert.equal(parsed[0].fileName, 'a.md');
+});
+
+test('parseViolationsJson: recovers the payload when noise follows it', () => {
+  const noisy = '[{"fileName":"a.md","lineNumber":3,"ruleNames":["MD025"]}]\nnpm notice trailing\n';
+  const parsed = parseViolationsJson(noisy);
+  assert.ok(parsed);
+  assert.equal(parsed.length, 1);
+});
+
+test('parseViolationsJson: empty output yields null', () => {
+  assert.equal(parseViolationsJson(''), null);
+  assert.equal(parseViolationsJson('   \n'), null);
+  assert.equal(parseViolationsJson(undefined), null);
+});
+
+test('parseViolationsJson: output with no array at all yields null', () => {
+  assert.equal(parseViolationsJson('npm ERR! could not determine executable to run'), null);
+});
+
+test('parseViolationsJson: a non-array JSON value yields null', () => {
+  assert.equal(parseViolationsJson('{"not":"an array"}'), null);
+});
+
+test('resolveBin: returns a path that exists, or a bare name to resolve via PATH', () => {
+  const bin = resolveBin('npx');
+  assert.equal(typeof bin, 'string');
+  assert.ok(bin.length > 0);
+  if (path.isAbsolute(bin)) {
+    assert.ok(fs.existsSync(bin), 'an absolute result must point at a real file');
+  } else {
+    // Bare fallback: platform-appropriate shim name for PATH lookup.
+    assert.equal(bin, process.platform === 'win32' ? 'npx.cmd' : 'npx');
+  }
+});
+
+test('resolveBin: never returns a bare POSIX name on win32', () => {
+  // Guards the Windows breakage this replaced: Node cannot spawn an
+  // extensionless `npx` shim there.
+  if (process.platform !== 'win32') return;
+  assert.notEqual(path.basename(resolveBin('npx')), 'npx');
+});
+
+test('quoteForCmd: wraps plain arguments', () => {
+  assert.equal(quoteForCmd('C:\\tmp\\a.md'), '"C:\\tmp\\a.md"');
+});
+
+test('quoteForCmd: doubles trailing backslashes so they cannot escape the closing quote', () => {
+  assert.equal(quoteForCmd('C:\\tmp\\dir\\'), '"C:\\tmp\\dir\\\\"');
+});
+
+test('quoteForCmd: escapes embedded quotes', () => {
+  assert.equal(quoteForCmd('a"b'), '"a""b"');
 });

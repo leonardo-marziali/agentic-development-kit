@@ -8,10 +8,14 @@ violations remain, blocks the stop with `decision: "continue"` so Claude
 keeps fixing them. Claude is told that a violation which can only be
 resolved by forcing incorrect content (e.g. inventing a language for a
 fenced code block that legitimately has none) should instead be
-suppressed inline with a markdownlint-disable comment — the same pattern
-already used for MD040 in .claude/commands/commit.md. Capped at
-MAX_ATTEMPTS: whatever still fails at the cap is auto-suppressed the same
-way so the loop can't run forever.
+suppressed inline with a markdownlint-disable comment.
+
+The loop is capped at MAX_ATTEMPTS so it can't run forever. What happens
+at the cap depends on the plugin's `auto_suppress` user config: off (the
+default) just reports what's still failing and stops blocking; on writes
+inline markdownlint-disable comments for the remainder. Editing a user's
+files to silence a linter is a surprising thing to do unasked, so it's
+opt-in rather than the default.
 
 markdownlint-cli only resolves .markdownlint.* config relative to its own
 process cwd (not per-file, not walking up from cwd), so files are grouped
@@ -21,16 +25,24 @@ cwd set there — otherwise a config file wouldn't reliably apply.
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
-const { stateDir, groupByConfigDir } = require('./lib');
+const { stateDir, groupByConfigDir, runBin, parseViolationsJson } = require('./lib');
 
 const MAX_ATTEMPTS = 3;
-const NPX_PATH = path.join(path.dirname(process.execPath), 'npx');
 
-// The state directory is shared with verify-tests.js (keyed by session id).
-// Only remove the files this hook owns, then drop the directory if that
-// leaves it empty — a blind recursive rmSync here would also wipe the
-// other hook's still-pending state.
+/*
+`auto_suppress` in plugin.json's userConfig, surfaced to hook processes
+as CLAUDE_PLUGIN_OPTION_AUTO_SUPPRESS. Absent (plugin installed before
+the option existed, or never configured) reads as off.
+*/
+function autoSuppressEnabled() {
+  const raw = (process.env.CLAUDE_PLUGIN_OPTION_AUTO_SUPPRESS || '').trim().toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'on';
+}
+
+// The state directory is keyed by session id and may be shared with other
+// hooks. Only remove the files this hook owns, then drop the directory if
+// that leaves it empty — a blind recursive rmSync here would also wipe
+// another hook's still-pending state.
 const OWN_STATE_FILES = ['touched-files.txt', 'attempts.json'];
 
 function readStdin() {
@@ -60,7 +72,7 @@ function lintGroups(groups, extraArgs) {
   let combinedOutput = '';
   let anyFailed = false;
   for (const [dir, groupFiles] of groups) {
-    const result = spawnSync(NPX_PATH, ['-y', 'markdownlint-cli', ...extraArgs, ...groupFiles], {
+    const result = runBin('npx', ['-y', 'markdownlint-cli', ...extraArgs, ...groupFiles], {
       cwd: dir,
       encoding: 'utf8',
     });
@@ -75,23 +87,26 @@ function lintGroups(groups, extraArgs) {
 /*
 Structured version of the check, used only for auto-suppression: gives
 back each violation's file/line/rule instead of formatted text.
-markdownlint-cli writes --json output to stderr.
+markdownlint-cli writes --json output to stderr, but npx can add its own
+notices to either stream, so try both and let parseViolationsJson dig the
+payload out.
 */
 function lintGroupsJson(groups) {
   const violations = [];
   for (const [dir, groupFiles] of groups) {
-    const result = spawnSync(NPX_PATH, ['-y', 'markdownlint-cli', '--json', ...groupFiles], {
+    const result = runBin('npx', ['-y', 'markdownlint-cli', '--json', ...groupFiles], {
       cwd: dir,
       encoding: 'utf8',
     });
-    const raw = (result.stderr || result.stdout || '').trim();
-    if (!raw) continue;
-    try {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) violations.push(...parsed);
-    } catch {
-      // Unparsable output just means we can't auto-suppress these; the
-      // caller falls back to leaving them for the plain-text message.
+    for (const raw of [result.stderr, result.stdout]) {
+      const parsed = parseViolationsJson(raw);
+      if (parsed) {
+        violations.push(...parsed);
+        break;
+      }
+      // Nothing parseable in either stream just means we can't
+      // auto-suppress these; the caller falls back to leaving them for
+      // the plain-text message.
     }
   }
   return violations;
@@ -207,6 +222,17 @@ function main() {
   const violations = checkOutcome.combinedOutput;
 
   if (attempts >= MAX_ATTEMPTS) {
+    if (!autoSuppressEnabled()) {
+      process.stderr.write(
+        `markdown plugin: markdownlint violations remain after ${MAX_ATTEMPTS} fix attempts; ` +
+          'leaving them in place. Enable this plugin\'s "auto_suppress" option to have inline ' +
+          'markdownlint-disable comments written for whatever is still failing at the cap.\n' +
+          `${violations}\n`,
+      );
+      cleanup(dir);
+      return;
+    }
+
     const jsonViolations = lintGroupsJson(groups);
     if (jsonViolations.length > 0) {
       const suppressed = insertSuppressions(jsonViolations);
@@ -243,10 +269,13 @@ function main() {
         'respecting any .markdownlint.json/.jsonc/.yaml/.yml in the project. If fixing ' +
         'one properly would mean forcing incorrect content (e.g. inventing a language ' +
         'for a fenced code block that legitimately has none), suppress that specific ' +
-        'rule inline instead of forcing a fix — `<!-- markdownlint-disable-next-line ' +
-        'MDxxx -->` above the line, or `<!-- markdownlint-disable MDxxx -->` for a wider ' +
-        "span (see the MD040 example in .claude/commands/commit.md). Whatever's still " +
-        `unresolved after attempt ${MAX_ATTEMPTS} will be auto-suppressed this way, then finish.`,
+        'rule inline instead of forcing a fix: put `<!-- markdownlint-disable-next-line ' +
+        'MD040 -->` on the line above it, or `<!-- markdownlint-disable MD040 -->` to ' +
+        'cover a wider span. ' +
+        (autoSuppressEnabled()
+          ? `Whatever's still unresolved after attempt ${MAX_ATTEMPTS} will be auto-suppressed ` +
+            'that way, then finish.'
+          : `After attempt ${MAX_ATTEMPTS} the loop stops and reports whatever is left.`),
     },
   };
 

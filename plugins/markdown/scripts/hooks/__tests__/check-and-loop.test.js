@@ -2,7 +2,6 @@
 
 /*
 Integration suite: these hit the real `npx markdownlint-cli`, same as the
-Integration suite: these hit the real `npx markdownlint-cli`, same as the
 hooks do at runtime (confirmed with the user rather than mocking it — a
 mock wouldn't have caught the config-discovery bug this suite guards
 against). Requires network access or a warm npx cache; each test spawns
@@ -31,7 +30,11 @@ function track(file, sessionId, scratch, pluginData) {
   );
 }
 
-function stop(sessionId, scratch, pluginData, hookEventName = 'Stop') {
+function stop(sessionId, scratch, pluginData, { hookEventName = 'Stop', autoSuppress } = {}) {
+  const env = { CLAUDE_PLUGIN_DATA: pluginData };
+  if (autoSuppress !== undefined) {
+    env.CLAUDE_PLUGIN_OPTION_AUTO_SUPPRESS = String(autoSuppress);
+  }
   return runHook(
     'check-and-loop.js',
     {
@@ -39,7 +42,7 @@ function stop(sessionId, scratch, pluginData, hookEventName = 'Stop') {
       session_id: sessionId,
       cwd: scratch,
     },
-    { env: { CLAUDE_PLUGIN_DATA: pluginData } },
+    { env },
   );
 }
 
@@ -93,7 +96,7 @@ test('violation fixed on disk: next Stop is silent and clears session state', (t
   assert.equal(fs.existsSync(stateDirFor(pluginData, sessionId)), false);
 });
 
-test('attempt cap: blocks 3 times then auto-suppresses the remaining violation', (t) => {
+test('attempt cap, auto_suppress off (default): gives up without touching the file', (t) => {
   const scratch = mkScratchDir();
   t.after(() => rmScratchDir(scratch));
   const pluginData = path.join(scratch, 'plugin-data');
@@ -120,6 +123,45 @@ test('attempt cap: blocks 3 times then auto-suppresses the remaining violation',
   );
   assert.equal(fs.existsSync(stateDirFor(pluginData, sessionId)), false);
 
+  assert.equal(
+    fs.readFileSync(file, 'utf8'),
+    VIOLATION_MD,
+    "the user's file must be left exactly as it was when auto-suppression is off",
+  );
+  assert.match(
+    finalRes.stderr,
+    /auto_suppress/,
+    'giving up should point at the option that would have suppressed it',
+  );
+});
+
+test('attempt cap, auto_suppress on: suppresses the remaining violation inline', (t) => {
+  const scratch = mkScratchDir();
+  t.after(() => rmScratchDir(scratch));
+  const pluginData = path.join(scratch, 'plugin-data');
+  const sessionId = uniqueSessionId();
+  const file = path.join(scratch, 'stubborn.md');
+  fs.writeFileSync(file, VIOLATION_MD);
+  track(file, sessionId, scratch, pluginData);
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const res = stop(sessionId, scratch, pluginData, { autoSuppress: true });
+    assert.equal(
+      res.json?.hookSpecificOutput?.decision,
+      'continue',
+      `attempt ${attempt} should block`,
+    );
+  }
+
+  const finalRes = stop(sessionId, scratch, pluginData, { autoSuppress: true });
+
+  assert.equal(
+    finalRes.stdout.trim(),
+    '',
+    '4th attempt should give up silently (no blocking output)',
+  );
+  assert.equal(fs.existsSync(stateDirFor(pluginData, sessionId)), false);
+
   const suppressed = fs.readFileSync(file, 'utf8');
   assert.match(
     suppressed,
@@ -131,7 +173,7 @@ test('attempt cap: blocks 3 times then auto-suppresses the remaining violation',
   // now-suppressed file must find nothing left to fix.
   const nextSessionId = uniqueSessionId();
   track(file, nextSessionId, scratch, pluginData);
-  const verifyRes = stop(nextSessionId, scratch, pluginData);
+  const verifyRes = stop(nextSessionId, scratch, pluginData, { autoSuppress: true });
   assert.equal(verifyRes.stdout.trim(), '');
   assert.equal(fs.existsSync(stateDirFor(pluginData, nextSessionId)), false);
 });
@@ -197,7 +239,7 @@ test('SubagentStop hook event name passes through into hookSpecificOutput', (t) 
   fs.writeFileSync(file, VIOLATION_MD);
   track(file, sessionId, scratch, pluginData);
 
-  const res = stop(sessionId, scratch, pluginData, 'SubagentStop');
+  const res = stop(sessionId, scratch, pluginData, { hookEventName: 'SubagentStop' });
 
   assert.equal(res.json.hookSpecificOutput.hookEventName, 'SubagentStop');
   assert.equal(res.json.hookSpecificOutput.decision, 'continue');

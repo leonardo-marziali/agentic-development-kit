@@ -1,4 +1,5 @@
 {
+  "$schema": "https://www.schemastore.org/claude-code-plugin-manifest.json",
   "name": "markdown",
   "version": "0.1.0",
   "description": "Markdown documentation skills and linting with markdownlint. Requires the marksman LSP server to be installed.",
@@ -10,5 +11,12 @@
   "repository": "https://github.com/leonardo-marziali/agentic-development-kit.git",
   "license": "Apache-2.0",
   "keywords": ["markdown", "markdownlint", "documentation", "linting", "formatting"],
-  "skills": "./scripts/skills/"
+  "userConfig": {
+    "auto_suppress": {
+      "type": "boolean",
+      "title": "Auto-suppress unfixable violations",
+      "description": "When the fix loop hits its attempt cap, write inline markdownlint-disable comments into your files for whatever is still failing. Off by default: the remaining violations are only reported.",
+      "default": false
+    }
+  }
 }
