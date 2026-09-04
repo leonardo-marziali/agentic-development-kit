@@ -15,9 +15,9 @@ jobs:
       # to resolve the current ref before it can fall back to the GitHub
       # REST API for the actual diff, so a checkout (even a shallow one) is
       # required regardless of which diffing strategy ends up used.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
@@ -67,11 +67,11 @@ jobs:
         suite: ${{ fromJson(needs.detect.outputs.matrix) }}
     name: test (${{ matrix.suite.name }})
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
           cache: pnpm
@@ -87,7 +87,7 @@ jobs:
         run: pnpm test:coverage
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ${{ matrix.suite.dir }}/coverage/lcov.info
