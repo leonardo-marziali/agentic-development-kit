@@ -2,12 +2,6 @@
 name: markdown-syntax-fundamentals
 user-invocable: false
 description: Use when writing or editing markdown files. Covers headings, text formatting, lists, links, images, code blocks, and blockquotes.
-allowed-tools:
-  - Read
-  - Write
-  - Edit
-  - Grep
-  - Glob
 ---
 
 # Markdown Syntax Fundamentals
@@ -33,7 +27,8 @@ Core markdown syntax for creating well-structured documents.
 ### Heading Best Practices
 
 - Use a single H1 (`#`) per document as the title
-- Don't skip heading levels (at any level); e.g., don't jump from H2 directly to H4 without an H3 in between
+- Don't skip heading levels (at any level); e.g., don't jump from H2
+  directly to H4 without an H3 in between
 - Keep headings concise and descriptive
 - Use sentence case or title case consistently
 
@@ -233,7 +228,8 @@ Use three or more hyphens, asterisks, or underscores.
 \`Not code\`
 ```
 
-Characters that can be escaped: `\` `` ` `` `*` `_` `{` `}` `[` `]` `(` `)` `#` `+` `-` `.` `!` `|`
+Characters that can be escaped: `\` `` ` `` `*` `_` `{` `}` `[` `]`
+`(` `)` `#` `+` `-` `.` `!` `|`
 
 ## Line Breaks
 

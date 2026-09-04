@@ -1,17 +1,21 @@
 ---
 name: markdownlint-custom-rules
 user-invocable: false
-description: Create custom linting rules for markdownlint including rule structure, parser integration, error reporting, and automatic fixing.
-allowed-tools: [Bash, Read]
+description: Use when writing a custom markdownlint rule — defining the rule object, walking the markdown-it or micromark token stream, reporting errors with onError, or adding fixInfo for automatic fixing.
 ---
 
 # Markdownlint Custom Rules
 
-Master creating custom markdownlint rules including rule structure, markdown-it and micromark parser integration, error reporting with fixInfo, and asynchronous rule development.
+Master creating custom markdownlint rules including rule structure,
+markdown-it and micromark parser integration, error reporting with
+fixInfo, and asynchronous rule development.
 
 ## Overview
 
-Markdownlint allows you to create custom rules tailored to your project's specific documentation requirements. Custom rules can enforce project-specific conventions, validate content patterns, and ensure consistency beyond what built-in rules provide.
+Markdownlint allows you to create custom rules tailored to your
+project's specific documentation requirements. Custom rules can
+enforce project-specific conventions, validate content patterns,
+and ensure consistency beyond what built-in rules provide.
 
 ## Rule Object Structure
 
@@ -444,9 +448,10 @@ module.exports = {
           context: fence.line,
         });
       } else if (allowedLanguages.length > 0 && !allowedLanguages.includes(language)) {
+        const allowed = allowedLanguages.join(', ');
         onError({
           lineNumber: fence.lineNumber,
-          detail: `Language '${language}' not in allowed list: ${allowedLanguages.join(', ')}`,
+          detail: `Language '${language}' not in allowed list: ${allowed}`,
           context: fence.line,
         });
       }
@@ -516,15 +521,19 @@ module.exports = {
       );
 
       if (items.length > 0) {
-        const firstMarker = params.lines[items[0].startLine - 1].charAt(items[0].startColumn - 1);
+        const firstLine = params.lines[items[0].startLine - 1];
+        const firstMarker = firstLine.charAt(items[0].startColumn - 1);
 
         for (const item of items.slice(1)) {
-          const marker = params.lines[item.startLine - 1].charAt(item.startColumn - 1);
+          const line = params.lines[item.startLine - 1];
+          const marker = line.charAt(item.startColumn - 1);
 
           if (marker !== firstMarker) {
+            const detail =
+              `Inconsistent list marker: expected '${firstMarker}', ` + `found '${marker}'`;
             onError({
               lineNumber: item.startLine,
-              detail: `Inconsistent list marker: expected '${firstMarker}', found '${marker}'`,
+              detail,
               context: params.lines[item.startLine - 1],
               range: [item.startColumn, 1],
               fixInfo: {

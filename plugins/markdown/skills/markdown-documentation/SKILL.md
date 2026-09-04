@@ -1,13 +1,7 @@
 ---
 name: markdown-documentation
 user-invocable: false
-description: Use when writing technical documentation, READMEs, or project documentation in markdown. Covers structure, conventions, and best practices.
-allowed-tools:
-  - Read
-  - Write
-  - Edit
-  - Grep
-  - Glob
+description: Use when writing technical documentation, READMEs, changelogs, or API docs in markdown. Covers structure, conventions, and best practices.
 ---
 
 # Markdown Documentation
@@ -94,7 +88,7 @@ MIT License - see [LICENSE](LICENSE)
 
 ### File Naming
 
-```
+```text
 docs/
 ├── README.md           # Entry point
 ├── CONTRIBUTING.md     # Contribution guidelines
@@ -171,8 +165,7 @@ npm start
 ```
 ````
 
-````
-
+````markdown
 ### Command Examples
 
 Show both command and output:
@@ -180,6 +173,7 @@ Show both command and output:
 ```bash
 $ npm --version
 10.2.0
+```
 ````
 
 ### Configuration Examples

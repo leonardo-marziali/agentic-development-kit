@@ -1,15 +1,18 @@
 ---
 name: lint
-description: Lint and auto-fix markdown files, including pre-existing files not touched this session
+description: Use when the user asks to "lint markdown", "fix markdown lint errors", "run markdownlint", or wants markdownlint run over docs this session never touched. Lints and auto-fixes markdown files, including pre-existing ones.
 argument-hint: '[file paths...] | [natural-language description of files to include]'
 disable-model-invocation: true
+allowed-tools: Bash(npx -y markdownlint-cli *) Read Edit Grep Glob
 ---
+
+# Markdown Linting
 
 Lint markdown files. Arguments given: `$ARGUMENTS`
 
-This command is the explicit opt-in for linting **pre-existing** markdown —
+This skill is the explicit opt-in for linting **pre-existing** markdown —
 files this session didn't create or edit. The plugin's hooks only ever
-auto-lint files touched during the current session; use this command
+auto-lint files touched during the current session; use this skill
 whenever the user wants existing docs checked or cleaned up too.
 
 ## 1. Resolve the target

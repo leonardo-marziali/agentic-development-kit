@@ -1,8 +1,7 @@
 ---
 name: markdownlint-configuration
 user-invocable: false
-description: Configure markdownlint rules and options including rule management, configuration files, inline comments, and style inheritance.
-allowed-tools: [Bash, Read]
+description: Use when configuring markdownlint — writing a .markdownlint.json/.jsonc/.yaml config, enabling or disabling specific MD rules, suppressing a rule inline, or setting up style inheritance via extends.
 ---
 
 # Markdownlint Configuration

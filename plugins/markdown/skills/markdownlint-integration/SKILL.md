@@ -1,17 +1,21 @@
 ---
 name: markdownlint-integration
 user-invocable: false
-description: Integrate markdownlint into development workflows including CLI usage, programmatic API, CI/CD pipelines, and editor integration.
-allowed-tools: [Bash, Read]
+description: Use when wiring markdownlint into a workflow — markdownlint-cli/cli2 flags, the programmatic Node API, a CI pipeline or pre-commit hook, or editor integration.
 ---
 
 # Markdownlint Integration
 
-Master integrating markdownlint into development workflows including CLI usage, programmatic API (sync/async/promise), CI/CD pipelines, pre-commit hooks, and editor integration.
+Master integrating markdownlint into development workflows including
+CLI usage, programmatic API (sync/async/promise), CI/CD pipelines,
+pre-commit hooks, and editor integration.
 
 ## Overview
 
-Markdownlint can be integrated into various parts of your development workflow to ensure consistent markdown quality. This includes command-line tools, programmatic usage in Node.js, continuous integration pipelines, Git hooks, and editor plugins.
+Markdownlint can be integrated into various parts of your development
+workflow to ensure consistent markdown quality. This includes
+command-line tools, programmatic usage in Node.js, continuous
+integration pipelines, Git hooks, and editor plugins.
 
 ## Command-Line Interface
 
