@@ -1,0 +1,10 @@
+{
+  "name": "git",
+  "version": "0.1.0",
+  "description": "Git workflow helpers for Claude Code. Currently includes staging changes and creating Conventional Commits commits, with explicit user confirmation before each commit.",
+  "author": {
+    "name": "Leonardo Marziali",
+    "email": "marzialileonardo862@gmail.com"
+  },
+  "keywords": ["git", "commit", "conventional-commits"]
+}

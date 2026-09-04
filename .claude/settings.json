@@ -9,6 +9,7 @@
     }
   },
   "enabledPlugins": {
+    "git@agentic-development-kit": true,
     "markdown@agentic-development-kit": true,
     "prettier@agentic-development-kit": true
   },

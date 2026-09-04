@@ -20,6 +20,13 @@
       "description": "Formats every file with Prettier the moment Claude edits or writes it.",
       "category": "formatting",
       "keywords": ["prettier", "formatting", "hooks"]
+    },
+    {
+      "name": "git",
+      "source": "./plugins/git",
+      "description": "Git workflow helpers for Claude Code, including staged/confirmed Conventional Commits commit creation.",
+      "category": "workflow",
+      "keywords": ["git", "commit", "conventional-commits"]
     }
   ]
 }
