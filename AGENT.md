@@ -11,8 +11,12 @@ This repository uses **pnpm** exclusively. Do not use `npm` or `yarn`.
 - Add a dev dependency: `pnpm add -D <package>`
 - Run a script: `pnpm run <script>` (or `pnpm <script>`)
 
-Never run `npm install`, `npm add`, `yarn`, or commit a `package-lock.json` / `yarn.lock`. Only `pnpm-lock.yaml` should be committed as the lockfile.
+Never run `npm install`, `npm add`, `yarn`, or commit a `package-lock.json`
+/ `yarn.lock`. Only `pnpm-lock.yaml` should be committed as the lockfile.
 
 ## Commits
 
-Commit messages must follow [Conventional Commits](https://www.conventionalcommits.org/) — enforced via commitlint and a husky `commit-msg` hook.
+Commit messages must follow [Conventional Commits][cc] — enforced via
+commitlint and a husky `commit-msg` hook.
+
+[cc]: https://www.conventionalcommits.org/
