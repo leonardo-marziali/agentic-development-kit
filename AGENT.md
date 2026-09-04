@@ -14,6 +14,20 @@ This repository uses **pnpm** exclusively. Do not use `npm` or `yarn`.
 Never run `npm install`, `npm add`, `yarn`, or commit a `package-lock.json`
 / `yarn.lock`. Only `pnpm-lock.yaml` should be committed as the lockfile.
 
+## Plugin skill naming
+
+Prefix a skill's `name` with the most specific subject it documents, not
+mechanically with the owning plugin's name:
+
+- Skills about the plugin's general domain use that domain as the prefix
+  (e.g. `markdown-tables` in the `markdown` plugin).
+- Skills about a specific tool within the plugin use that tool's name
+  instead (e.g. `markdownlint-configuration`, `marksman-lsp-usage`) — the
+  tool name disambiguates better than the plugin name when skills are
+  matched from a flat, cross-plugin list.
+- User-invocable skills (slash commands) get short verb names with no
+  prefix (e.g. `lint`).
+
 ## Commits
 
 Commit messages must follow [Conventional Commits][cc] — enforced via

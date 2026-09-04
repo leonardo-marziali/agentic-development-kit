@@ -59,6 +59,20 @@ This plugin provides the following skills:
 - **markdownlint-integration**: Integrate markdownlint into development
   workflows including CLI usage, programmatic API, and CI/CD pipelines
 
+#### Naming convention
+
+Skill names are prefixed with the most specific subject they document, not
+mechanically with the plugin name:
+
+- General markdown-format skills use `markdown-` (e.g.
+  `markdown-syntax-fundamentals`).
+- Skills about a specific tool use that tool's name instead (e.g.
+  `markdownlint-configuration`, `marksman-lsp-usage`), since the tool name
+  disambiguates better than the plugin name when skills are matched from a
+  flat, cross-plugin list.
+- User-invocable skills (slash commands) get short verb names with no
+  prefix (e.g. `lint`).
+
 ## Requirements
 
 This plugin's LSP integration (`.lsp.json`) uses [marksman][marksman] to
