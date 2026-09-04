@@ -11,9 +11,12 @@ jobs:
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
-      # No checkout: dorny/paths-filter falls back to the GitHub REST API to
-      # diff changed files, which works for both push and pull_request
-      # without needing local git history.
+      # dorny/paths-filter still shells out to `git branch --show-current`
+      # to resolve the current ref before it can fall back to the GitHub
+      # REST API for the actual diff, so a checkout (even a shallow one) is
+      # required regardless of which diffing strategy ends up used.
+      - uses: actions/checkout@v4
+
       - uses: dorny/paths-filter@v3
         id: filter
         with:
