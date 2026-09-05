@@ -1,8 +1,10 @@
 name: Plugin Tests
 
 on:
-  push:
-    branches: [main]
+  # main is a protected branch (see README's "Branch protection" section):
+  # every change lands via a pull request, which already ran this workflow
+  # against the exact same tree. Re-running on the post-merge push would
+  # just repeat that result, so `main` is intentionally not a push trigger.
   pull_request:
 
 jobs:

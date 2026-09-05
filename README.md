@@ -120,7 +120,7 @@ scripts in `scripts/`. See a plugin's own README
 ### Coverage & CI
 
 A single [`plugin-tests.yml`](.github/workflows/plugin-tests.yml) workflow
-runs whichever suites are affected by a given push or PR (via
+runs whichever suites are affected by a given pull request (via
 `dorny/paths-filter`, so an unrelated plugin's suite doesn't run on every
 change) and uploads each one's coverage to
 [Codecov](https://codecov.io/gh/leonardo-marziali/agentic-development-kit)
@@ -129,6 +129,18 @@ under its own flag (`repo-root`, `markdown-plugin`, `prettier-plugin`).
 on commits that don't re-upload it, so the badge above — the combined
 coverage across every flag — stays accurate even though the suites upload
 independently.
+
+It only triggers on `pull_request`, not on `push` to `main`: see "Branch
+protection" below for why a push to `main` never needs its own test run.
+
+### Branch protection
+
+`main` is a protected branch — it can only be updated by merging a pull
+request (no direct pushes, enforced both by a repository ruleset on GitHub
+and, locally, by the `pre-push` Husky hook). Every commit that ever reaches
+`main` has therefore already been validated by `plugin-tests.yml` on its
+pull request; re-running that workflow on the resulting push to `main`
+would just repeat the same result against the same tree, so it's skipped.
 
 ## License
 
