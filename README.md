@@ -142,6 +142,17 @@ and, locally, by the `pre-push` Husky hook). Every commit that ever reaches
 pull request; re-running that workflow on the resulting push to `main`
 would just repeat the same result against the same tree, so it's skipped.
 
+### Pull request titles
+
+[`pr-title.yml`](.github/workflows/pr-title.yml) uses
+[`amannn/action-semantic-pull-request`](https://github.com/amannn/action-semantic-pull-request)
+to check that a PR's title follows [Conventional
+Commits](https://www.conventionalcommits.org/), using the same type
+vocabulary as `commitlint.config.js`. This matters because the `github`
+plugin's `pr` skill and semantic-release's release notes are both driven
+off of that title/history, so a PR titled e.g. `feat: add dark mode` (not
+`Add dark mode`) is required before merging.
+
 ## License
 
 [MIT](LICENSE)
