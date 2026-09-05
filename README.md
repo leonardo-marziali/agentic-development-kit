@@ -120,7 +120,7 @@ scripts in `scripts/`. See a plugin's own README
 ### Coverage & CI
 
 A single [`plugin-tests.yml`](.github/workflows/plugin-tests.yml) workflow
-runs whichever suites are affected by a given push or PR (via
+runs whichever suites are affected by a given pull request (via
 `dorny/paths-filter`, so an unrelated plugin's suite doesn't run on every
 change) and uploads each one's coverage to
 [Codecov](https://codecov.io/gh/leonardo-marziali/agentic-development-kit)
@@ -129,6 +129,59 @@ under its own flag (`repo-root`, `markdown-plugin`, `prettier-plugin`).
 on commits that don't re-upload it, so the badge above — the combined
 coverage across every flag — stays accurate even though the suites upload
 independently.
+
+It only triggers on `pull_request`, not on `push` to `main`: see "Branch
+protection" below for why a push to `main` never needs its own test run.
+Because the `test` job runs as a dynamic matrix, its check name isn't
+stable across PRs (it depends on which suites are affected) — the
+`required` job exists solely to give the branch ruleset one constant
+check name to require, regardless of which suites actually ran.
+
+### Branch protection
+
+`main` is a protected branch — it can only be updated by merging a pull
+request (no direct pushes, enforced both by a repository ruleset on GitHub
+and, locally, by the `pre-push` Husky hook). Every commit that ever reaches
+`main` has therefore already been validated by `plugin-tests.yml` on its
+pull request; re-running that workflow on the resulting push to `main`
+would just repeat the same result against the same tree, so it's skipped.
+
+### Pull request titles
+
+[`pr-title.yml`](.github/workflows/pr-title.yml) uses
+[`amannn/action-semantic-pull-request`](https://github.com/amannn/action-semantic-pull-request)
+to check that a PR's title follows [Conventional
+Commits](https://www.conventionalcommits.org/), using the same type
+vocabulary as `commitlint.config.js`. This matters because the `github`
+plugin's `pr` skill and semantic-release's release notes are both driven
+off of that title/history, so a PR titled e.g. `feat: add dark mode` (not
+`Add dark mode`) is required before merging.
+
+### Releases & versioning
+
+Every push to `main` (i.e. every merged pull request) runs
+[`release.yml`](.github/workflows/release.yml), which invokes
+[semantic-release](https://semantic-release.org/) (config in
+[`release.config.js`](release.config.js)). It inspects the Conventional
+Commit messages introduced since the last release to decide whether the
+next version is a major/minor/patch bump, then creates a git tag
+(`vX.Y.Z`) and a GitHub Release with generated notes — no maintainer ever
+picks a version number by hand.
+
+This repo is a private plugin marketplace, not something published to the
+npm registry, so only the plugins needed to compute a version and publish a
+release are enabled (`commit-analyzer`, `release-notes-generator`,
+`github`). There's deliberately no `@semantic-release/npm` (nothing to
+publish) and no `@semantic-release/git` (it would need to push a version
+bump commit back to `main`, which the branch protection above blocks for
+anything that isn't a pull request merge) — `package.json`'s `version`
+field stays `0.0.0` and the git tag is the source of truth for the
+released version. To pin to a specific release, reference its tag instead
+of a branch when adding the marketplace, e.g.:
+
+```text
+/plugin marketplace add leonardo-marziali/agentic-development-kit@v1.4.0
+```
 
 ## License
 
