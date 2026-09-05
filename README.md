@@ -24,6 +24,7 @@ inside Claude Code, then install a plugin from it (for example `markdown`):
 plugins/                          Individual plugins hosted by this marketplace
   markdown/                       Authoring/linting skills, LSP config, and hooks
   prettier/                       Format-on-edit hook and a manual formatting skill
+  git/                            Safety-checked branching and Conventional Commits
   java/                           Reserved for a future Java plugin
 ```
 
