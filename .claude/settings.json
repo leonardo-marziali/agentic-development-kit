@@ -10,6 +10,8 @@
   },
   "enabledPlugins": {
     "git@agentic-development-kit": true,
+    "github@agentic-development-kit": true,
+    "github@claude-plugins-official": true,
     "markdown@agentic-development-kit": true,
     "prettier@agentic-development-kit": true
   },

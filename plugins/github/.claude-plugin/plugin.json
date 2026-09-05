@@ -1,0 +1,15 @@
+{
+  "$schema": "https://www.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "github",
+  "version": "0.1.0",
+  "description": "GitHub pull request workflow for Claude Code. Opens a Conventional Commits-titled PR for the current branch with a description derived from its commits, specs, and docs, then watches the triggered checks, fixes what fails, and offers the merge once everything is green.",
+  "author": {
+    "name": "Leonardo Marziali",
+    "url": "https://github.com/leonardo-marziali"
+  },
+  "homepage": "https://github.com/leonardo-marziali/agentic-development-kit",
+  "repository": "https://github.com/leonardo-marziali/agentic-development-kit.git",
+  "license": "Apache-2.0",
+  "keywords": ["github", "pull-request", "ci", "conventional-commits", "workflow"],
+  "dependencies": ["github@claude-plugins-official"]
+}
