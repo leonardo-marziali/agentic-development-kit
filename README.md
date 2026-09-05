@@ -153,6 +153,32 @@ plugin's `pr` skill and semantic-release's release notes are both driven
 off of that title/history, so a PR titled e.g. `feat: add dark mode` (not
 `Add dark mode`) is required before merging.
 
+### Releases & versioning
+
+Every push to `main` (i.e. every merged pull request) runs
+[`release.yml`](.github/workflows/release.yml), which invokes
+[semantic-release](https://semantic-release.org/) (config in
+[`release.config.js`](release.config.js)). It inspects the Conventional
+Commit messages introduced since the last release to decide whether the
+next version is a major/minor/patch bump, then creates a git tag
+(`vX.Y.Z`) and a GitHub Release with generated notes — no maintainer ever
+picks a version number by hand.
+
+This repo is a private plugin marketplace, not something published to the
+npm registry, so only the plugins needed to compute a version and publish a
+release are enabled (`commit-analyzer`, `release-notes-generator`,
+`github`). There's deliberately no `@semantic-release/npm` (nothing to
+publish) and no `@semantic-release/git` (it would need to push a version
+bump commit back to `main`, which the branch protection above blocks for
+anything that isn't a pull request merge) — `package.json`'s `version`
+field stays `0.0.0` and the git tag is the source of truth for the
+released version. To pin to a specific release, reference its tag instead
+of a branch when adding the marketplace, e.g.:
+
+```text
+/plugin marketplace add leonardo-marziali/agentic-development-kit@v1.4.0
+```
+
 ## License
 
 [MIT](LICENSE)
