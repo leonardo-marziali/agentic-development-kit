@@ -12,6 +12,13 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # semantic-release pushes its git tag with a plain `git push`; without
+    # this, `pnpm install`'s `prepare` script installs this repo's Husky
+    # hooks into the job's checkout too, and the pre-push hook then blocks
+    # that push because HEAD is on main (it can't tell a tag push from a
+    # branch push).
+    env:
+      HUSKY: 0
     steps:
       - uses: actions/checkout@v7
 
