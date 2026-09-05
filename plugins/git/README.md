@@ -4,6 +4,29 @@ A Claude Code plugin providing git workflow helpers.
 
 ## Skills
 
+### `branch` (user-invocable, `/git:branch`)
+
+Creates a git branch with the mechanical safety checks run first, then
+creates and switches in a single `git switch -c`.
+
+- Runs the pre-creation preflight: working tree state, base branch
+  resolution (never assumes `main` — checks the remote default, a Git Flow
+  `develop`, or a feature branch to stack on), base freshness via
+  `git fetch`, and a local **and** remote name-collision check.
+- **Stops and asks if the working tree is dirty** — carry the changes over,
+  commit them first, stash, or discard — rather than guessing.
+- Names the branch from the project's convention, read from
+  `CLAUDE.md`/`AGENT.md`/`CONTRIBUTING.md`/`.github/` or inferred from
+  existing branch names, falling back to GitHub flow
+  (`<type>/<short-description>`). Never invents a ticket ID. The naming
+  rules, type vocabulary, and worked examples live in
+  `skills/branch/references/naming.md`.
+- **Never rewrites history.** Work already committed on the base branch is
+  out of scope.
+- **Pushes only on explicit confirmation** (`git push -u origin <name>`).
+  `git fetch` and `git ls-remote` are the only remote calls it makes
+  unprompted, and both are read-only.
+
 ### `commit` (user-invocable, `/commit`)
 
 Stages changes and creates [Conventional
@@ -34,10 +57,19 @@ message for this diff"). The full spec text lives in
 ## Usage
 
 ```text
+/git:branch
+/git:branch feat/oauth-login
+/git:branch add rate limiting to the webhook endpoint
+/git:branch ABC-412
+
 /commit
 /commit src/foo.ts src/bar.ts
 /commit all the files related to authentication
 ```
+
+`branch` and `commit` are also invoked by Claude on its own when a branch or
+a commit is needed mid-task; `conventional-commits` only ever triggers
+automatically.
 
 ## Installation
 

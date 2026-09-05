@@ -1,10 +1,10 @@
 {
   "name": "git",
-  "version": "0.1.0",
-  "description": "Git workflow helpers for Claude Code. Currently includes staging changes and creating Conventional Commits commits, with explicit user confirmation before each commit.",
+  "version": "0.2.0",
+  "description": "Git workflow helpers for Claude Code. Creates branches with the mechanical safety checks run first (clean tree, correct and up-to-date base, no name collision), and stages changes into Conventional Commits commits, with explicit user confirmation before each commit and before any push.",
   "author": {
     "name": "Leonardo Marziali",
     "email": "marzialileonardo862@gmail.com"
   },
-  "keywords": ["git", "commit", "conventional-commits"]
+  "keywords": ["git", "branch", "commit", "conventional-commits"]
 }

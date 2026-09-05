@@ -24,9 +24,9 @@
     {
       "name": "git",
       "source": "./plugins/git",
-      "description": "Git workflow helpers for Claude Code, including staged/confirmed Conventional Commits commit creation.",
+      "description": "Git workflow helpers for Claude Code, including safety-checked branch creation and staged/confirmed Conventional Commits commit creation.",
       "category": "workflow",
-      "keywords": ["git", "commit", "conventional-commits"]
+      "keywords": ["git", "branch", "commit", "conventional-commits"]
     }
   ]
 }
