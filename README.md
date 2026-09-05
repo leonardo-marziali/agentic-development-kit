@@ -110,8 +110,9 @@ cd plugins/markdown && pnpm test
 cd plugins/prettier && pnpm test
 ```
 
-The root `pnpm test` covers this repo's own hooks in `.claude/hooks/`. See a
-plugin's own README ([markdown](plugins/markdown/README.md),
+The root `pnpm test` covers this repo's own hooks in `.claude/hooks/` and the
+scripts in `scripts/`. See a plugin's own README
+([markdown](plugins/markdown/README.md),
 [prettier](plugins/prettier/README.md)) for what its suite covers.
 
 ### Coverage & CI
@@ -121,7 +122,7 @@ runs whichever suites are affected by a given push or PR (via
 `dorny/paths-filter`, so an unrelated plugin's suite doesn't run on every
 change) and uploads each one's coverage to
 [Codecov](https://codecov.io/gh/leonardo-marziali/agentic-development-kit)
-under its own flag (`repo-hooks`, `markdown-plugin`, `prettier-plugin`).
+under its own flag (`repo-root`, `markdown-plugin`, `prettier-plugin`).
 [`codecov.yml`](codecov.yml) carries each flag's last-known coverage forward
 on commits that don't re-upload it, so the badge above — the combined
 coverage across every flag — stays accurate even though the suites upload

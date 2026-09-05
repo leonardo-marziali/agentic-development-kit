@@ -23,7 +23,7 @@ jobs:
           filters: |
             workflow:
               - '.github/workflows/plugin-tests.yml'
-            repo-hooks:
+            repo-root:
               - '.claude/hooks/**'
               - 'scripts/**'
             markdown:
@@ -35,7 +35,7 @@ jobs:
         id: set-matrix
         env:
           WORKFLOW_CHANGED: ${{ steps.filter.outputs.workflow }}
-          REPO_HOOKS_CHANGED: ${{ steps.filter.outputs.repo-hooks }}
+          REPO_ROOT_CHANGED: ${{ steps.filter.outputs.repo-root }}
           MARKDOWN_CHANGED: ${{ steps.filter.outputs.markdown }}
           PRETTIER_CHANGED: ${{ steps.filter.outputs.prettier }}
         run: |
@@ -46,8 +46,8 @@ jobs:
           }
           # A change to the workflow itself is validated against every
           # suite, not just the ones whose own files changed.
-          if [ "$WORKFLOW_CHANGED" = "true" ] || [ "$REPO_HOOKS_CHANGED" = "true" ]; then
-            add "repo-hooks" "." "repo-hooks"
+          if [ "$WORKFLOW_CHANGED" = "true" ] || [ "$REPO_ROOT_CHANGED" = "true" ]; then
+            add "repo-root" "." "repo-root"
           fi
           if [ "$WORKFLOW_CHANGED" = "true" ] || [ "$MARKDOWN_CHANGED" = "true" ]; then
             add "markdown" "plugins/markdown" "markdown-plugin"
