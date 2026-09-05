@@ -95,3 +95,21 @@ jobs:
           files: ${{ matrix.suite.dir }}/coverage/lcov.info
           flags: ${{ matrix.suite.flag }}
           fail_ci_if_error: false
+
+  # `test`'s own check name varies with the matrix (or isn't produced at
+  # all when the matrix is empty), so it can't be set as a required status
+  # check on the branch ruleset. This job always runs under one stable
+  # name and fails iff `test` failed, so it's the one to require instead.
+  required:
+    name: Required
+    needs: [detect, test]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any affected suite failed
+        run: |
+          result="${{ needs.test.result }}"
+          echo "test job result: $result"
+          if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
+            exit 1
+          fi

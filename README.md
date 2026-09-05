@@ -132,6 +132,10 @@ independently.
 
 It only triggers on `pull_request`, not on `push` to `main`: see "Branch
 protection" below for why a push to `main` never needs its own test run.
+Because the `test` job runs as a dynamic matrix, its check name isn't
+stable across PRs (it depends on which suites are affected) — the
+`required` job exists solely to give the branch ruleset one constant
+check name to require, regardless of which suites actually ran.
 
 ### Branch protection
 
