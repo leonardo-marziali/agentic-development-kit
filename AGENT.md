@@ -34,3 +34,19 @@ Commit messages must follow [Conventional Commits][cc] — enforced via
 commitlint and a husky `commit-msg` hook.
 
 [cc]: https://www.conventionalcommits.org/
+
+## Branches
+
+Branch names follow GitHub flow:
+
+```text
+<type>/<short-description>
+```
+
+- `<type>` is one of the commitlint types in use: `build`, `chore`, `ci`,
+  `docs`, `feat`, `fix`, `perf`, `refactor`, `revert`, `style`, `test`.
+- `<short-description>` is lowercase kebab-case, 2–5 words, under ~40
+  characters total.
+- Branch from `main` unless the work explicitly stacks on another branch.
+
+The `git` plugin's `branch` skill reads this section.
