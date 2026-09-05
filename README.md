@@ -25,6 +25,7 @@ plugins/                          Individual plugins hosted by this marketplace
   markdown/                       Authoring/linting skills, LSP config, and hooks
   prettier/                       Format-on-edit hook and a manual formatting skill
   git/                            Safety-checked branching and Conventional Commits
+  github/                         Pull request lifecycle: open, watch checks, merge
   java/                           Reserved for a future Java plugin
 ```
 

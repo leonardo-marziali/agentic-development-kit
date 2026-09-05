@@ -6,6 +6,7 @@
     "name": "Leonardo Marziali",
     "url": "https://github.com/leonardo-marziali"
   },
+  "allowCrossMarketplaceDependenciesOn": ["claude-plugins-official"],
   "plugins": [
     {
       "name": "markdown",
@@ -27,6 +28,13 @@
       "description": "Git workflow helpers for Claude Code, including safety-checked branch creation and staged/confirmed Conventional Commits commit creation.",
       "category": "workflow",
       "keywords": ["git", "branch", "commit", "conventional-commits"]
+    },
+    {
+      "name": "github",
+      "source": "./plugins/github",
+      "description": "Opens the pull request for the current branch with a Conventional Commits title and an evidence-derived description, watches its checks, resolves failures, and merges on confirmation.",
+      "category": "workflow",
+      "keywords": ["github", "pull-request", "ci", "conventional-commits", "workflow"]
     }
   ]
 }
