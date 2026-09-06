@@ -112,8 +112,11 @@ refresh tokens` beats `fix(auth): update token check in middleware`.
 
 ## 3. Write the description
 
-Include only the sections that have real content. An empty heading is
-worse than an absent one.
+This repository's template is fixed — reuse every heading, in this order.
+Leave a section's body as `N/A` (or, for **Screenshots** and **Breaking
+changes**, drop the heading entirely) rather than inventing content to
+fill it; an empty heading is still worse than an absent one, but a
+renamed or reordered one breaks the template for the next reader.
 
 ```markdown
 ## Summary
@@ -127,16 +130,39 @@ reviewer who has not read the branch.
 - Behaviour first, mechanics second. Skip pure noise (formatting,
   generated files) unless a reviewer needs to know it is there.
 
-## Context
+## Motivation
 
 Links: `Closes #123`, the spec or design doc by repository path, related
 PRs. Also the decisions a reviewer would otherwise ask about — an approach
 considered and rejected, a constraint that forced an odd shape.
 
-## Verification
+## Screenshots (if UI change)
 
-How the change was checked: the test suites run, what was added, anything
-verified manually, and anything deliberately not covered.
+## Test plan
+
+What was actually run to verify this, in checklist form. Distinguish
+automated from manual so a reviewer knows what CI already proves versus
+what they'd need to redo by hand.
+
+- [ ] Unit/integration tests: `path/to/test_file` — what they cover
+- [ ] E2E: `path/to/e2e_spec` — what they cover, or "none yet, gap noted below"
+- [ ] Manual: steps a reviewer can reproduce locally
+  1. ...
+  2. ...
+  3. Expected result: ...
+- [ ] Edge cases exercised: empty input, expired/stale state, concurrent
+      writes, permission boundaries — whichever apply
+- [ ] Verified in an environment close to prod (staging, feature flag on
+      in prod, etc.) if the change is risky enough to warrant it
+
+## Checklist
+
+- [ ] Tests added/updated, and they fail on `main` without this change
+- [ ] Rollback is safe (revert, or flag off) with no data migration to undo
+- [ ] Logs/metrics/alerts updated if this changes error paths or SLOs
+- [ ] Docs updated (README, API docs, runbook) — or N/A
+- [ ] No secrets, debug code, or commented-out blocks left in
+- [ ] No breaking changes (or noted below)
 
 ## Breaking changes
 
@@ -144,11 +170,17 @@ Only when there are any: what breaks, and what a consumer must do about
 it. Mirror the `BREAKING CHANGE:` footer from the commit.
 ```
 
+Check off a `Test plan` or `Checklist` box only for something actually
+done — do not tick a box to make the PR look more complete than it is.
+Leave it unchecked and say why (or note the gap inline) when a step
+wasn't run.
+
 Close with whatever attribution footer the session's own guidance
 requires, if any.
 
 Style: prose in the summary, bullets everywhere else. State what is true —
-no "this PR aims to" hedging, and no claiming a test ran that did not.
+no "this PR aims to" hedging, and no claiming a test ran or a box was
+checked that wasn't.
 
 ## Worked example
 
@@ -191,7 +223,7 @@ attempts over ~15 minutes.
 - Record attempt count and next-attempt time on the delivery record so
   exhausted deliveries are visible rather than merely absent.
 
-## Context
+## Motivation
 
 Closes #418. Policy and the reasoning behind the cap:
 `docs/design/webhook-delivery.md`.
@@ -199,9 +231,26 @@ Closes #418. Policy and the reasoning behind the cap:
 Retrying 4xx was considered and dropped — a rejected payload is rejected
 identically on every attempt, and retrying only multiplies receiver load.
 
-## Verification
+## Test plan
 
-`pnpm test --filter webhooks` covers backoff bounds, jitter, and retry
-exhaustion. Manually verified against a receiver returning 503 for 90
-seconds: the delivery succeeded on attempt four.
+- [x] Unit/integration tests: `pnpm test --filter webhooks` — covers
+      backoff bounds, jitter, and retry exhaustion
+- [ ] E2E: none yet, gap noted below
+- [x] Manual: verified against a receiver returning 503 for 90 seconds
+  1. Trigger a delivery against the stub receiver
+  2. Force five consecutive 503 responses
+  3. Expected result: the delivery succeeds on attempt four
+- [x] Edge cases exercised: retry exhaustion (all five attempts fail),
+      jitter bounds
+- [ ] Not verified in a staging environment — low-risk, internal-only path
+
+## Checklist
+
+- [x] Tests added/updated, and they fail on `main` without this change
+- [x] Rollback is safe (revert, no data migration to undo)
+- [ ] Logs/metrics/alerts updated — gap: attempt count isn't surfaced to
+      the existing delivery dashboard yet, tracked in #419
+- [x] Docs updated (`docs/design/webhook-delivery.md`)
+- [x] No secrets, debug code, or commented-out blocks left in
+- [x] No breaking changes
 ```
