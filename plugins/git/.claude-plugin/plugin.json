@@ -1,10 +1,10 @@
 {
   "name": "git",
   "version": "0.2.0",
-  "description": "Git workflow helpers for Claude Code. Creates branches with the mechanical safety checks run first (clean tree, correct and up-to-date base, no name collision), and stages changes into Conventional Commits commits, with explicit user confirmation before each commit and before any push.",
+  "description": "Git workflow helpers for Claude Code. Creates branches with the mechanical safety checks run first (clean tree, correct and up-to-date base, no name collision), stages changes into Conventional Commits commits with explicit user confirmation before each commit and before any push, and derives vendor-agnostic pull/merge request titles and descriptions for hosting-specific PR skills to use.",
   "author": {
     "name": "Leonardo Marziali",
     "email": "marzialileonardo862@gmail.com"
   },
-  "keywords": ["git", "branch", "commit", "conventional-commits"]
+  "keywords": ["git", "branch", "commit", "conventional-commits", "pull-request"]
 }

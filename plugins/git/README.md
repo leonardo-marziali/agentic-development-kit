@@ -54,6 +54,16 @@ wording/formatting a commit message (e.g. "write a conventional commit
 message for this diff"). The full spec text lives in
 `skills/conventional-commits/references/specification.md`.
 
+### `pr-description` (auto-triggered, not a slash command)
+
+Derives a Conventional Commits title and a full description (summary,
+changes, motivation, test plan, checklist, breaking changes) for a whole
+branch, from its commits, diff, any spec or design doc it touches, and its
+linked issue. It is vendor-agnostic — it never talks to a hosting API or
+CLI — and only produces title/body text; it never opens or updates a
+pull/merge request itself. Hosting-specific PR/MR skills, such as the
+`github` plugin's `pr` skill, call into it for that content.
+
 ## Usage
 
 ```text

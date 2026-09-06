@@ -11,5 +11,5 @@
   "repository": "https://github.com/leonardo-marziali/agentic-development-kit.git",
   "license": "Apache-2.0",
   "keywords": ["github", "pull-request", "ci", "conventional-commits", "workflow"],
-  "dependencies": ["github@claude-plugins-official"]
+  "dependencies": ["github@claude-plugins-official", "git"]
 }

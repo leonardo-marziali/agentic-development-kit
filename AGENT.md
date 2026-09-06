@@ -76,8 +76,8 @@ opened:
 - **Description** must follow the template in
   [CONTRIBUTING.md](CONTRIBUTING.md#description-template) — Summary,
   Changes, Motivation, Screenshots (if UI change), Test plan, Checklist,
-  Breaking changes. The `pr` skill's
-  [`references/pr-content.md`](plugins/github/skills/pr/references/pr-content.md)
+  Breaking changes. The `git` plugin's
+  [`pr-description`](plugins/git/skills/pr-description/SKILL.md) skill
   is the authoritative copy of this template for agents composing a
   description; keep both in sync if either changes. Never check a
   `Test plan` or `Checklist` box for something that wasn't actually done.

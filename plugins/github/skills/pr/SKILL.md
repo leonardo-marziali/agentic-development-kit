@@ -83,9 +83,9 @@ touched by the diff, the linked issue, and finally the diff itself.
 
 Repositories describe planned work in many places and many formats. Search
 for it rather than assuming a layout, and treat whatever is found as
-supporting evidence, not as text to copy wholesale. `references/pr-content.md`
-carries the discovery recipe, the title derivation rules, and the
-description template with a worked example.
+supporting evidence, not as text to copy wholesale. The `git` plugin's
+`pr-description` skill carries the discovery recipe, the title derivation
+rules, and the description template with a worked example.
 
 The title **must** comply with Conventional Commits:
 `<type>[optional scope][!]: <description>`. Derive it from the branch as a
@@ -198,9 +198,9 @@ whether it was merged — or exactly what is still blocking it.
 
 ## Additional resources
 
-- **`references/pr-content.md`** — finding the branch's specs, docs, and
-  issues; deriving a Conventional Commits title from a multi-commit
-  branch; the description template and a worked example.
+- **The `git` plugin's `pr-description` skill** — finding the branch's
+  specs, docs, and issues; deriving a Conventional Commits title from a
+  multi-commit branch; the description template and a worked example.
 - **`references/checks.md`** — MCP tool and `gh` command tables for runs
   and jobs, polling and timeout guidance, the failure taxonomy, and when
   to re-run instead of re-fix.
