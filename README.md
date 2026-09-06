@@ -146,6 +146,12 @@ and, locally, by the `pre-push` Husky hook). Every commit that ever reaches
 pull request; re-running that workflow on the resulting push to `main`
 would just repeat the same result against the same tree, so it's skipped.
 
+Pull requests are merged with the **squash** strategy: a merged PR becomes
+a single commit on `main`, titled from the PR title (see "Pull request
+titles" below). See [CONTRIBUTING.md](CONTRIBUTING.md) for the full
+git workflow — branching, commits, the PR description template, and
+merging.
+
 ### Pull request titles
 
 [`pr-title.yml`](.github/workflows/pr-title.yml) uses
@@ -182,6 +188,13 @@ of a branch when adding the marketplace, e.g.:
 ```text
 /plugin marketplace add leonardo-marziali/agentic-development-kit@v1.4.0
 ```
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the git workflow — branching,
+commits, opening a pull request, the description template, and merging.
+Coding agents should read [AGENT.md](AGENT.md) instead, which covers the
+same workflow with agent-specific detail.
 
 ## License
 

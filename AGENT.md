@@ -49,4 +49,43 @@ Branch names follow GitHub flow:
   characters total.
 - Branch from `main` unless the work explicitly stacks on another branch.
 
-The `git` plugin's `branch` skill reads this section.
+The `git` plugin's `branch` skill reads this section. The human-facing
+version of this convention lives in [CONTRIBUTING.md](CONTRIBUTING.md);
+keep the two in sync if either changes.
+
+## Branch protection
+
+`main` is protected: no direct or force pushes, enforced both by a GitHub
+repository ruleset and by a local `pre-push` Husky hook. Every change
+reaches `main` only by opening a pull request — never push directly to
+`main` and never suggest `--no-verify` or `-f` as a way around a blocked
+push. If a push to `main` is rejected, that is working as intended: branch
+off, commit there, and open a PR instead.
+
+## Pull requests
+
+Open pull requests with the `github` plugin's `pr` skill where available —
+it derives the title and description from the branch, watches CI, and
+handles the fix/re-push loop. Two rules apply regardless of how a PR is
+opened:
+
+- **Title** must be a valid Conventional Commit
+  (`<type>[optional scope][!]: <description>`) — `pr-title.yml` enforces
+  this, and the title becomes the squashed commit message on `main` (see
+  below), which drives semantic-release's version bump.
+- **Description** must follow the template in
+  [CONTRIBUTING.md](CONTRIBUTING.md#description-template) — Summary,
+  Changes, Motivation, Screenshots (if UI change), Test plan, Checklist,
+  Breaking changes. The `pr` skill's
+  [`references/pr-content.md`](plugins/github/skills/pr/references/pr-content.md)
+  is the authoritative copy of this template for agents composing a
+  description; keep both in sync if either changes. Never check a
+  `Test plan` or `Checklist` box for something that wasn't actually done.
+
+## Merging
+
+This repository's merge strategy is **squash**: a merged PR becomes one
+commit on `main`, titled from the PR title. Do not merge a PR yourself
+unless the user has explicitly asked for it — the `pr` skill asks before
+merging, and any other merge path (`gh pr merge`, the GitHub UI) needs the
+same confirmation first.
