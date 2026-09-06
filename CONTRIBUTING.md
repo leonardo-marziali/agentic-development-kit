@@ -122,9 +122,10 @@ did — an unchecked box with a one-line reason is more useful to a reviewer
 than a box ticked to look complete.
 
 The `github` plugin's `pr` skill fills this template in automatically from
-the branch's commits, diff, and any linked issue — see
-[`plugins/github/skills/pr/references/pr-content.md`](plugins/github/skills/pr/references/pr-content.md)
-for how it derives the content.
+the branch's commits, diff, and any linked issue, delegating that work to
+the `git` plugin's
+[`pr-description`](plugins/git/skills/pr-description/SKILL.md) skill — see
+that skill for how it derives the content.
 
 ## Merging
 

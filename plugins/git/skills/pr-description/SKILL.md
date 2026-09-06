@@ -1,3 +1,9 @@
+---
+name: pr-description
+user-invocable: false
+description: This skill should be used by a hosting-specific pull/merge request skill (such as the `github` plugin's `pr` skill, or an equivalent for GitLab/Bitbucket) whenever it needs to derive a Conventional Commits title and a description for a whole branch. It is vendor-agnostic — it never talks to a host API or CLI — and only produces the title and body text; the calling skill is responsible for actually opening or updating the pull/merge request. Triggers on "derive a PR title from this branch", "write the PR description", "compose the pull request body", or a caller needing that content before it can call a host's create/update API.
+---
+
 # Deriving the title and description
 
 The pull request has to describe the branch to someone who did not write
@@ -70,7 +76,8 @@ paste a spec; link to the file path and pull out what a reviewer needs.
 
 Issue references in commit messages or the branch name (`#123`,
 `ABC-412`) identify the work item. Fetch it and use its title and body as
-context — and repeat its number in the description so GitHub links them.
+context — and repeat its number in the description; GitHub, GitLab, and
+similar hosts all auto-link an issue reference by number.
 
 **Never invent one.** An issue number that appears nowhere in the commits,
 the branch name, the repo, or the user's instruction does not go in the
@@ -79,9 +86,9 @@ description.
 ## 2. Derive the title
 
 Format: `<type>[optional scope][!]: <description>` — Conventional Commits
-v1.0.0. When the `git` plugin's `conventional-commits` skill is available,
-hand the decided change to it and use what it returns; it owns the full
-type vocabulary and formatting rules.
+v1.0.0. When the `conventional-commits` skill is available, hand the
+decided change to it and use what it returns; it owns the full type
+vocabulary and formatting rules.
 
 Deriving from a whole branch rather than a single change:
 

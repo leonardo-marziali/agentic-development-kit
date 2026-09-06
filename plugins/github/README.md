@@ -3,16 +3,20 @@
 A Claude Code plugin that drives the GitHub pull request lifecycle: open
 the PR, watch what it triggers, fix what breaks, merge when asked.
 
-## Dependency
+## Dependencies
 
-This plugin declares a dependency on the official GitHub plugin:
+This plugin declares dependencies on the official GitHub plugin and on the
+local `git` plugin:
 
 ```json
-"dependencies": ["github@claude-plugins-official"]
+"dependencies": ["github@claude-plugins-official", "git"]
 ```
 
-That plugin supplies the GitHub MCP server, which is how this plugin talks
-to GitHub. Claude Code installs and enables it alongside this one.
+The official `github` plugin supplies the GitHub MCP server, which is how
+this plugin talks to GitHub. Claude Code installs and enables it alongside
+this one. The `git` plugin supplies the `pr-description` skill, which
+derives the PR title and body — see that plugin's
+[README](../git/README.md) for what it does.
 
 The MCP server authenticates with a personal access token, so set it
 before use:
@@ -63,11 +67,10 @@ it through to merge.
   commit message Conventional Commits-compliant, and offers branch cleanup
   afterwards.
 
-Reference material lives beside the skill:
-`skills/pr/references/pr-content.md` (evidence gathering, title
-derivation, description template) and
-`skills/pr/references/checks.md` (run/job tooling, polling,
-failure taxonomy, the fix loop).
+Evidence gathering, title derivation, and the description template live in
+the `git` plugin's `pr-description` skill. Reference material specific to
+this plugin lives beside the skill: `skills/pr/references/checks.md`
+(run/job tooling, polling, failure taxonomy, the fix loop).
 
 ## Usage
 
