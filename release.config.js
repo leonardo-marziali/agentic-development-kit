@@ -3,9 +3,8 @@
 // "version" field. There's no @semantic-release/npm (nothing to publish),
 // so package.json's "version" field intentionally stays "0.0.0" and only
 // CHANGELOG.md is committed back to main by @semantic-release/git — see
-// README's "Releases & versioning" for why that push is safe here (it needs
-// a branch-protection bypass actor for the release workflow, tracked
-// separately in this repo's Terraform-managed rulesets).
+// README's "Releases & versioning" for why that push needs a
+// branch-protection bypass actor for the release workflow.
 module.exports = {
   branches: ['main'],
   plugins: [
