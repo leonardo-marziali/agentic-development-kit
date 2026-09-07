@@ -80,13 +80,21 @@ resource "github_repository_ruleset" "require_pull_request" {
   }
 
   # Lets .github/workflows/release.yml push its generated commit (via
-  # @semantic-release/git) and tag straight to main. actor_id 15368 is the
-  # GitHub Actions app's integration ID (`gh api apps/github-actions --jq
-  # .id`), not an org/repo-specific value. bypass_mode "always" covers both
-  # the tag push and the direct commit push — release.yml never opens a PR.
+  # @semantic-release/git) and tag straight to main. GitHub rejects a
+  # GitHub App (actor_type "Integration") as a bypass actor unless the
+  # repository belongs to an organization the app is installed on — this
+  # repo is a personal account, so that path is unavailable (confirmed via
+  # a live 422: "Actor GitHub Actions integration must be part of the
+  # ruleset source or owner organization"). release.yml instead
+  # authenticates its push with the REPO_ADMIN PAT (an admin on this repo)
+  # rather than the default GITHUB_TOKEN, and this RepositoryRole bypass
+  # covers that account. actor_id 5 is the built-in "admin" role
+  # (integrations/github provider docs: maintain=2, write=4, admin=5).
+  # bypass_mode "always" covers both the tag push and the direct commit
+  # push — release.yml never opens a PR.
   bypass_actors {
-    actor_id    = 15368
-    actor_type  = "Integration"
+    actor_id    = 5
+    actor_type  = "RepositoryRole"
     bypass_mode = "always"
   }
 }
