@@ -183,16 +183,21 @@ next version is a major/minor/patch bump, then creates a git tag
 (`vX.Y.Z`) and a GitHub Release with generated notes — no maintainer ever
 picks a version number by hand.
 
+It also generates a `CHANGELOG.md` at the repo root (via
+`@semantic-release/changelog`) and commits it back to `main` (via
+`@semantic-release/git`) as part of the same release — so release history
+travels with the source, not just GitHub's Releases page.
+
 This repo is a private plugin marketplace, not something published to the
-npm registry, so only the plugins needed to compute a version and publish a
-release are enabled (`commit-analyzer`, `release-notes-generator`,
-`github`). There's deliberately no `@semantic-release/npm` (nothing to
-publish) and no `@semantic-release/git` (it would need to push a version
-bump commit back to `main`, which the branch protection above blocks for
-anything that isn't a pull request merge) — `package.json`'s `version`
-field stays `0.0.0` and the git tag is the source of truth for the
-released version. To pin to a specific release, reference its tag instead
-of a branch when adding the marketplace, e.g.:
+npm registry, so there's deliberately no `@semantic-release/npm` (nothing
+to publish) — `package.json`'s `version` field stays `0.0.0` and the git
+tag is the source of truth for the released version. Pushing
+`CHANGELOG.md` back to `main` from CI needs a bypass entry, for the
+release workflow's actor, on the branch-protection ruleset described in
+"Branch protection" above — that ruleset otherwise blocks any push that
+isn't a pull request merge, the same way it blocks a direct push from a
+human. To pin to a specific release, reference its tag instead of a
+branch when adding the marketplace, e.g.:
 
 ```text
 /plugin marketplace add leonardo-marziali/agentic-development-kit@v1.4.0
