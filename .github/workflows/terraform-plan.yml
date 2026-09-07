@@ -1,0 +1,35 @@
+name: Terraform Plan
+
+on:
+  pull_request:
+    paths:
+      - 'terraform/**'
+      - '.github/workflows/terraform-plan.yml'
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: terraform
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    env:
+      TF_TOKEN_app_terraform_io: ${{ secrets.TF_API_TOKEN }}
+      TF_VAR_github_token: ${{ secrets.REPO_ADMIN }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: '1.16.1'
+
+      - run: terraform fmt -check -recursive
+
+      - run: terraform init
+
+      - run: terraform validate
+
+      - run: terraform plan
