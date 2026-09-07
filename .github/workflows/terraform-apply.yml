@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'terraform/**'
+      - '.github/workflows/terraform-apply.yml'
 
 permissions:
   contents: read

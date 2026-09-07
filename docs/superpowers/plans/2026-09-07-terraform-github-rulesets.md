@@ -10,10 +10,12 @@
 
 ## Global Constraints
 
-- Zero behavior change to either ruleset's actual enforcement — this plan only changes _how_ they're edited going forward. Any diff beyond "N to import" in the Task 5 CI plan run means an HCL mistake, not an intentional change.
+> **Deviation (added after this plan was written, before merge):** the `allowed_merge_methods` on the "Require pull request for default branch" ruleset was restricted from the live `[merge, squash, rebase]` to `[squash]`, aligning enforcement with this repo's already-documented squash-only merge policy (AGENT.md's "Merging" section). This is an intentional, real behavior change, so the "zero behavior change" bullet and the "any diff beyond N to import is a mistake" bullet immediately below are both superseded for this one field: the accepted Task 5 CI plan output is `2 to import, 0 to add, 1 to change, 0 to destroy`, and that "1 to change" is expected, not a bug to fix. It also interacts with the `require_extra_approval_for_unattributed_changes` bullet further down — see the manual post-apply restoration step called out there.
+
+- Zero behavior change to either ruleset's actual enforcement — this plan only changes _how_ they're edited going forward. Any diff beyond "N to import" in the Task 5 CI plan run means an HCL mistake, not an intentional change. **Deviation:** see the note above — this no longer holds for `allowed_merge_methods`.
 - Two independently named secrets already exist / will exist as GitHub Actions repo secrets: `TF_API_TOKEN` (HCP Terraform auth, already set) and `REPO_ADMIN` (a fine-grained PAT with `Administration: write` + `Contents: read` on this repo, for the GitHub provider — the user is creating this; do not attempt to create it and do not proceed past Task 5's CI run without it existing).
 - Do not add a bypass actor to either ruleset in this plan — that is an explicitly separate follow-up (see spec's Non-goals), coordinated with [PR #7](https://github.com/leonardo-marziali/agentic-development-kit/pull/7).
-- The `integrations/github` provider's `pull_request` rule block does not expose `require_extra_approval_for_unattributed_changes` (confirmed against the provider's current docs — see Task 2). The live "Require pull request for default branch" ruleset has this set to `true`. Terraform will not manage this field; it must be called out with a code comment (Task 2) so a future editor of `rules.pull_request` doesn't assume Terraform has full control of that rule's settings.
+- The `integrations/github` provider's `pull_request` rule block does not expose `require_extra_approval_for_unattributed_changes` (confirmed against the provider's current docs — see Task 2). The live "Require pull request for default branch" ruleset has this set to `true`. Terraform will not manage this field; it must be called out with a code comment (Task 2) so a future editor of `rules.pull_request` doesn't assume Terraform has full control of that rule's settings. **Because the `pull_request` block is now edited by the `allowed_merge_methods` deviation above, the first apply will very likely reset this field to `false`** — after the apply, check `gh api repos/leonardo-marziali/agentic-development-kit/rulesets/22341902 --jq '.rules[] | select(.type=="pull_request").parameters.require_extra_approval_for_unattributed_changes'` and, if `false`, manually restore it to `true` via the GitHub UI. This is an accepted, one-off gap going forward, not a bug to keep re-fixing in code.
 - Full source spec: [docs/superpowers/specs/2026-09-06-terraform-github-rulesets-design.md](../specs/2026-09-06-terraform-github-rulesets-design.md).
 
 ---
@@ -31,7 +33,7 @@
 
 - Produces: `var.github_token` (declared in `variables.tf`, consumed by `providers.tf` in this task, and available to any resource added in Task 2+).
 
-- [ ] **Step 1: Create `terraform/versions.tf`**
+- [x] **Step 1: Create `terraform/versions.tf`**
 
 ```hcl
 terraform {
@@ -54,7 +56,7 @@ terraform {
 }
 ```
 
-- [ ] **Step 2: Create `terraform/variables.tf`**
+- [x] **Step 2: Create `terraform/variables.tf`**
 
 ```hcl
 variable "github_token" {
@@ -64,7 +66,7 @@ variable "github_token" {
 }
 ```
 
-- [ ] **Step 3: Create `terraform/providers.tf`**
+- [x] **Step 3: Create `terraform/providers.tf`**
 
 ```hcl
 provider "github" {
@@ -73,7 +75,7 @@ provider "github" {
 }
 ```
 
-- [ ] **Step 4: Update `.gitignore`**
+- [x] **Step 4: Update `.gitignore`**
 
 Add a new section so Terraform's local artifacts are never accidentally
 committed (state lives in HCP Terraform, never locally or in the repo):
@@ -101,7 +103,7 @@ terraform/*_override.tf.json
 terraform.rc
 ```
 
-- [ ] **Step 5: Validate syntax without touching the HCP backend**
+- [x] **Step 5: Validate syntax without touching the HCP backend**
 
 `terraform init` normally tries to connect to the configured `cloud`
 workspace, which needs `TF_API_TOKEN` — not available in this environment.
@@ -120,7 +122,7 @@ Expected: `fmt` prints nothing if already canonically formatted, or lists
 the file(s) it rewrote; `init` reports "Terraform has been successfully
 initialized!"; `validate` prints `Success! The configuration is valid.`
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add terraform/versions.tf terraform/providers.tf terraform/variables.tf .gitignore
@@ -146,7 +148,7 @@ and `.../rulesets/22341902`, see the spec's Problem section) — this task's
 test is that the CI plan in Task 5 shows these two resources as pure imports
 with **no other changes**.
 
-- [ ] **Step 1: Create `terraform/rulesets.tf`**
+- [x] **Step 1: Create `terraform/rulesets.tf`**
 
 ```hcl
 resource "github_repository_ruleset" "block_force_pushes" {
@@ -215,7 +217,7 @@ resource "github_repository_ruleset" "require_pull_request" {
 }
 ```
 
-- [ ] **Step 2: Validate syntax**
+- [x] **Step 2: Validate syntax**
 
 ```bash
 cd terraform && terraform fmt -recursive && terraform validate
@@ -226,7 +228,7 @@ provider; re-run it first if this is a fresh shell.)
 
 Expected: `Success! The configuration is valid.`
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add terraform/rulesets.tf
@@ -249,7 +251,7 @@ The `integrations/github` provider imports rulesets using the ID format
 `<repository>:<ruleset_id>` (confirmed against the provider's docs' Import
 section).
 
-- [ ] **Step 1: Create `terraform/import.tf`**
+- [x] **Step 1: Create `terraform/import.tf`**
 
 ```hcl
 import {
@@ -263,7 +265,7 @@ import {
 }
 ```
 
-- [ ] **Step 2: Validate syntax**
+- [x] **Step 2: Validate syntax**
 
 ```bash
 cd terraform && terraform fmt -recursive && terraform validate
@@ -274,7 +276,7 @@ evaluated for real against live state only during `plan`/`apply` against
 the HCP backend, which happens in Task 5 via CI — `validate` only checks
 that the block itself is well-formed and references a declared resource.)
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add terraform/import.tf
@@ -294,7 +296,7 @@ git commit -m "feat(terraform): import existing rulesets into state on first app
 
 - Consumes: repo secrets `TF_API_TOKEN`, `REPO_ADMIN` (both external to this repo's code — `TF_API_TOKEN` already set, `REPO_ADMIN` created by the user before Task 5's CI run can succeed).
 
-- [ ] **Step 1: Create `.github/workflows/terraform-plan.yml`**
+- [x] **Step 1: Create `.github/workflows/terraform-plan.yml`**
 
 ```yaml
 name: Terraform Plan
@@ -333,7 +335,7 @@ jobs:
       - run: terraform plan
 ```
 
-- [ ] **Step 2: Create `.github/workflows/terraform-apply.yml`**
+- [x] **Step 2: Create `.github/workflows/terraform-apply.yml`**
 
 ```yaml
 name: Terraform Apply
@@ -369,7 +371,7 @@ jobs:
       - run: terraform apply -auto-approve
 ```
 
-- [ ] **Step 3: Validate YAML syntax locally**
+- [x] **Step 3: Validate YAML syntax locally**
 
 No `actionlint`/`yamllint` binary is available in this environment; `PyYAML`
 is, so use it as a real syntax check (not a placeholder — this actually
@@ -391,7 +393,7 @@ Expected:
 .github/workflows/terraform-apply.yml OK
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add .github/workflows/terraform-plan.yml .github/workflows/terraform-apply.yml
@@ -409,7 +411,7 @@ live GitHub/HCP state — everything before this was static/local validation.
 
 **Interfaces:** none (terminal task).
 
-- [ ] **Step 1: Confirm `REPO_ADMIN` exists**
+- [x] **Step 1: Confirm `REPO_ADMIN` exists**
 
 Ask the user to confirm the `REPO_ADMIN` fine-grained PAT (`Administration:
 write`, `Contents: read`, scoped to
@@ -418,7 +420,7 @@ a repo secret. Do not proceed to Step 2 without an explicit yes — the
 `terraform-plan.yml` run in Step 3 will fail authenticating to the GitHub
 API otherwise, and that failure is not a code bug to fix.
 
-- [ ] **Step 2: Push the branch**
+- [x] **Step 2: Push the branch**
 
 Ask the user for explicit confirmation before pushing (per this session's
 established git safety practice), then:
@@ -427,29 +429,39 @@ established git safety practice), then:
 git push -u origin feat/terraform-github-rulesets
 ```
 
-- [ ] **Step 3: Open the PR**
+- [x] **Step 3: Open the PR**
+
+> **Deviation:** the `allowed_merge_methods` restriction (see the Global
+> Constraints deviation note above) means the expected result below is
+> `2 to import, 0 to add, 1 to change, 0 to destroy`, not
+> `0 to change` — the PR description should state the revised figure, not
+> the original one.
 
 Use the `github:pr` skill to open the PR. Its description must state, in
 its own section, the exact expected `terraform-plan.yml` result: **2 to
-import, 0 to add, 0 to change, 0 to destroy** — and that any other diff
-means the HCL doesn't yet match live configuration and must be fixed before
+import, 0 to add, 1 to change, 0 to destroy** — and that any diff beyond
+that (an additional change, or a different resource affected) means the
+HCL doesn't yet match the intended configuration and must be fixed before
 merging (per the spec's Rollout section).
 
-- [ ] **Step 4: Watch and verify the plan output**
+- [x] **Step 4: Watch and verify the plan output**
 
 Once `terraform-plan.yml` runs (the `github:pr` skill's CI-watching loop
 covers this), read its `terraform plan` step output. It must show exactly:
 
 ```text
-Plan: 2 to import, 0 to add, 0 to change, 0 to destroy.
+Plan: 2 to import, 0 to add, 1 to change, 0 to destroy.
 ```
 
-If it shows anything else (an additional change on either resource, or an
-error), do not merge. Fix `terraform/rulesets.tf` to match live
+with the one change being the intentional `allowed_merge_methods`
+restriction on `github_repository_ruleset.require_pull_request` — that
+specific, expected diff is not a reason to hold the PR. If it shows
+anything else (an additional or different change on either resource, or an
+error), do not merge. Fix `terraform/rulesets.tf` to match the intended
 configuration exactly, push the fix, and re-check this step — do not
-special-case or explain away an unexpected diff.
+special-case or explain away a diff beyond the one expected change.
 
-- [ ] **Step 5: Report back, do not merge**
+- [x] **Step 5: Report back, do not merge**
 
 Per this repo's convention (and the `github:pr` skill), merging needs
 explicit user confirmation. Report the plan output and ask whether to

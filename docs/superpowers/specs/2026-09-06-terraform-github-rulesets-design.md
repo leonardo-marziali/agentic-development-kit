@@ -1,5 +1,7 @@
 # Terraform-managed GitHub rulesets (HCP Terraform backend)
 
+> **Deviation from this design (added after writing, before merge):** the `allowed_merge_methods` on the "Require pull request for default branch" ruleset's `pull_request` rule was restricted from the live `[merge, squash, rebase]` to `[squash]`, to align enforcement with this repo's already-documented squash-only merge policy (see AGENT.md's "Merging" section). This is an intentional, real behavior change — not the zero-behavior-change scope originally described below. The revised expected CI plan output is `2 to import, 0 to add, 1 to change, 0 to destroy` (not `0 to change`). See also the note next to `require_extra_approval_for_unattributed_changes` further down: because this same `pull_request` block is now edited, the first apply will very likely reset that unmanaged field and require a manual restoration step.
+
 ## Problem
 
 This repo's `main` branch is protected by two GitHub repository rulesets,
@@ -24,7 +26,9 @@ reviewable PR diffs.
 
 - Express both existing rulesets as Terraform resources with **zero behavior
   change** — this PR only moves configuration under management, it does not
-  alter what the rulesets do.
+  alter what the rulesets do. **Deviation:** see the note at the top of this
+  document — that goal was not fully met; one intentional behavior change
+  (`allowed_merge_methods`) shipped alongside the migration.
 - CI plans changes on every PR that touches the Terraform code, and applies
   them automatically on merge to `main`.
 - No new ClickOps: once merged, all ruleset changes go through Terraform.
@@ -94,7 +98,10 @@ New `terraform/` directory:
   two live rulesets: same names, `target = "branch"`, `enforcement = "active"`,
   the same `ref_name` condition (`include = ["~DEFAULT_BRANCH"]`), the same
   rules (`non_fast_forward` on the first; `pull_request` and
-  `required_status_checks` with today's exact parameters on the second), and
+  `required_status_checks` on the second — see the code comment above the
+  `pull_request` block for `require_extra_approval_for_unattributed_changes`,
+  a live field the provider doesn't model and whose post-apply restoration
+  is covered by the deviation note at the top of this document), and
   no bypass actors.
 - `import.tf` — the two `import` blocks described above.
 
@@ -128,6 +135,12 @@ to be safe.
 
 ## Rollout
 
+> **Deviation:** per the note at the top of this document, the actual plan
+> output is `2 to import, 0 to add, 1 to change, 0 to destroy`, not the
+> "2 to import, 0 to add/change/destroy" originally specified in step 1
+> below. The "1 to change" is the intentional `allowed_merge_methods`
+> restriction, not an HCL mistake — do not treat it as one.
+
 1. `terraform-plan.yml` runs on this PR. `terraform plan` evaluates the
    `import` blocks even though it doesn't execute them — its output must show
    exactly **2 to import, 0 to add/change/destroy**. Any additional diff means
@@ -151,6 +164,8 @@ a mistake here is limited to _how_ the ruleset is edited going forward, not to
 `main`'s protection itself.
 
 ## Testing
+
+> **Deviation:** the "only the two imports, nothing else" bullet below no longer holds as written — see the deviation note at the top of this document. The accepted CI plan output is `2 to import, 0 to add, 1 to change, 0 to destroy`; the one change (`allowed_merge_methods`) is intentional and merging with it present is expected, not a failure of this test.
 
 - `terraform fmt -check` and `terraform validate` (via CI, and locally if a
   `terraform` binary is available).

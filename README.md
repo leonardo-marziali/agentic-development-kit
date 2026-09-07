@@ -146,6 +146,15 @@ and, locally, by the `pre-push` Husky hook). Every commit that ever reaches
 pull request; re-running that workflow on the resulting push to `main`
 would just repeat the same result against the same tree, so it's skipped.
 
+Both of `main`'s branch-protection rulesets are managed via Terraform in
+[`terraform/`](terraform/), backed by HCP Terraform (Terraform Cloud) for
+state. [`terraform-plan.yml`](.github/workflows/terraform-plan.yml) plans
+changes on pull requests touching `terraform/**`, and
+[`terraform-apply.yml`](.github/workflows/terraform-apply.yml) applies them
+automatically on merge to `main`. Ruleset changes should go through a pull
+request touching [`terraform/rulesets.tf`](terraform/rulesets.tf), not the
+GitHub UI.
+
 Pull requests are merged with the **squash** strategy: a merged PR becomes
 a single commit on `main`, titled from the PR title (see "Pull request
 titles" below). See [CONTRIBUTING.md](CONTRIBUTING.md) for the full

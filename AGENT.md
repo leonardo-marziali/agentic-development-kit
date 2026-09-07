@@ -62,6 +62,9 @@ reaches `main` only by opening a pull request — never push directly to
 push. If a push to `main` is rejected, that is working as intended: branch
 off, commit there, and open a PR instead.
 
+[`terraform/rulesets.tf`](terraform/rulesets.tf) is the source of truth for
+these rulesets' configuration — edit it via a PR rather than the GitHub UI.
+
 ## Pull requests
 
 Open pull requests with the `github` plugin's `pr` skill where available —
