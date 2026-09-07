@@ -20,7 +20,15 @@ jobs:
     env:
       HUSKY: 0
     steps:
+      # REPO_ADMIN (not the default GITHUB_TOKEN) so @semantic-release/git's
+      # push of the CHANGELOG.md commit and tag is attributed to an admin
+      # account, matching the RepositoryRole bypass actor on the
+      # "Require pull request for default branch" ruleset (see
+      # terraform/rulesets.tf) — a GitHub App identity can't bypass branch
+      # protection on a personal-account-owned repository.
       - uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.REPO_ADMIN }}
 
       - uses: pnpm/action-setup@v6
 
