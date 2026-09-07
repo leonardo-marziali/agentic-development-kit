@@ -78,4 +78,15 @@ resource "github_repository_ruleset" "require_pull_request" {
       }
     }
   }
+
+  # Lets .github/workflows/release.yml push its generated commit (via
+  # @semantic-release/git) and tag straight to main. actor_id 15368 is the
+  # GitHub Actions app's integration ID (`gh api apps/github-actions --jq
+  # .id`), not an org/repo-specific value. bypass_mode "always" covers both
+  # the tag push and the direct commit push — release.yml never opens a PR.
+  bypass_actors {
+    actor_id    = 15368
+    actor_type  = "Integration"
+    bypass_mode = "always"
+  }
 }
