@@ -238,9 +238,33 @@ released version. The one thing that _is_ published is
 entry scoped to that directory with `pkgRoot`. It's published under the same
 version as the git tag, and its `version` field likewise stays a placeholder
 in git (`0.0.0-development`) — semantic-release stamps the real number in at
-publish time. Publishing needs an `NPM_TOKEN` repository secret, and it has
-to be an automation token, since a token that triggers a 2FA prompt can't
-work in a non-interactive job.
+publish time.
+
+Publishing uses npm's
+[Trusted Publishing (OIDC)](https://docs.npmjs.com/trusted-publishers/)
+instead of a stored `NPM_TOKEN` secret: the release job requests
+`id-token: write`, npm's CLI exchanges that GitHub-issued identity token
+for a one-time publish credential scoped to this exact repo and workflow
+file, and the resulting package gets a provenance attestation
+automatically. No npm secret lives in this repository's settings.
+
+This has a one-time, human-only bootstrap, because npm won't let you
+configure a trusted publisher for a package that doesn't exist yet:
+
+1. Publish `packages/ad-lfl-kit` once by hand, signed in as an npm account
+   named `leonardo-marziali` (the scope only resolves to that account
+   automatically if the username matches):
+
+   ```bash
+   cd packages/ad-lfl-kit && npm login && npm publish --access public
+   ```
+
+2. On the package's npmjs.com page, go to **Settings → Publishing access →
+   Trusted Publisher → Add GitHub Actions provider**, and set organization
+   `leonardo-marziali`, repository `agentic-development-kit`, workflow
+   filename `release.yml`, and no environment.
+
+After that, every release publishes without anyone touching npm again.
 
 Because plugins pin the published version in their own `package-lock.json`,
 a change to the shared package has to be released before any plugin can pin
