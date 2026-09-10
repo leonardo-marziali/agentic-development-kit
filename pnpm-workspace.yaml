@@ -1,0 +1,7 @@
+# Only packages/ is a workspace. plugins/ is deliberately excluded: a plugin
+# resolves its dependencies from the npm registry via the `npm ci` that Claude
+# Code runs against the plugin's own package-lock.json when it caches the
+# plugin. Linking them here would let a plugin's hooks pass tests against
+# uncommitted local source that installed users would never receive.
+packages:
+  - 'packages/*'

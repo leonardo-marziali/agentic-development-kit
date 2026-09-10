@@ -39,6 +39,10 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # NPM_TOKEN publishes packages/ad-lfl-kit (see release.config.js). It
+      # needs to be an automation token: publishing here is non-interactive,
+      # so a token subject to a 2FA prompt fails the release.
       - run: pnpm exec semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
