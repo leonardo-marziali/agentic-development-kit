@@ -4,7 +4,13 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { resolveBin, quoteForCmd } = require('../lib');
+/*
+ * resolveBin and quoteForCmd moved out of this plugin's lib.js into
+ * ad-lfl-kit. The hook now depends on the pinned package's copy, so these
+ * assertions pin down that it still behaves the way this plugin was tested
+ * against.
+ */
+const { resolveBin, quoteForCmd } = require('@leonardo-marziali/ad-lfl-kit');
 
 test('resolveBin: returns a path that exists, or a bare name to resolve via PATH', () => {
   const bin = resolveBin('npx');
