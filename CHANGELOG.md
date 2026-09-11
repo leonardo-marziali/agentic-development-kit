@@ -1,3 +1,10 @@
+# [1.3.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v1.2.0...v1.3.0) (2026-09-11)
+
+
+### Features
+
+* **ad-lfl-kit:** add shared lint-fix-loop package ([7df0601](https://github.com/leonardo-marziali/agentic-development-kit/commit/7df06011321b3f9970923e79338359b2cdb031b5))
+
 # [1.2.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v1.1.0...v1.2.0) (2026-09-07)
 
 
