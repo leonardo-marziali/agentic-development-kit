@@ -90,6 +90,15 @@ jobs:
       - name: Install root dependencies
         run: pnpm install --frozen-lockfile
 
+      # A plugin with runtime dependencies commits an npm package-lock.json
+      # (see AGENT.md), which Claude Code installs with
+      # `npm ci --ignore-scripts` when it caches the plugin. Do the same
+      # here, so the suite runs against exactly what installed users get.
+      - name: Install plugin dependencies
+        if: hashFiles(format('{0}/package-lock.json', matrix.suite.dir)) != ''
+        working-directory: ${{ matrix.suite.dir }}
+        run: npm ci --ignore-scripts
+
       - name: Run tests with coverage
         working-directory: ${{ matrix.suite.dir }}
         run: pnpm test:coverage
