@@ -1,6 +1,6 @@
 {
   "name": "@leonardo-marziali/ad-lfl-kit",
-  "version": "0.0.0-development",
+  "version": "0.0.1-development",
   "description": "Agentic development lint-fix-loop kit: session-scoped file tracking and a capped Stop-hook fix loop for Claude Code plugins.",
   "keywords": [
     "claude-code",
