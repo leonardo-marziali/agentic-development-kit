@@ -4,13 +4,13 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const {
-  resolveConfigDir,
-  groupByConfigDir,
-  parseViolationsJson,
-  resolveBin,
-  quoteForCmd,
-} = require('../lib');
+const { resolveConfigDir, groupByConfigDir, parseViolationsJson } = require('../lib');
+/*
+ * resolveBin and quoteForCmd moved out of lib.js into ad-lfl-kit. The hooks
+ * now depend on the pinned package's copy, so these assertions pin down that
+ * it still behaves the way this plugin was tested against.
+ */
+const { resolveBin, quoteForCmd } = require('@leonardo-marziali/ad-lfl-kit');
 const { mkScratchDir, rmScratchDir } = require('./helpers');
 
 test("resolveConfigDir: finds a config in the file's own directory", (t) => {

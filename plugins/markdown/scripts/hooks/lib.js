@@ -1,20 +1,23 @@
 'use strict';
 
+/*
+ * The markdown-specific half of this plugin's hooks. The generic loop
+ * machinery — hook input, session state, file tracking, the capped fix loop,
+ * spawning CLI shims — comes from @leonardo-marziali/ad-lfl-kit.
+ */
+
 const fs = require('node:fs');
 const path = require('node:path');
-const os = require('node:os');
-const { spawnSync } = require('node:child_process');
 
 /*
-Session-scoped directory for tracking which markdown files this plugin
-has touched. Prefers the plugin's own data dir; falls back to tmp so the
-hooks still work if CLAUDE_PLUGIN_DATA isn't set.
-*/
-function stateDir(sessionId) {
-  const base = process.env.CLAUDE_PLUGIN_DATA
-    ? path.join(process.env.CLAUDE_PLUGIN_DATA, 'markdown-session-scope')
-    : path.join(os.tmpdir(), 'claude-markdown-plugin');
-  return path.join(base, sessionId || 'unknown-session');
+ * track-touched.js writes the list and check-and-loop.js reads it, so both
+ * hooks must agree on where this session's state lives.
+ */
+const STATE_NAMESPACE = 'markdown-session-scope';
+const TOUCHED_FILES = 'touched-files.txt';
+
+function isMarkdownFile(filePath) {
+  return /\.md$/i.test(filePath);
 }
 
 const CONFIG_NAMES = [
@@ -62,57 +65,6 @@ function groupByConfigDir(files) {
 }
 
 /*
-Locates a node-adjacent CLI shim (npx, npm) across platforms.
-
-Hooks don't inherit a login shell, so PATH can be missing the Node
-toolchain entirely; looking beside process.execPath is the reliable
-first guess. But the shim is only bare `npx` on POSIX — on Windows it's
-`npx.cmd` — and it isn't always installed next to the node binary
-(system package managers, some version managers). So probe the real
-candidates, and fall back to a bare name for PATH lookup.
-*/
-function resolveBin(name) {
-  const dir = path.dirname(process.execPath);
-  const candidates = process.platform === 'win32' ? [`${name}.cmd`, `${name}.exe`, name] : [name];
-  for (const candidate of candidates) {
-    const full = path.join(dir, candidate);
-    if (fs.existsSync(full)) return full;
-  }
-  return candidates[0];
-}
-
-/*
-cmd.exe consumes the argument string itself, and spawnSync only
-space-joins argv when shell:true — so quote each argument here. Runs of
-backslashes before a quote (and at the very end) are doubled first,
-since cmd.exe would otherwise treat them as escaping the quote.
-*/
-function quoteForCmd(arg) {
-  const value = String(arg)
-    .replace(/(\\*)"/g, '$1$1""')
-    .replace(/(\\+)$/, '$1$1');
-  return `"${value}"`;
-}
-
-/*
-Runs a node-adjacent CLI shim. On Windows the shim is a .cmd batch file,
-which Node refuses to spawn without a shell, so route through one there
-(with arguments quoted by hand); everywhere else spawn argv directly, so
-no shell ever parses a file path.
-*/
-function runBin(name, args, options) {
-  const bin = resolveBin(name);
-  if (process.platform === 'win32') {
-    return spawnSync(quoteForCmd(bin), args.map(quoteForCmd), {
-      ...options,
-      shell: true,
-      windowsVerbatimArguments: true,
-    });
-  }
-  return spawnSync(bin, args, options);
-}
-
-/*
 Extracts markdownlint-cli's --json payload from a captured stream.
 
 The stream isn't guaranteed to be pure JSON: npx prepends its own
@@ -144,12 +96,80 @@ function parseViolationsJson(raw) {
   return attempt(trimmed.slice(start, end + 1));
 }
 
+/*
+`auto_suppress` in plugin.json's userConfig, surfaced to hook processes
+as CLAUDE_PLUGIN_OPTION_AUTO_SUPPRESS. Absent (plugin installed before
+the option existed, or never configured) reads as off.
+*/
+function autoSuppressEnabled() {
+  const raw = (process.env.CLAUDE_PLUGIN_OPTION_AUTO_SUPPRESS || '').trim().toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'on';
+}
+
+/*
+Inserts inline markdownlint-disable comments for violations that are
+being given up on, rather than leaving them unresolved forever. Line-scoped
+violations get a `disable-next-line` comment directly above the offending
+line (multiple rules on the same line share one comment); violations
+markdownlint doesn't attach to a line get a whole-file `disable` comment
+placed after any front matter. Returns what was suppressed, for logging.
+*/
+function insertSuppressions(violations) {
+  const byFile = new Map();
+  for (const violation of violations) {
+    if (!byFile.has(violation.fileName)) byFile.set(violation.fileName, []);
+    byFile.get(violation.fileName).push(violation);
+  }
+
+  const suppressed = [];
+  for (const [file, fileViolations] of byFile) {
+    const lines = fs.readFileSync(file, 'utf8').split('\n');
+
+    const byLine = new Map();
+    const unlined = new Set();
+    for (const violation of fileViolations) {
+      const rule = violation.ruleNames[0];
+      if (violation.lineNumber) {
+        if (!byLine.has(violation.lineNumber)) {
+          byLine.set(violation.lineNumber, new Set());
+        }
+        byLine.get(violation.lineNumber).add(rule);
+      } else {
+        unlined.add(rule);
+      }
+    }
+
+    // Insert bottom-to-top so earlier line numbers stay valid.
+    const lineNumbers = [...byLine.keys()].sort((a, b) => b - a);
+    for (const lineNumber of lineNumbers) {
+      const rules = [...byLine.get(lineNumber)];
+      lines.splice(lineNumber - 1, 0, `<!-- markdownlint-disable-next-line ${rules.join(' ')} -->`);
+      suppressed.push({ file, lineNumber, rules });
+    }
+
+    if (unlined.size > 0) {
+      const rules = [...unlined];
+      let insertAt = 0;
+      if (lines[0] === '---') {
+        const closeIndex = lines.indexOf('---', 1);
+        if (closeIndex !== -1) insertAt = closeIndex + 1;
+      }
+      lines.splice(insertAt, 0, `<!-- markdownlint-disable ${rules.join(' ')} -->`);
+      suppressed.push({ file, lineNumber: null, rules });
+    }
+
+    fs.writeFileSync(file, lines.join('\n'));
+  }
+  return suppressed;
+}
+
 module.exports = {
-  stateDir,
+  STATE_NAMESPACE,
+  TOUCHED_FILES,
+  isMarkdownFile,
   resolveConfigDir,
   groupByConfigDir,
-  resolveBin,
-  quoteForCmd,
-  runBin,
   parseViolationsJson,
+  autoSuppressEnabled,
+  insertSuppressions,
 };
