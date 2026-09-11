@@ -10,17 +10,9 @@ either formats a file or leaves it alone.
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { runBin } = require('./lib');
+const { readHookInput, runBin } = require('@leonardo-marziali/ad-lfl-kit');
 
 const IGNORED_DIR_SEGMENTS = [`${path.sep}node_modules${path.sep}`, `${path.sep}.git${path.sep}`];
-
-function readStdin() {
-  try {
-    return fs.readFileSync(0, 'utf8');
-  } catch {
-    return '';
-  }
-}
 
 function isIgnoredPath(absPath) {
   const withTrailingSep = absPath + path.sep;
@@ -28,12 +20,8 @@ function isIgnoredPath(absPath) {
 }
 
 function main() {
-  let input;
-  try {
-    input = JSON.parse(readStdin() || '{}');
-  } catch {
-    return;
-  }
+  const input = readHookInput();
+  if (!input) return;
 
   if (!/^(Edit|Write)$/.test(input.tool_name || '')) return;
 

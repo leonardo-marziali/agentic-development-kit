@@ -135,11 +135,14 @@ Example `.markdownlint.json`:
 
 The hooks (`scripts/hooks/track-touched.js`, `scripts/hooks/check-and-loop.js`,
 `scripts/hooks/lib.js`) have a versioned test suite under
-`scripts/hooks/__tests__/`, using Node's built-in test runner — no extra
-dependencies to install.
+`scripts/hooks/__tests__/`, using Node's built-in test runner. The hooks'
+one runtime dependency, `@leonardo-marziali/ad-lfl-kit`, is pinned in
+`package-lock.json`; install it with `npm ci` first — the same install
+Claude Code runs when it caches the plugin.
 
 ```bash
 cd plugins/markdown
+npm ci
 pnpm test
 ```
 

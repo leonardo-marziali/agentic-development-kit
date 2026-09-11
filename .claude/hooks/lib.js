@@ -130,12 +130,10 @@ backslashes before a quote (and at the very end) are doubled first, since
 cmd.exe would otherwise treat them as escaping the quote.
 */
 function quoteForCmd(arg) {
-  const value = String(arg).replace(/(?<!\\)(\\*)"/g, '$1$1""');
-  let trailingSlashes = 0;
-  for (let i = value.length - 1; i >= 0 && value[i] === '\\'; i--) {
-    trailingSlashes++;
-  }
-  return `"${value}${value.slice(-trailingSlashes)}"`;
+  const value = String(arg)
+    .replace(/(\\*)"/g, '$1$1""')
+    .replace(/(\\+)$/, '$1$1');
+  return `"${value}"`;
 }
 
 /*
