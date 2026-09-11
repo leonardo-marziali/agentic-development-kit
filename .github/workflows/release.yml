@@ -8,6 +8,15 @@ permissions:
   contents: write
   issues: write
   pull-requests: write
+  # OIDC trusted publishing to npm for packages/ad-lfl-kit (see
+  # release.config.js): no NPM_TOKEN secret is stored anywhere. npm CLI
+  # exchanges this job's short-lived GitHub identity token for a one-time
+  # publish credential scoped to this exact repo + workflow file, and
+  # attaches a provenance attestation automatically. Requires the trusted
+  # publisher to be configured on npmjs.com for that package first (one-time
+  # setup, done from the package's Settings > Publishing access) — until
+  # then, publishing fails rather than falling back to any stored token.
+  id-token: write
 
 jobs:
   release:
@@ -36,6 +45,9 @@ jobs:
         with:
           node-version: '24'
           cache: pnpm
+          # Required for npm's OIDC trusted-publishing exchange, even though
+          # pnpm is what actually installs dependencies here.
+          registry-url: 'https://registry.npmjs.org'
 
       - run: pnpm install --frozen-lockfile
 

@@ -1,0 +1,43 @@
+{
+  "name": "@leonardo-marziali/ad-lfl-kit",
+  "version": "0.0.1-development",
+  "description": "Agentic development lint-fix-loop kit: session-scoped file tracking and a capped Stop-hook fix loop for Claude Code plugins.",
+  "keywords": [
+    "claude-code",
+    "claude-code-plugin",
+    "hooks",
+    "lint",
+    "fix-loop"
+  ],
+  "author": {
+    "name": "Leonardo Marziali",
+    "url": "https://github.com/leonardo-marziali"
+  },
+  "homepage": "https://github.com/leonardo-marziali/agentic-development-kit",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/leonardo-marziali/agentic-development-kit.git",
+    "directory": "packages/ad-lfl-kit"
+  },
+  "license": "Apache-2.0",
+  "type": "commonjs",
+  "main": "index.js",
+  "files": [
+    "index.js",
+    "exec.js",
+    "hook-input.js",
+    "state.js",
+    "track.js",
+    "loop.js"
+  ],
+  "engines": {
+    "node": ">=24.20.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "node --test \"__tests__/*.test.js\"",
+    "test:coverage": "mkdir -p coverage && node --test --experimental-test-coverage --test-coverage-exclude=\"**/__tests__/**\" --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info \"__tests__/*.test.js\""
+  }
+}

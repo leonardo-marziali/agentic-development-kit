@@ -4,7 +4,9 @@ Instructions for AI coding agents (Claude Code, etc.) working in this repository
 
 ## Package manager
 
-This repository uses **pnpm** exclusively. Do not use `npm` or `yarn`.
+This repository uses **pnpm**. Do not use `npm` or `yarn` for repository
+tooling — the one exception is plugin dependency lockfiles, described
+below.
 
 - Install dependencies: `pnpm install`
 - Add a dependency: `pnpm add <package>`
@@ -12,7 +14,44 @@ This repository uses **pnpm** exclusively. Do not use `npm` or `yarn`.
 - Run a script: `pnpm run <script>` (or `pnpm <script>`)
 
 Never run `npm install`, `npm add`, `yarn`, or commit a `package-lock.json`
-/ `yarn.lock`. Only `pnpm-lock.yaml` should be committed as the lockfile.
+/ `yarn.lock` **at the repository root**. Only `pnpm-lock.yaml` belongs
+there.
+
+### Exception: plugin roots need an npm lockfile
+
+A directory under `plugins/` that declares runtime `dependencies` must
+commit a **`package-lock.json`** alongside its `package.json`, generated
+with `npm install --package-lock-only` run inside that plugin directory.
+
+This is not a style preference. When Claude Code copies a plugin into its
+cache — on install, on update, and at session start when an enabled plugin
+isn't cached yet — it installs that plugin's dependencies, but only when it
+finds a lockfile it trusts:
+
+- `bun.lock` / `bun.lockb` →
+  `bun install --frozen-lockfile --ignore-scripts`
+- `npm-shrinkwrap.json` / `package-lock.json` → `npm ci --ignore-scripts`
+- `pnpm-lock.yaml` / `yarn.lock` → **nothing, the install is skipped**
+
+pnpm and Yarn are skipped because both support resolution-time
+configuration hooks that can bypass `--ignore-scripts`. A plugin with a
+`package.json` and no usable lockfile is skipped silently, so its hooks
+would fail at runtime with an unresolvable `require`.
+
+Two constraints follow, and both are load-bearing:
+
+- **Zero transitive dependencies, no build step.** The install is capped at
+  60 seconds and runs with `--ignore-scripts`, so anything needing a
+  `postinstall` compile will not work.
+- **Pin an already-published version.** `npm ci` fails rather than
+  re-resolving when `package.json` and the lockfile disagree, so the shared
+  package must be released to npm before a plugin can pin it.
+
+The repository itself is still pnpm-only: `pnpm install` at the root,
+`pnpm-lock.yaml` as the root lockfile, and `packages/*` as the only pnpm
+workspace. `plugins/*` is deliberately **not** a workspace member — linking
+a plugin to local package source would let its tests pass against code that
+installed users never receive.
 
 ## Plugin skill naming
 

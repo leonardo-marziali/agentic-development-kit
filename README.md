@@ -21,6 +21,8 @@ inside Claude Code, then install a plugin from it (for example `markdown`):
 .claude-plugin/marketplace.json   Marketplace manifest listing available plugins
 .claude/commands/                 Repo-local Claude Code slash commands
 .claude/hooks/                    This repo's own development hooks (not shipped)
+packages/                         Shared npm packages the plugins depend on
+  ad-lfl-kit/                     Lint-fix-loop kit: file tracking + Stop-hook loop
 plugins/                          Individual plugins hosted by this marketplace
   markdown/                       Authoring/linting skills, LSP config, and hooks
   prettier/                       Format-on-edit hook and a manual formatting skill
@@ -87,6 +89,42 @@ Additional tooling used but not installed as an npm dependency:
   Install it separately, e.g. `brew install marksman`. Only needed if you
   use that plugin's LSP features.
 
+### Shared packages and plugin dependencies
+
+`packages/` holds code shared by more than one plugin, published to npm so
+installed plugins can depend on it. Today that is
+[`@leonardo-marziali/ad-lfl-kit`](packages/ad-lfl-kit) — the "track what this
+session touched, then check it before the session ends" loop that the
+`markdown` and `sonarqube` plugins both build on.
+
+`packages/*` is the only pnpm workspace. **`plugins/*` is deliberately not a
+workspace member**, because a plugin has to resolve the same published
+version that an installed user would get; linking it to local source would
+let its tests pass against code nobody else has.
+
+That means a plugin with runtime dependencies commits a **`package-lock.json`**,
+not a `pnpm-lock.yaml`, which is the one place this repo departs from
+pnpm-only. The reason is mechanical: when Claude Code copies a plugin into
+its cache it runs `npm ci --ignore-scripts` if it finds
+`package-lock.json`/`npm-shrinkwrap.json`, and **skips the install entirely**
+for `pnpm-lock.yaml` or `yarn.lock` (both support resolution-time hooks that
+can defeat `--ignore-scripts`). A plugin whose lockfile is skipped ships with
+no `node_modules`, and its hooks fail on an unresolvable `require`.
+
+Two rules follow for anything a plugin depends on:
+
+- **No transitive dependencies and no build step** — the cached install is
+  capped at 60 seconds and runs with `--ignore-scripts`.
+- **Pin a version that is already on npm** — `npm ci` fails rather than
+  re-resolving when `package.json` and the lockfile disagree, so a change to
+  a shared package must be released before a plugin can pin it.
+
+To regenerate a plugin's lockfile, run this inside that plugin's directory:
+
+```bash
+npm install --package-lock-only
+```
+
 ### Setup
 
 ```bash
@@ -108,14 +146,18 @@ Each suite runs independently, with Node's built-in test runner:
 
 ```bash
 pnpm test
+cd packages/ad-lfl-kit && pnpm test
 cd plugins/markdown && pnpm test
 cd plugins/prettier && pnpm test
 ```
 
-The root `pnpm test` covers this repo's own hooks in `.claude/hooks/` and the
-scripts in `scripts/`. See a plugin's own README
-([markdown](plugins/markdown/README.md),
+The root `pnpm test` covers this repo's own hooks in `.claude/hooks/`, the
+scripts in `scripts/`, and the shared packages in `packages/`. See a plugin's
+own README ([markdown](plugins/markdown/README.md),
 [prettier](plugins/prettier/README.md)) for what its suite covers.
+
+A plugin suite needs that plugin's dependencies present, so run `npm ci` in
+the plugin directory first if it declares any.
 
 ### Coverage & CI
 
@@ -124,7 +166,8 @@ runs whichever suites are affected by a given pull request (via
 `dorny/paths-filter`, so an unrelated plugin's suite doesn't run on every
 change) and uploads each one's coverage to
 [Codecov](https://codecov.io/gh/leonardo-marziali/agentic-development-kit)
-under its own flag (`repo-root`, `markdown-plugin`, `prettier-plugin`).
+under its own flag (`repo-root`, `ad-lfl-kit`, `markdown-plugin`,
+`prettier-plugin`).
 [`codecov.yml`](codecov.yml) carries each flag's last-known coverage forward
 on commits that don't re-upload it, so the badge above — the combined
 coverage across every flag — stays accurate even though the suites upload
@@ -188,10 +231,44 @@ It also generates a `CHANGELOG.md` at the repo root (via
 `@semantic-release/git`) as part of the same release — so release history
 travels with the source, not just GitHub's Releases page.
 
-This repo is a private plugin marketplace, not something published to the
-npm registry, so there's deliberately no `@semantic-release/npm` (nothing
-to publish) — `package.json`'s `version` field stays `0.0.0` and the git
-tag is the source of truth for the released version. Pushing
+The marketplace itself isn't published to npm — the root `package.json`'s
+`version` field stays `0.0.0` and the git tag is the source of truth for the
+released version. The one thing that _is_ published is
+[`packages/ad-lfl-kit`](packages/ad-lfl-kit), via an `@semantic-release/npm`
+entry scoped to that directory with `pkgRoot`. It's published under the same
+version as the git tag, and its `version` field likewise stays a placeholder
+in git (`0.0.0-development`) — semantic-release stamps the real number in at
+publish time.
+
+Publishing uses npm's
+[Trusted Publishing (OIDC)](https://docs.npmjs.com/trusted-publishers/)
+instead of a stored `NPM_TOKEN` secret: the release job requests
+`id-token: write`, npm's CLI exchanges that GitHub-issued identity token
+for a one-time publish credential scoped to this exact repo and workflow
+file, and the resulting package gets a provenance attestation
+automatically. No npm secret lives in this repository's settings.
+
+This has a one-time, human-only bootstrap, because npm won't let you
+configure a trusted publisher for a package that doesn't exist yet:
+
+1. Publish `packages/ad-lfl-kit` once by hand, signed in as an npm account
+   named `leonardo-marziali` (the scope only resolves to that account
+   automatically if the username matches):
+
+   ```bash
+   cd packages/ad-lfl-kit && npm login && npm publish --access public
+   ```
+
+2. On the package's npmjs.com page, go to **Settings → Publishing access →
+   Trusted Publisher → Add GitHub Actions provider**, and set organization
+   `leonardo-marziali`, repository `agentic-development-kit`, workflow
+   filename `release.yml`, and no environment.
+
+After that, every release publishes without anyone touching npm again.
+
+Because plugins pin the published version in their own `package-lock.json`,
+a change to the shared package has to be released before any plugin can pin
+it — so a change to both lands as two pull requests, not one. Pushing
 `CHANGELOG.md` back to `main` from CI needs a bypass entry, for the
 release workflow's actor, on the branch-protection ruleset described in
 "Branch protection" above — that ruleset otherwise blocks any push that
