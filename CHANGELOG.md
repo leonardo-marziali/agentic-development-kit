@@ -1,3 +1,10 @@
+# [1.4.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v1.3.0...v1.4.0) (2026-09-14)
+
+
+### Features
+
+* **sonarqube:** add plugin with analysis hooks and MCP server ([#15](https://github.com/leonardo-marziali/agentic-development-kit/issues/15)) ([a568025](https://github.com/leonardo-marziali/agentic-development-kit/commit/a56802532471d0af39191dd82ed6c8edb94aad8f))
+
 # [1.3.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v1.2.0...v1.3.0) (2026-09-11)
 
 
