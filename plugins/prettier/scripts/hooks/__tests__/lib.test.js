@@ -24,12 +24,15 @@ test('resolveBin: returns a path that exists, or a bare name to resolve via PATH
   }
 });
 
-test('resolveBin: never returns a bare POSIX name on win32', () => {
-  // Guards the Windows breakage this replaced: Node cannot spawn an
-  // extensionless `npx` shim there.
-  if (process.platform !== 'win32') return;
-  assert.notEqual(path.basename(resolveBin('npx')), 'npx');
-});
+test(
+  'resolveBin: never returns a bare POSIX name on win32',
+  { skip: process.platform !== 'win32' },
+  () => {
+    // Guards the Windows breakage this replaced: Node cannot spawn an
+    // extensionless `npx` shim there.
+    assert.notEqual(path.basename(resolveBin('npx')), 'npx');
+  },
+);
 
 test('quoteForCmd: wraps plain arguments', () => {
   assert.equal(quoteForCmd('C:\\tmp\\a.ts'), '"C:\\tmp\\a.ts"');

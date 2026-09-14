@@ -38,12 +38,31 @@ function resolveBin(name, options = {}) {
  * argv when shell:true — so quote each argument here. Runs of backslashes
  * before a quote (and at the very end) are doubled first, since cmd.exe would
  * otherwise treat them as escaping the quote.
+ *
+ * A manual scan (rather than a `(\\*)"`-shaped regex) avoids the non-linear
+ * backtracking such a pattern hits on long, quote-free input: unanchored,
+ * it retries the greedy backslash run at every position in the string.
  */
 function quoteForCmd(arg) {
-  const value = String(arg)
-    .replace(/(\\*)"/g, '$1$1""')
-    .replace(/(\\+)$/, '$1$1');
-  return `"${value}"`;
+  const str = String(arg);
+  let result = '';
+  let backslashes = 0;
+
+  for (const ch of str) {
+    if (ch === '\\') {
+      backslashes += 1;
+      continue;
+    }
+    if (ch === '"') {
+      result += '\\'.repeat(backslashes * 2) + '""';
+    } else {
+      result += '\\'.repeat(backslashes) + ch;
+    }
+    backslashes = 0;
+  }
+  result += '\\'.repeat(backslashes * 2);
+
+  return `"${result}"`;
 }
 
 /*

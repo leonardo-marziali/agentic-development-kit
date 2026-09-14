@@ -121,10 +121,13 @@ test('resolveBin: returns a path that exists, or a bare name to resolve via PATH
   }
 });
 
-test('resolveBin: never returns a bare POSIX name on win32', () => {
+test('resolveBin: never returns a bare POSIX name on win32', (t) => {
   // Guards the Windows breakage this replaced: Node cannot spawn an
   // extensionless `npx` shim there.
-  if (process.platform !== 'win32') return;
+  if (process.platform !== 'win32') {
+    t.skip('win32-only');
+    return;
+  }
   assert.notEqual(path.basename(resolveBin('npx')), 'npx');
 });
 
