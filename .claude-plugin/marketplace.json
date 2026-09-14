@@ -23,6 +23,20 @@
       "keywords": ["prettier", "formatting", "hooks"]
     },
     {
+      "name": "sonarqube",
+      "source": "./plugins/sonarqube",
+      "description": "Blocks a session from ending while the files it touched still have SonarQube secrets or quality findings, and embeds the official SonarQube MCP server.",
+      "category": "quality",
+      "keywords": [
+        "sonarqube",
+        "sonarcloud",
+        "static-analysis",
+        "secrets",
+        "security",
+        "code-quality"
+      ]
+    },
+    {
       "name": "git",
       "source": "./plugins/git",
       "description": "Git workflow helpers for Claude Code, including safety-checked branch creation, staged/confirmed Conventional Commits commit creation, and vendor-agnostic PR/MR title and description authoring for hosting-specific PR skills.",

@@ -34,6 +34,8 @@ jobs:
               - 'plugins/markdown/**'
             prettier:
               - 'plugins/prettier/**'
+            sonarqube:
+              - 'plugins/sonarqube/**'
 
       - name: Build test matrix
         id: set-matrix
@@ -43,6 +45,7 @@ jobs:
           AD_LFL_KIT_CHANGED: ${{ steps.filter.outputs.ad-lfl-kit }}
           MARKDOWN_CHANGED: ${{ steps.filter.outputs.markdown }}
           PRETTIER_CHANGED: ${{ steps.filter.outputs.prettier }}
+          SONARQUBE_CHANGED: ${{ steps.filter.outputs.sonarqube }}
         run: |
           entries='[]'
           add() {
@@ -62,6 +65,9 @@ jobs:
           fi
           if [ "$WORKFLOW_CHANGED" = "true" ] || [ "$PRETTIER_CHANGED" = "true" ]; then
             add "prettier" "plugins/prettier" "prettier-plugin"
+          fi
+          if [ "$WORKFLOW_CHANGED" = "true" ] || [ "$SONARQUBE_CHANGED" = "true" ]; then
+            add "sonarqube" "plugins/sonarqube" "sonarqube-plugin"
           fi
           echo "matrix=$entries" >> "$GITHUB_OUTPUT"
 
