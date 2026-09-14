@@ -114,49 +114,62 @@ line (multiple rules on the same line share one comment); violations
 markdownlint doesn't attach to a line get a whole-file `disable` comment
 placed after any front matter. Returns what was suppressed, for logging.
 */
-function insertSuppressions(violations) {
+function groupViolationsByFile(violations) {
   const byFile = new Map();
   for (const violation of violations) {
     if (!byFile.has(violation.fileName)) byFile.set(violation.fileName, []);
     byFile.get(violation.fileName).push(violation);
   }
+  return byFile;
+}
+
+function groupFileViolations(fileViolations) {
+  const byLine = new Map();
+  const unlined = new Set();
+  for (const violation of fileViolations) {
+    const rule = violation.ruleNames[0];
+    if (violation.lineNumber) {
+      if (!byLine.has(violation.lineNumber)) byLine.set(violation.lineNumber, new Set());
+      byLine.get(violation.lineNumber).add(rule);
+    } else {
+      unlined.add(rule);
+    }
+  }
+  return { byLine, unlined };
+}
+
+// Insert bottom-to-top so earlier line numbers stay valid.
+function insertLineSuppressions(lines, byLine, file, suppressed) {
+  const lineNumbers = [...byLine.keys()].sort((a, b) => b - a);
+  for (const lineNumber of lineNumbers) {
+    const rules = [...byLine.get(lineNumber)];
+    lines.splice(lineNumber - 1, 0, `<!-- markdownlint-disable-next-line ${rules.join(' ')} -->`);
+    suppressed.push({ file, lineNumber, rules });
+  }
+}
+
+function insertUnlinedSuppression(lines, unlined, file, suppressed) {
+  if (unlined.size === 0) return;
+  const rules = [...unlined];
+  let insertAt = 0;
+  if (lines[0] === '---') {
+    const closeIndex = lines.indexOf('---', 1);
+    if (closeIndex !== -1) insertAt = closeIndex + 1;
+  }
+  lines.splice(insertAt, 0, `<!-- markdownlint-disable ${rules.join(' ')} -->`);
+  suppressed.push({ file, lineNumber: null, rules });
+}
+
+function insertSuppressions(violations) {
+  const byFile = groupViolationsByFile(violations);
 
   const suppressed = [];
   for (const [file, fileViolations] of byFile) {
     const lines = fs.readFileSync(file, 'utf8').split('\n');
+    const { byLine, unlined } = groupFileViolations(fileViolations);
 
-    const byLine = new Map();
-    const unlined = new Set();
-    for (const violation of fileViolations) {
-      const rule = violation.ruleNames[0];
-      if (violation.lineNumber) {
-        if (!byLine.has(violation.lineNumber)) {
-          byLine.set(violation.lineNumber, new Set());
-        }
-        byLine.get(violation.lineNumber).add(rule);
-      } else {
-        unlined.add(rule);
-      }
-    }
-
-    // Insert bottom-to-top so earlier line numbers stay valid.
-    const lineNumbers = [...byLine.keys()].sort((a, b) => b - a);
-    for (const lineNumber of lineNumbers) {
-      const rules = [...byLine.get(lineNumber)];
-      lines.splice(lineNumber - 1, 0, `<!-- markdownlint-disable-next-line ${rules.join(' ')} -->`);
-      suppressed.push({ file, lineNumber, rules });
-    }
-
-    if (unlined.size > 0) {
-      const rules = [...unlined];
-      let insertAt = 0;
-      if (lines[0] === '---') {
-        const closeIndex = lines.indexOf('---', 1);
-        if (closeIndex !== -1) insertAt = closeIndex + 1;
-      }
-      lines.splice(insertAt, 0, `<!-- markdownlint-disable ${rules.join(' ')} -->`);
-      suppressed.push({ file, lineNumber: null, rules });
-    }
+    insertLineSuppressions(lines, byLine, file, suppressed);
+    insertUnlinedSuppression(lines, unlined, file, suppressed);
 
     fs.writeFileSync(file, lines.join('\n'));
   }
