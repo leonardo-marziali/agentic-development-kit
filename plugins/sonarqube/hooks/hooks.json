@@ -1,0 +1,41 @@
+{
+  "description": "Session-scoped SonarQube analysis: tracks the files this session touches, then scans them for secrets and Sonar findings when the session tries to stop.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/track-touched.js\"",
+            "async": false
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/check-and-loop.js\"",
+            "async": false,
+            "timeout": 180
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/check-and-loop.js\"",
+            "async": false,
+            "timeout": 180
+          }
+        ]
+      }
+    ]
+  }
+}

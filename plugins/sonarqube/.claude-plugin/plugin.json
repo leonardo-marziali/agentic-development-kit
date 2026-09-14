@@ -1,0 +1,30 @@
+{
+  "$schema": "https://www.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "sonarqube",
+  "version": "0.1.0",
+  "description": "Session-scoped SonarQube analysis: blocks a session from ending while the files it touched still have secrets or Sonar findings, plus the official SonarQube MCP server. Requires the `sonar` CLI and a Docker-compatible container runtime.",
+  "author": {
+    "name": "Leonardo Marziali",
+    "url": "https://github.com/leonardo-marziali"
+  },
+  "homepage": "https://github.com/leonardo-marziali/agentic-development-kit",
+  "repository": "https://github.com/leonardo-marziali/agentic-development-kit.git",
+  "license": "Apache-2.0",
+  "keywords": ["sonarqube", "sonarcloud", "static-analysis", "secrets", "security", "code-quality"],
+  "userConfig": {
+    "analysis_depth": {
+      "type": "string",
+      "title": "Analysis depth",
+      "description": "Depth passed to `sonar analyze` as --depth. STANDARD is the CLI's normal pass. DEEP analyses more thoroughly and takes longer \u2014 the Stop hook runs under a 180s timeout, so prefer STANDARD on large changesets.",
+      "enum": ["STANDARD", "DEEP"],
+      "default": "STANDARD"
+    },
+    "block_on": {
+      "type": "string",
+      "title": "Block the session on",
+      "description": "Which findings stop the session from ending. \"secrets\" runs only the local secrets scan, which sends no code anywhere and is fast. \"secrets-and-issues\" also runs a full `sonar analyze` and blocks on its findings too; if the server is unreachable, that stage is reported and skipped rather than blocking. Note that the CLI declines to run either stage until it has credentials \u2014 see the plugin README.",
+      "enum": ["secrets", "secrets-and-issues"],
+      "default": "secrets-and-issues"
+    }
+  }
+}
