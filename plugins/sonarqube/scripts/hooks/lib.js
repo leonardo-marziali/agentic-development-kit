@@ -9,7 +9,7 @@
  */
 
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
+const { runBin } = require('@leonardo-marziali/ad-lfl-kit');
 
 /*
  * track-touched.js writes the list and check-and-loop.js reads it, so both
@@ -40,7 +40,7 @@ const OWN_STATE_FILES = [TOUCHED_FILES, 'attempts.json'];
  * file Claude has just created is untracked but absolutely in scope.
  */
 function gitIgnoreStatus(absPath) {
-  const result = spawnSync('git', ['check-ignore', '--quiet', '--', absPath], {
+  const result = runBin('git', ['check-ignore', '--quiet', '--', absPath], {
     cwd: path.dirname(absPath),
     encoding: 'utf8',
   });

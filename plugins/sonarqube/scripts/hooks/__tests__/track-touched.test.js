@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { mkScratchDir, rmScratchDir, uniqueSessionId, runHook } = require('./helpers');
+const { setup, writeFile, runHook, uniqueSessionId } = require('./helpers');
 
 function readTouched(pluginData, sessionId) {
   const listFile = path.join(pluginData, 'sonarqube-session-scope', sessionId, 'touched-files.txt');
@@ -23,19 +23,6 @@ function track(file, sessionId, scratch, pluginData, toolName = 'Write') {
     },
     { env: { CLAUDE_PLUGIN_DATA: pluginData } },
   );
-}
-
-function setup(t) {
-  const scratch = mkScratchDir();
-  t.after(() => rmScratchDir(scratch));
-  return { scratch, pluginData: path.join(scratch, 'plugin-data'), sessionId: uniqueSessionId() };
-}
-
-function writeFile(scratch, relative, contents = 'x\n') {
-  const full = path.join(scratch, relative);
-  fs.mkdirSync(path.dirname(full), { recursive: true });
-  fs.writeFileSync(full, contents);
-  return full;
 }
 
 test('tracks a file on Write', (t) => {

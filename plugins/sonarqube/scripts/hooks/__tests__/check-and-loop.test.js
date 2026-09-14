@@ -14,9 +14,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const {
-  mkScratchDir,
-  rmScratchDir,
-  uniqueSessionId,
+  setup,
+  writeFile,
   runHook,
   installFakeSonar,
   readInvocations,
@@ -27,19 +26,6 @@ const {
 
 const SECRET_REPORT = 'src/app.js:3 aws-access-key-id: hardcoded credential';
 const ISSUE_REPORT = '{"issues":[{"rule":"javascript:S1481","message":"Remove this unused var"}]}';
-
-function setup(t) {
-  const scratch = mkScratchDir();
-  t.after(() => rmScratchDir(scratch));
-  return { scratch, pluginData: path.join(scratch, 'plugin-data'), sessionId: uniqueSessionId() };
-}
-
-function writeFile(scratch, relative, contents = 'x\n') {
-  const full = path.join(scratch, relative);
-  fs.mkdirSync(path.dirname(full), { recursive: true });
-  fs.writeFileSync(full, contents);
-  return full;
-}
 
 function writeBinding(dir, binding) {
   fs.mkdirSync(path.join(dir, '.sonarlint'), { recursive: true });

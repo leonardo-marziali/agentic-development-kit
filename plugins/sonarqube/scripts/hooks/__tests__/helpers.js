@@ -25,6 +25,23 @@ function uniqueSessionId() {
 }
 
 /*
+ * Shared scratch-dir + plugin-data + session-id triple every hook-integration
+ * test starts from, whichever hook it is exercising.
+ */
+function setup(t) {
+  const scratch = mkScratchDir();
+  t.after(() => rmScratchDir(scratch));
+  return { scratch, pluginData: path.join(scratch, 'plugin-data'), sessionId: uniqueSessionId() };
+}
+
+function writeFile(scratch, relative, contents = 'x\n') {
+  const full = path.join(scratch, relative);
+  fs.mkdirSync(path.dirname(full), { recursive: true });
+  fs.writeFileSync(full, contents);
+  return full;
+}
+
+/*
  * Runs one of the plugin's hook scripts the same way Claude Code does: stdin
  * gets the hook's JSON payload, stdout is parsed as JSON when present.
  *
@@ -131,6 +148,20 @@ function noSonarEnv(scratch) {
 }
 
 /*
+ * Prepends the fake `sonar` bin dir onto the *current process*'s PATH — for
+ * tests that call sonar.js's functions in-process rather than through
+ * runHook, so resolveBin sees the fake without a child process to hand an
+ * env object to. Restores the original PATH on test teardown.
+ */
+function useFakeSonarPath(t, binDir) {
+  const originalPath = process.env.PATH;
+  t.after(() => {
+    process.env.PATH = originalPath;
+  });
+  process.env.PATH = [binDir, originalPath].filter(Boolean).join(path.delimiter);
+}
+
+/*
  * sonar.js also probes two fixed system locations, which no environment
  * variable can redirect. A developer machine with the real CLI installed
  * there cannot exercise the "sonar is missing" path, so those tests declare
@@ -147,10 +178,13 @@ module.exports = {
   mkScratchDir,
   rmScratchDir,
   uniqueSessionId,
+  setup,
+  writeFile,
   runHook,
   installFakeSonar,
   readInvocations,
   fakeSonarEnv,
   noSonarEnv,
+  useFakeSonarPath,
   systemSonarInstalled,
 };

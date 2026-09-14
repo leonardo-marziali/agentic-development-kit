@@ -6,7 +6,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const sonar = require('../sonar');
-const { mkScratchDir, rmScratchDir, installFakeSonar, readInvocations } = require('./helpers');
+const {
+  mkScratchDir,
+  rmScratchDir,
+  installFakeSonar,
+  readInvocations,
+  useFakeSonarPath,
+} = require('./helpers');
 
 /*
  * classify() is pure, so it can be exercised directly on synthetic spawn
@@ -105,11 +111,7 @@ test('sonarAvailable is true and resolves to an absolute path when found', (t) =
   const scratch = mkScratchDir();
   t.after(() => rmScratchDir(scratch));
   const { binDir, binPath } = installFakeSonar(scratch);
-  const originalPath = process.env.PATH;
-  t.after(() => {
-    process.env.PATH = originalPath;
-  });
-  process.env.PATH = [binDir, originalPath].filter(Boolean).join(path.delimiter);
+  useFakeSonarPath(t, binDir);
 
   assert.equal(sonar.sonarAvailable(), true);
   assert.equal(sonar.resolveSonarBin(), binPath);
@@ -121,11 +123,7 @@ test('analyzeSecrets invokes `sonar analyze secrets <paths>` and reports finding
   const { binDir, logFile } = installFakeSonar(scratch, {
     secrets: { status: 51, stdout: 'AWS key detected' },
   });
-  const originalPath = process.env.PATH;
-  t.after(() => {
-    process.env.PATH = originalPath;
-  });
-  process.env.PATH = [binDir, originalPath].filter(Boolean).join(path.delimiter);
+  useFakeSonarPath(t, binDir);
 
   const outcome = sonar.analyzeSecrets(['/repo/a.js', '/repo/b.js'], { cwd: scratch });
 
@@ -139,11 +137,7 @@ test('analyzeFull repeats --file, adds --project and --depth, and asks for json'
   const scratch = mkScratchDir();
   t.after(() => rmScratchDir(scratch));
   const { binDir, logFile } = installFakeSonar(scratch, { analysis: { status: 0 } });
-  const originalPath = process.env.PATH;
-  t.after(() => {
-    process.env.PATH = originalPath;
-  });
-  process.env.PATH = [binDir, originalPath].filter(Boolean).join(path.delimiter);
+  useFakeSonarPath(t, binDir);
 
   sonar.analyzeFull(['/repo/a.js', '/repo/b.js'], {
     projectKey: 'my-key',
@@ -172,11 +166,7 @@ test('analyzeFull omits --project and --depth when there is nothing to pass', (t
   const scratch = mkScratchDir();
   t.after(() => rmScratchDir(scratch));
   const { binDir, logFile } = installFakeSonar(scratch, { analysis: { status: 0 } });
-  const originalPath = process.env.PATH;
-  t.after(() => {
-    process.env.PATH = originalPath;
-  });
-  process.env.PATH = [binDir, originalPath].filter(Boolean).join(path.delimiter);
+  useFakeSonarPath(t, binDir);
 
   sonar.analyzeFull(['/repo/a.js'], { cwd: scratch });
 
@@ -188,11 +178,7 @@ test('runSonar executes in the cwd it is given', (t) => {
   const scratch = mkScratchDir();
   t.after(() => rmScratchDir(scratch));
   const { binDir, logFile } = installFakeSonar(scratch, { analysis: { status: 0 } });
-  const originalPath = process.env.PATH;
-  t.after(() => {
-    process.env.PATH = originalPath;
-  });
-  process.env.PATH = [binDir, originalPath].filter(Boolean).join(path.delimiter);
+  useFakeSonarPath(t, binDir);
 
   sonar.runSonar(['analyze'], { cwd: binDir });
 
