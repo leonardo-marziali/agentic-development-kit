@@ -1,3 +1,6 @@
 [tools]
 node = "24.20"
 "npm:pnpm" = "12.3.1"
+
+[env]
+_.file = [".env", ".env.local"]
