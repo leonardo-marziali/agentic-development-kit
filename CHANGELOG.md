@@ -1,3 +1,10 @@
+## [1.5.1](https://github.com/leonardo-marziali/agentic-development-kit/compare/v1.5.0...v1.5.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* resolve open SonarCloud findings ([#18](https://github.com/leonardo-marziali/agentic-development-kit/issues/18)) ([fe68633](https://github.com/leonardo-marziali/agentic-development-kit/commit/fe68633587265b8b33a597c93040ee2f19290519))
+
 # [1.5.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v1.4.1...v1.5.0) (2026-09-14)
 
 
