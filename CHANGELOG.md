@@ -1,3 +1,10 @@
+## [1.4.1](https://github.com/leonardo-marziali/agentic-development-kit/compare/v1.4.0...v1.4.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* **sonarqube:** remove unsupported enum keys from plugin manifest ([3aacf6b](https://github.com/leonardo-marziali/agentic-development-kit/commit/3aacf6b2f8451ca747c111bc572edff2f0776d3f))
+
 # [1.4.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v1.3.0...v1.4.0) (2026-09-14)
 
 
