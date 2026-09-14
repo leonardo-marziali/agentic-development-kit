@@ -15,9 +15,46 @@ platform's business, not the plugin's.
 - **The [SonarQube CLI][cli] (`sonar`)**, for the hooks. If it isn't
   found, every hook no-ops with a single note on stderr — a missing
   optional tool never blocks a session.
-- **Docker**, for the MCP server, which runs as a container.
+- **A container runtime**, for the MCP server, which runs as a container.
+  Docker Desktop is not required — see below.
 
 [cli]: https://docs.sonarsource.com/sonarqube-cloud/advanced-setup/sonarqube-cli/
+
+### Container runtime
+
+Any Docker-compatible runtime works. These all provide a `docker` CLI, so
+the plugin uses them with **no configuration at all**:
+
+- **Docker Desktop** (Mac, Windows, Linux) — the default assumption.
+- **OrbStack** (Mac) — fast and light; starts quicker and uses less
+  RAM/CPU than Docker Desktop. Free for personal use, paid for commercial
+  use at larger companies.
+- **Colima** (Mac, Linux) — command-line only, no GUI, Lima underneath.
+  Fully open source with no licensing restrictions.
+- **Rancher Desktop** (Mac, Windows, Linux) — open source, backed by
+  SUSE. Has a GUI, switches between containerd and dockerd as the
+  runtime, and bundles Kubernetes.
+- **Lima** (Mac, Linux) — the VM layer Colima and others build on. CLI
+  only, more DIY.
+
+**Podman** takes one extra step. It is daemonless and rootless by
+default — a different security model — and its CLI is `podman`, not
+`docker`. Install its `docker` shim (the `podman-docker` package on
+Linux; on macOS, Podman Desktop can provide the alias) and everything
+below applies unchanged.
+
+The plugin invokes `docker` directly rather than offering a setting for
+this. Every runtime above already answers to that name, so a setting
+would be configuration surface that only one runtime ever uses — and
+which its own shim already solves.
+
+The image is referenced as `docker.io/sonarsource/sonarqube-mcp` rather
+than by short name. Podman has no implicit Docker Hub default, so a short
+name would either consult `unqualified-search-registries` or prompt — and
+a prompt on a stdio server hangs the connection. Docker ignores the
+prefix.
+
+### Credentials
 
 The MCP server also needs two environment variables:
 
@@ -94,8 +131,9 @@ them form one group, analysed without `--project`.
 ### MCP server
 
 The plugin ships `.mcp.json`, so installing it registers the official
-`sonarsource/sonarqube-mcp` server (stdio, via Docker) without any
-further setup. See [Toolsets](#toolsets) for exactly what it exposes.
+`sonarsource/sonarqube-mcp` server (stdio, via your container runtime)
+without any further setup. See [Toolsets](#toolsets) for exactly what it
+exposes.
 
 ### Skills
 

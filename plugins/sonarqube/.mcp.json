@@ -13,7 +13,7 @@
       "SONARQUBE_URL",
       "-e",
       "SONARQUBE_TOOLSETS",
-      "sonarsource/sonarqube-mcp"
+      "docker.io/sonarsource/sonarqube-mcp"
     ],
     "env": {
       "SONARQUBE_TOKEN": "${SONARQUBE_TOKEN}",

@@ -24,13 +24,21 @@ The server does not start without these:
 | `SONARQUBE_TOKEN` | A user token for the instance               |
 | `SONARQUBE_URL`   | Your Server URL, or `https://sonarcloud.io` |
 
-Docker must be installed and running. The token is read from the
-environment, never written into the plugin, and is passed to the
-container as a bare `-e SONARQUBE_TOKEN` so it never appears in the
-container's argument list.
+A container runtime must be installed and running — but not necessarily
+Docker Desktop. The server is launched through the `docker` CLI, and
+OrbStack, Colima, Rancher Desktop and Lima all provide one, so any of
+them works unchanged. Podman's CLI is `podman`, so it needs Podman's
+`docker` shim installed.
 
-If tools are missing or failing, check those two variables and Docker
-first — that is almost always the cause.
+The token is read from the environment, never written into the plugin,
+and is passed to the container as a bare `-e SONARQUBE_TOKEN` so it never
+appears in the container's argument list.
+
+If tools are missing or failing, check those two variables and the
+container runtime first — that is almost always the cause. When the
+runtime is the problem, say which of the two it is (no runtime installed
+and running, or a Podman install with no `docker` shim) rather than
+reporting a generic connection failure.
 
 ## What this configuration enables
 

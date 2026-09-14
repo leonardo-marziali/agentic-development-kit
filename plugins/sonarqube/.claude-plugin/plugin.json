@@ -2,7 +2,7 @@
   "$schema": "https://www.schemastore.org/claude-code-plugin-manifest.json",
   "name": "sonarqube",
   "version": "0.1.0",
-  "description": "Session-scoped SonarQube analysis: blocks a session from ending while files it touched still have secrets or Sonar findings, plus the official SonarQube MCP server. Requires the `sonar` CLI and Docker.",
+  "description": "Session-scoped SonarQube analysis: blocks a session from ending while the files it touched still have secrets or Sonar findings, plus the official SonarQube MCP server. Requires the `sonar` CLI and a Docker-compatible container runtime.",
   "author": {
     "name": "Leonardo Marziali",
     "url": "https://github.com/leonardo-marziali"
