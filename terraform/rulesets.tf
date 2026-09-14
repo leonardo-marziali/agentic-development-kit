@@ -36,7 +36,7 @@ resource "github_repository_ruleset" "require_pull_request" {
       require_code_owner_review         = false
       require_last_push_approval        = false
       required_review_thread_resolution = false
-      allowed_merge_methods = ["squash"]
+      allowed_merge_methods             = ["squash"]
     }
 
     required_status_checks {
