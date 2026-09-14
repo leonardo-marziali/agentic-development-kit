@@ -1,3 +1,10 @@
+# [1.5.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v1.4.1...v1.5.0) (2026-09-14)
+
+
+### Features
+
+* **sonarqube:** enable plugin and load token from .env ([17088dc](https://github.com/leonardo-marziali/agentic-development-kit/commit/17088dc1117a3375f0e4ab6d4f6e0c04bbdfce8c))
+
 ## [1.4.1](https://github.com/leonardo-marziali/agentic-development-kit/compare/v1.4.0...v1.4.1) (2026-09-14)
 
 
