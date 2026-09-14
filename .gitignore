@@ -18,3 +18,7 @@ terraform/*_override.tf
 terraform/*_override.tf.json
 .terraformrc
 terraform.rc
+
+# Environment files
+.env
+.env.local
