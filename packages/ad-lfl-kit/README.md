@@ -118,6 +118,55 @@ failing → block with a message Claude can act on, up to 3 attempts by
 default; still failing at the cap → `onCap` runs once, then the stop is
 allowed anyway.
 
+## Scoping to changes against HEAD
+
+Tracking a file is not the same as being answerable for all of it. By
+default `runFixLoop` checks every touched file whole, which means a one-line
+edit to a 400-line README makes every pre-existing violation in it the
+session's problem. `scope.js` narrows that to the lines the working tree
+actually changed:
+
+```js
+const { scopesFor, partitionByScope, fixableFiles } = require('@leonardo-marziali/ad-lfl-kit');
+
+const scopes = scopesFor(files); // → Map<absPath, scope>, vs HEAD, ±2 lines
+const { inScope, outOfScope, outOfScopeFiles } = partitionByScope(violations, {
+  scopes,
+});
+```
+
+The gate this produces is **"uncommitted work must not introduce lint
+errors"**, not "this session must not". `HEAD` is the last known-clean
+state, so anything dirty is fair game regardless of what dirtied it, and
+anything committed is somebody else's problem — worth reporting once and
+leaving to whatever escape hatch the plugin offers.
+
+Scoping against a ref rather than a session-start snapshot is deliberate:
+the verdict is reproducible from a shell (`git diff HEAD`), it survives
+context compaction and session restarts, and it sees every write —
+including the ones no `PostToolUse` hook ever hears about, like a `sed -i`,
+a formatter run from another hook, or the user's own editor.
+
+**Ordering.** Because `fixableFiles` needs to know what's out of scope, an
+auto-fixing consumer runs check → fix → re-check rather than fix → check:
+lint once to get the findings, partition them, fix only the files with
+nothing out of scope, then lint again for the result `runFixLoop` blocks on.
+
+**Everything fails open.** No repo, no git, an untracked or ignored path, a
+ref that doesn't resolve, a diff that won't parse — each resolves to
+`all: true`, the whole-file behaviour callers had before this module
+existed. A scope that couldn't be computed must never be the reason a
+linter goes quiet. The corollary is that unversioned trees get no narrowing
+at all.
+
+**What it won't catch.** Whole-document rules report the _other_ end of a
+relationship an edit changed — delete the last use of a link reference and
+markdownlint's MD053 fires on the definition hundreds of lines away, which
+is out of scope. This is inherent to line-scoped review (GitHub PR
+annotations, reviewdog and `lint-staged` line filters all share it); the
+context margin covers the near misses, and a consumer should say what it
+excluded rather than drop it silently.
+
 ## API
 
 ### Hook I/O (`hook-input.js`)
@@ -167,6 +216,35 @@ allowed anyway.
   Node won't exec directly), with arguments quoted by hand there so no
   shell ever parses a file path on any other platform. `options` also
   accepts `extraDirs`, forwarded to `resolveBin`.
+
+### Scoping (`scope.js`)
+
+Narrows a check from _this file_ to _the lines in this file that differ from
+a git ref_, so a one-line edit to a long, already-messy document doesn't hand
+Claude every pre-existing violation in it. See
+[Scoping to changes against HEAD](#scoping-to-changes-against-head).
+
+- **`scopesFor(files, { ref, context })`** — the entry point: a `Map` of
+  absolute path → scope, with the context margin already applied. `ref`
+  defaults to `HEAD`, `context` to `DEFAULT_CONTEXT_LINES` (2). A scope is
+  `{ file, all, ranges, includes(line) }`, where `all` means the whole file
+  is in scope and `ranges` are inclusive, 1-based `[start, end]` pairs in
+  current-file coordinates. `includes()` called without a line number
+  returns `all`.
+- **`changedRangesByFile(files, { ref })`** — the same answer before the
+  margin is applied, as `{ all, ranges }`. Exposed for callers that want to
+  do their own widening.
+- **`partitionByScope(items, { scopes, getFile, getLine })`** — splits a
+  linter's findings into `{ inScope, outOfScope, outOfScopeFiles }`.
+  `getFile`/`getLine` default to reading `file`/`fileName` and
+  `line`/`lineNumber`, which covers most JSON reporters.
+- **`fixableFiles({ files, outOfScopeFiles })`** — the files an auto-fixer
+  may safely rewrite, being those with nothing out of scope. A `--fix` pass
+  rewrites whole files, so running it on a file that also carries
+  pre-existing violations would quietly "fix" lines that match the ref.
+- **`mergeRanges(ranges)`** / **`widenRanges(ranges, context)`** — the range
+  arithmetic, exposed for testing and for callers with their own ranges.
+- **`DEFAULT_CONTEXT_LINES`** — `2`.
 
 ### The loop (`loop.js`)
 

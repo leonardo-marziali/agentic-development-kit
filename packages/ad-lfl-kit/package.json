@@ -28,6 +28,7 @@
     "hook-input.js",
     "state.js",
     "track.js",
+    "scope.js",
     "loop.js"
   ],
   "engines": {
