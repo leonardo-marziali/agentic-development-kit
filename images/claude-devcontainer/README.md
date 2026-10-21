@@ -47,6 +47,35 @@ Code extension) in its metadata label, so nothing else is required. The
   MCP server.
 - `SONARQUBE_TOKEN`, `SONARQUBE_URL` — the `sonarqube` plugin's MCP server.
 
+### Keeping the login and the session
+
+Two more settings are worth adding — this repository's own
+[`.devcontainer/devcontainer.json`](../../.devcontainer/devcontainer.json)
+uses both:
+
+- **Persist your login.** Rebuilding the container discards `~/.claude`,
+  and with it the login. Mount a named volume there:
+
+  ```json
+  "mounts": ["source=claude-config,target=/home/node/.claude,type=volume"]
+  ```
+
+  Docker seeds an empty volume from the image's `~/.claude` on first use,
+  so the baked-in plugins carry over. After that the volume wins: a newer
+  image's plugin set only reaches it through `claude plugin install` /
+  `claude plugin update`, or by removing the volume
+  (`docker volume rm claude-config`) and logging in again.
+
+- **Keep the process alive.** Closing the terminal or stopping `claude`
+  ends the session, and disconnecting VS Code may stop the container. Set
+  `"shutdownAction": "none"` and run server mode (`claude remote-control`)
+  inside `tmux`, which the image includes:
+
+  ```sh
+  tmux new-session -d -s claude 'claude remote-control'
+  tmux attach -t claude   # Ctrl-b d to detach again
+  ```
+
 ## What's inside
 
 ### Plugins (user scope, enabled)
@@ -76,6 +105,7 @@ works inside the container. The list lives in
 | `pyright`                                  | `pyright-lsp`           |
 | `typescript`, `typescript-language-server` | `typescript-lsp`        |
 | Python 3 + PyYAML                          | `skill-creator` scripts |
+| `tmux`                                     | Claude Code server mode |
 
 The `docker` CLI talks to the host's Docker daemon (docker-outside-of-docker),
 which is what the SonarQube MCP server container runs on.
