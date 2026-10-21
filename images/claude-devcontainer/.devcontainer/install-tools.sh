@@ -71,6 +71,8 @@ sonar_url="${sonar_base}/${SONAR_CLI_VERSION}/linux/sonarqube-cli-${SONAR_CLI_VE
 sonar_tmp="$(mktemp -d)"
 fetch "${sonar_url}" -o "${sonar_tmp}/sonar"
 fetch "${sonar_url}.asc" -o "${sonar_tmp}/sonar.asc"
+# gpg won't create a --homedir itself.
+mkdir -m 700 "${sonar_tmp}/gnupg"
 gpg --batch --quiet --homedir "${sonar_tmp}/gnupg" --import "${SCRIPT_DIR}/sonarsource.asc"
 if ! gpg --batch --homedir "${sonar_tmp}/gnupg" --status-fd 1 \
   --verify "${sonar_tmp}/sonar.asc" "${sonar_tmp}/sonar" 2>/dev/null \
