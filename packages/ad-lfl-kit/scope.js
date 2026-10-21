@@ -124,7 +124,7 @@ function parseDiff(text, root) {
 
   for (const line of (text || '').split('\n')) {
     if (line.startsWith('+++ ')) {
-      const target = line.slice(4).replace(/\s+$/, '');
+      const target = line.slice(4).trimEnd();
       current = target === '/dev/null' ? null : path.resolve(root, target);
       if (current && !byFile.has(current)) byFile.set(current, []);
       continue;
@@ -154,7 +154,7 @@ function resolveRepoGroup(root, files, ref, into) {
   const trackedFiles = [];
 
   for (const file of files) {
-    if (tracked && tracked.has(file)) trackedFiles.push(file);
+    if (tracked?.has(file)) trackedFiles.push(file);
     else into.set(file, scopeWholeFile());
   }
   if (trackedFiles.length === 0) return;
@@ -218,7 +218,7 @@ function mergeRanges(ranges) {
   const merged = [];
 
   for (const [start, end] of sorted) {
-    const last = merged[merged.length - 1];
+    const last = merged.at(-1);
     // `start - 1` so ranges that merely touch collapse into one.
     if (last && start - 1 <= last[1]) {
       if (end > last[1]) last[1] = end;
