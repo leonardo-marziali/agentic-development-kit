@@ -88,12 +88,21 @@ npx @devcontainers/cli build \
   --image-name claude-devcontainer:dev
 ```
 
-Build args `JDTLS_VERSION` (default `latest`, the newest milestone; or a
-specific milestone such as `1.50.0`, fetched from download.eclipse.org or,
-when that is down, from Homebrew's checksum-verified bottle of the same
-release) and `MARKSMAN_VERSION` (default `latest`, or a
-release tag) pin those tools; set them under `build.args` in
-[`devcontainer.json`](.devcontainer/devcontainer.json).
+Build args in [`devcontainer.json`](.devcontainer/devcontainer.json) pin
+each downloaded tool (all default to the newest release):
+
+- `CLAUDE_VERSION` — `stable`, `latest`, or a version such as `2.1.304`
+- `JDTLS_VERSION` — a jdtls milestone such as `1.63.0`
+- `MARKSMAN_VERSION` — a marksman release tag
+- `SONAR_CLI_VERSION` — a SonarQube CLI version such as `1.10.0.16040`
+
+Every download is HTTPS-only and verified before it is installed or run:
+Claude Code against the sha256 in its release manifest, the SonarQube CLI
+against SonarSource's OpenPGP signature (key in
+[`sonarsource.asc`](.devcontainer/sonarsource.asc), fingerprint pinned in
+`install-tools.sh`), and jdtls against the sha256 Eclipse publishes. While
+download.eclipse.org is down, jdtls comes from Homebrew's bottle of the
+same release instead, checked against the sha256 in Homebrew's formula.
 
 ## First publish
 

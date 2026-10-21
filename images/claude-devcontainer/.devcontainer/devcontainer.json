@@ -4,8 +4,10 @@
   "build": {
     "dockerfile": "Dockerfile",
     "args": {
+      "CLAUDE_VERSION": "stable",
       "JDTLS_VERSION": "latest",
-      "MARKSMAN_VERSION": "latest"
+      "MARKSMAN_VERSION": "latest",
+      "SONAR_CLI_VERSION": "latest"
     }
   },
   "features": {
