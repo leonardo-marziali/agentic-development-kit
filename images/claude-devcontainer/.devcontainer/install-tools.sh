@@ -16,9 +16,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-JDTLS_VERSION="${JDTLS_VERSION:-latest}"
-MARKSMAN_VERSION="${MARKSMAN_VERSION:-latest}"
-SONAR_CLI_VERSION="${SONAR_CLI_VERSION:-latest}"
+# Version value that means "resolve the newest release".
+readonly LATEST="latest"
+JDTLS_VERSION="${JDTLS_VERSION:-${LATEST}}"
+MARKSMAN_VERSION="${MARKSMAN_VERSION:-${LATEST}}"
+SONAR_CLI_VERSION="${SONAR_CLI_VERSION:-${LATEST}}"
 
 # Every download is HTTPS-only, redirects included.
 fetch() {
@@ -51,7 +53,7 @@ npm install -g --ignore-scripts \
 npm cache clean --force
 
 # marksman (markdown LSP)
-if [[ "${MARKSMAN_VERSION}" == "latest" ]]; then
+if [[ "${MARKSMAN_VERSION}" == "${LATEST}" ]]; then
   marksman_url="https://github.com/artempyanykh/marksman/releases/latest/download/marksman-linux-${MARKSMAN_ARCH}"
 else
   marksman_url="https://github.com/artempyanykh/marksman/releases/download/${MARKSMAN_VERSION}/marksman-linux-${MARKSMAN_ARCH}"
@@ -64,7 +66,7 @@ chmod 755 /usr/local/bin/marksman
 # downloads; the build also pins its fingerprint.
 SONARSOURCE_KEY_FPR="679F1EE92B19609DE816FDE81DB198F93525EC1A"
 sonar_base="https://binaries.sonarsource.com/Distribution/sonarqube-cli"
-if [[ "${SONAR_CLI_VERSION}" == "latest" ]]; then
+if [[ "${SONAR_CLI_VERSION}" == "${LATEST}" ]]; then
   SONAR_CLI_VERSION="$(fetch "${sonar_base}/stable.version" | tr -d '[:space:]')"
 fi
 sonar_url="${sonar_base}/${SONAR_CLI_VERSION}/linux/sonarqube-cli-${SONAR_CLI_VERSION}-${SONAR_PLATFORM}.bin"
@@ -95,31 +97,33 @@ echo "sonar CLI ${SONAR_CLI_VERSION}: signature OK"
 # bottle on ghcr.io instead, verified against the sha256 in Homebrew's
 # formula.
 jdtls_from_eclipse() {
+  local archive="$1"
   local milestones="https://download.eclipse.org/jdtls/milestones"
   local version="${JDTLS_VERSION}" file sha
-  if [[ "${version}" == "latest" ]]; then
+  if [[ "${version}" == "${LATEST}" ]]; then
     version="$(fetch "${milestones}/" \
       | grep -oE '[0-9]+\.[0-9]+\.[0-9]+/' | tr -d / | sort -uV | tail -n 1)"
   fi
   [[ -n "${version}" ]] || return 1
   file="$(fetch "${milestones}/${version}/latest.txt" | tr -d '[:space:]')"
   [[ "${file}" =~ ^jdt-language-server-.*\.tar\.gz$ ]] || return 1
-  fetch "${milestones}/${version}/${file}" -o "$1"
+  fetch "${milestones}/${version}/${file}" -o "${archive}"
   sha="$(fetch "${milestones}/${version}/${file}.sha256" | grep -oE '^[0-9a-f]{64}')"
   [[ -n "${sha}" ]] || return 1
-  echo "${sha}  $1" | sha256sum -c --quiet - || return 1
+  echo "${sha}  ${archive}" | sha256sum -c --quiet - || return 1
   echo "jdtls ${version}: ${milestones}/${version}/${file}"
 }
 
 # The bottle wraps the tarball's contents in jdtls/<version>/libexec/, so
 # this repacks that directory into a plain tarball for the common path.
 jdtls_from_homebrew() {
+  local archive="$1"
   local formula version sha bottle unpacked libexec
   formula="$(fetch https://raw.githubusercontent.com/Homebrew/homebrew-core/main/Formula/j/jdtls.rb)"
   version="$(grep -oE '^  version "[^"]+"' <<<"${formula}" | cut -d'"' -f2)"
   sha="$(grep -oE 'all: "[0-9a-f]{64}"' <<<"${formula}" | grep -oE '[0-9a-f]{64}')"
   [[ -n "${version}" && -n "${sha}" ]] || return 1
-  if [[ "${JDTLS_VERSION}" != "latest" && "${JDTLS_VERSION}" != "${version}" ]]; then
+  if [[ "${JDTLS_VERSION}" != "${LATEST}" && "${JDTLS_VERSION}" != "${version}" ]]; then
     echo "jdtls: Homebrew only has ${version}, not ${JDTLS_VERSION}" >&2
     return 1
   fi
@@ -132,7 +136,7 @@ jdtls_from_homebrew() {
   # The directory is <version>_<revision> when the formula has a revision.
   libexec="$(echo "${unpacked}"/jdtls/*/libexec)"
   [[ -d "${libexec}" ]] || return 1
-  tar -czf "$1" -C "${libexec}" .
+  tar -czf "${archive}" -C "${libexec}" .
   rm -rf "${bottle}" "${unpacked}"
   echo "jdtls ${version}: Homebrew bottle sha256:${sha}"
 }
