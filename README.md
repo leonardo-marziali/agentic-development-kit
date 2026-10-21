@@ -15,12 +15,26 @@ inside Claude Code, then install a plugin from it (for example `markdown`):
 /plugin install markdown@agentic-development-kit
 ```
 
+## Dev container image
+
+[`images/claude-devcontainer`](images/claude-devcontainer/README.md) builds
+a dev container image with Claude Code, every plugin in this marketplace,
+a set of third-party plugins, and the tooling they all shell out to. It is
+published to GitHub Container Registry as
+`ghcr.io/leonardo-marziali/claude-devcontainer`; to use it in another
+project:
+
+```json
+{ "image": "ghcr.io/leonardo-marziali/claude-devcontainer:latest" }
+```
+
 ## Repository structure
 
 ```text
 .claude-plugin/marketplace.json   Marketplace manifest listing available plugins
 .claude/commands/                 Repo-local Claude Code slash commands
 .claude/hooks/                    This repo's own development hooks (not shipped)
+images/claude-devcontainer/       Dev container image published to GHCR
 packages/                         Shared npm packages the plugins depend on
   ad-lfl-kit/                     Lint-fix-loop kit: file tracking + Stop-hook loop
 plugins/                          Individual plugins hosted by this marketplace
@@ -46,9 +60,6 @@ Not yet present, but planned for this repo:
 
 - **Agent definitions** — reusable Claude Code agent configurations for
   recurring roles/workflows.
-- **Devcontainer image** — a container image that ships this repository's
-  plugins and configs preinstalled, for a ready-to-go agentic dev
-  environment.
 
 ## Development
 

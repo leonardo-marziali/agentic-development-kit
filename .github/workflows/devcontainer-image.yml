@@ -1,0 +1,67 @@
+name: Dev Container Image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'images/claude-devcontainer/**'
+      - '.github/workflows/devcontainer-image.yml'
+  # Builds (without pushing) so a broken image is caught before merge.
+  pull_request:
+    paths:
+      - 'images/claude-devcontainer/**'
+      - '.github/workflows/devcontainer-image.yml'
+  # Plugins, Claude Code and the LSP servers are installed at their latest
+  # versions, so a weekly rebuild keeps `latest` current without a commit.
+  schedule:
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/claude-devcontainer
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        if: github.event_name != 'pull_request'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: tags
+        run: echo "date=$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
+
+      # devcontainers/ci (rather than a plain docker build) bakes the
+      # features and devcontainer.json settings into the image's
+      # devcontainer.metadata label, so a consumer's devcontainer.json only
+      # needs `"image": ...` to get docker-outside-of-docker, gh and
+      # remoteUser too.
+      - uses: devcontainers/ci@513af61f4de4f75d37e4438f184ba4358f0fc1ca # v0.3.1900000450
+        with:
+          subFolder: images/claude-devcontainer
+          imageName: ${{ env.IMAGE_NAME }}
+          imageTag: latest,${{ steps.tags.outputs.date }},sha-${{ github.sha }}
+          cacheFrom: ${{ env.IMAGE_NAME }}
+          # Multi-arch builds can only be pushed, not loaded locally, so
+          # pull requests build amd64 alone.
+          platform: ${{ github.event_name == 'pull_request' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
+          push: ${{ github.event_name == 'pull_request' && 'never' || 'always' }}
+          # Smoke test (single-platform pull request builds only — a
+          # multi-arch build is never loaded locally, so there is nothing to
+          # run it in).
+          # The sub folder is mounted as the workspace, so the script is
+          # reachable by a relative path.
+          runCmd: ${{ github.event_name == 'pull_request' && 'bash smoke-test.sh' || '' }}

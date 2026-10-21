@@ -1,0 +1,25 @@
+{
+  "$schema": "https://raw.githubusercontent.com/devcontainers/spec/main/schemas/devContainer.schema.json",
+  "name": "Claude Code (agentic-development-kit)",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "args": {
+      "CLAUDE_VERSION": "stable",
+      "JDTLS_VERSION": "latest",
+      "MARKSMAN_VERSION": "latest",
+      "SONAR_CLI_VERSION": "latest"
+    }
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {
+      "moby": false
+    },
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  "remoteUser": "node",
+  "customizations": {
+    "vscode": {
+      "extensions": ["anthropic.claude-code"]
+    }
+  }
+}
