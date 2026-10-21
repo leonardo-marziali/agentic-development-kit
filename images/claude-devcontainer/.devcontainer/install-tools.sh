@@ -53,51 +53,65 @@ chmod +x /usr/local/bin/marksman
 # jdtls (Eclipse JDT Language Server) milestone release. `latest` picks the
 # newest milestone; pin one (e.g. 1.50.0) with the JDTLS_VERSION build arg.
 #
-# download.eclipse.org has been seen answering every path with a 200
-# "Temporary shutdown" HTML page, so each Eclipse mirror is tried in turn
-# and a download only counts once it is a valid gzip archive.
-JDTLS_MIRRORS=(
-  "https://download.eclipse.org"
-  "https://ftp.fau.de/eclipse"
-  "https://ftp.osuosl.org/pub/eclipse"
-  "https://mirror.dkm.cz/eclipse"
-)
-
-# Prints the tarball URL for JDTLS_VERSION on one mirror, or fails.
-jdtls_tarball_url() {
-  local milestones="$1/jdtls/milestones" version file
-  version="${JDTLS_VERSION}"
+# The official tarball only lives on download.eclipse.org (mirrors don't
+# carry jdtls), and that host has been seen answering every path with a 200
+# "Temporary shutdown" HTML page. So a download only counts once it passes
+# `gzip -t`, and when Eclipse has nothing usable the same tarball is taken
+# from Homebrew's architecture-independent bottle on ghcr.io instead,
+# verified against the sha256 in Homebrew's formula.
+jdtls_from_eclipse() {
+  local milestones="https://download.eclipse.org/jdtls/milestones"
+  local version="${JDTLS_VERSION}" file
   if [ "${version}" = "latest" ]; then
     version="$(curl -fsSL "${milestones}/" \
       | grep -oE '[0-9]+\.[0-9]+\.[0-9]+/' | tr -d / | sort -uV | tail -n 1)"
   fi
   [ -n "${version}" ] || return 1
-  file="$(curl -fsSL "${milestones}/${version}/latest.txt" | tr -d '[:space:]')" || file=""
-  if [[ ! "${file}" =~ ^jdt-language-server-.*\.tar\.gz$ ]]; then
-    file="$(curl -fsSL "${milestones}/${version}/" \
-      | grep -oE 'jdt-language-server-[0-9.]+-[0-9]+\.tar\.gz' | sort -uV | tail -n 1)"
+  file="$(curl -fsSL "${milestones}/${version}/latest.txt" | tr -d '[:space:]')"
+  [[ "${file}" =~ ^jdt-language-server-.*\.tar\.gz$ ]] || return 1
+  curl -fsSL "${milestones}/${version}/${file}" -o "$1"
+  gzip -t "$1" 2>/dev/null || return 1
+  echo "jdtls ${version}: ${milestones}/${version}/${file}"
+}
+
+# The bottle wraps the tarball's contents in jdtls/<version>/libexec/, so
+# this repacks that directory into a plain tarball for the common path.
+jdtls_from_homebrew() {
+  local formula version sha bottle unpacked libexec
+  formula="$(curl -fsSL https://raw.githubusercontent.com/Homebrew/homebrew-core/main/Formula/j/jdtls.rb)"
+  version="$(grep -oE '^  version "[^"]+"' <<<"${formula}" | cut -d'"' -f2)"
+  sha="$(grep -oE 'all: "[0-9a-f]{64}"' <<<"${formula}" | grep -oE '[0-9a-f]{64}')"
+  [ -n "${version}" ] && [ -n "${sha}" ] || return 1
+  if [ "${JDTLS_VERSION}" != "latest" ] && [ "${JDTLS_VERSION}" != "${version}" ]; then
+    echo "jdtls: Homebrew only has ${version}, not ${JDTLS_VERSION}" >&2
+    return 1
   fi
-  [ -n "${file}" ] || return 1
-  echo "${milestones}/${version}/${file}"
+  bottle="$(mktemp)"
+  unpacked="$(mktemp -d)"
+  curl -fsSL -H "Authorization: Bearer QQ==" \
+    "https://ghcr.io/v2/homebrew/core/jdtls/blobs/sha256:${sha}" -o "${bottle}"
+  echo "${sha}  ${bottle}" | sha256sum -c --quiet - || return 1
+  tar -xzf "${bottle}" -C "${unpacked}"
+  # The directory is <version>_<revision> when the formula has a revision.
+  libexec="$(echo "${unpacked}"/jdtls/*/libexec)"
+  [ -d "${libexec}" ] || return 1
+  tar -czf "$1" -C "${libexec}" .
+  rm -rf "${bottle}" "${unpacked}"
+  echo "jdtls ${version}: Homebrew bottle sha256:${sha}"
 }
 
 jdtls_archive="$(mktemp)"
-jdtls_ok=""
-for mirror in "${JDTLS_MIRRORS[@]}"; do
-  if url="$(jdtls_tarball_url "${mirror}")" \
-    && curl -fsSL "${url}" -o "${jdtls_archive}" \
-    && gzip -t "${jdtls_archive}" 2>/dev/null; then
-    echo "jdtls: ${url}"
-    jdtls_ok=1
-    break
-  fi
-  echo "jdtls: no usable download from ${mirror}" >&2
-done
-if [ -z "${jdtls_ok}" ]; then
-  echo "jdtls: every mirror failed" >&2
-  exit 1
+if ! jdtls_from_eclipse "${jdtls_archive}"; then
+  echo "jdtls: no usable download from download.eclipse.org, trying Homebrew" >&2
+  jdtls_from_homebrew "${jdtls_archive}"
 fi
 mkdir -p /opt/jdtls
 tar -xzf "${jdtls_archive}" -C /opt/jdtls
 rm -f "${jdtls_archive}"
-ln -sf /opt/jdtls/bin/jdtls /usr/local/bin/jdtls
+# Run the launcher through python3 rather than its shebang, which the
+# Homebrew bottle rewrites to a Homebrew-prefixed interpreter.
+cat >/usr/local/bin/jdtls <<'WRAPPER'
+#!/bin/sh
+exec python3 /opt/jdtls/bin/jdtls "$@"
+WRAPPER
+chmod +x /usr/local/bin/jdtls

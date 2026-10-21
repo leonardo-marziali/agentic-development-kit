@@ -90,7 +90,8 @@ npx @devcontainers/cli build \
 
 Build args `JDTLS_VERSION` (default `latest`, the newest milestone; or a
 specific milestone such as `1.50.0`, fetched from download.eclipse.org or,
-failing that, an Eclipse mirror) and `MARKSMAN_VERSION` (default `latest`, or a
+when that is down, from Homebrew's checksum-verified bottle of the same
+release) and `MARKSMAN_VERSION` (default `latest`, or a
 release tag) pin those tools; set them under `build.args` in
 [`devcontainer.json`](.devcontainer/devcontainer.json).
 
