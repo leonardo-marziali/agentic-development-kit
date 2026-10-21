@@ -1,3 +1,10 @@
+# [1.8.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v1.7.0...v1.8.0) (2026-10-21)
+
+
+### Features
+
+* **devcontainer:** develop this repo in its own claude-devcontainer image ([#21](https://github.com/leonardo-marziali/agentic-development-kit/issues/21)) ([b99cf11](https://github.com/leonardo-marziali/agentic-development-kit/commit/b99cf11264f995861f2affe15c69aa24480c0399))
+
 # [1.7.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v1.6.0...v1.7.0) (2026-10-21)
 
 
