@@ -1,3 +1,10 @@
+# [1.7.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v1.6.0...v1.7.0) (2026-10-21)
+
+
+### Features
+
+* **devcontainer:** add Claude Code dev container image published to GHCR ([#20](https://github.com/leonardo-marziali/agentic-development-kit/issues/20)) ([92dad32](https://github.com/leonardo-marziali/agentic-development-kit/commit/92dad32d3a8becac8a1bbfe3be4b5decff67a457))
+
 # [1.6.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v1.5.1...v1.6.0) (2026-10-21)
 
 
