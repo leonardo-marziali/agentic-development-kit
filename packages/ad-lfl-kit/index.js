@@ -11,5 +11,6 @@ module.exports = {
   ...require('./hook-input'),
   ...require('./state'),
   ...require('./track'),
+  ...require('./scope'),
   ...require('./loop'),
 };

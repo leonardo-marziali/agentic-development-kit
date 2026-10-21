@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { execFileSync } = require('node:child_process');
 
 function mkScratchDir(prefix = 'ad-lfl-kit-test-') {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -33,4 +34,37 @@ function writeFile(dir, name, contents = 'x') {
   return full;
 }
 
-module.exports = { mkScratchDir, rmScratchDir, uniqueSessionId, writeFile };
+/*
+ * A throwaway git repo with `files` committed, for the scope tests.
+ *
+ * Identity and commit signing are passed per-invocation rather than read from
+ * the environment: the suite must behave the same on a machine with no global
+ * git config as on a developer's, and must never be derailed by a repo
+ * template or a commit hook.
+ */
+function mkScratchRepo(files = {}) {
+  const dir = fs.realpathSync(mkScratchDir('ad-lfl-kit-repo-'));
+  const run = (...args) =>
+    execFileSync('git', ['-C', dir, ...args], { stdio: 'pipe', encoding: 'utf8' });
+
+  run('init', '--quiet', '--initial-branch=main');
+  for (const [name, contents] of Object.entries(files)) writeFile(dir, name, contents);
+  run('add', '--all');
+  run(
+    '-c',
+    'user.email=test@example.com',
+    '-c',
+    'user.name=Test',
+    '-c',
+    'commit.gpgsign=false',
+    'commit',
+    '--quiet',
+    '--no-verify',
+    '-m',
+    'initial',
+  );
+
+  return dir;
+}
+
+module.exports = { mkScratchDir, rmScratchDir, uniqueSessionId, writeFile, mkScratchRepo };
