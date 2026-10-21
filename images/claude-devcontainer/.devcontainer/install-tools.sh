@@ -50,14 +50,54 @@ fi
 curl -fsSL "${marksman_url}" -o /usr/local/bin/marksman
 chmod +x /usr/local/bin/marksman
 
-# jdtls (Eclipse JDT Language Server). `latest` follows the snapshot
-# channel; pin a milestone (e.g. 1.50.0) with the JDTLS_VERSION build arg.
-if [ "${JDTLS_VERSION}" = "latest" ]; then
-  jdtls_base="https://download.eclipse.org/jdtls/snapshots"
-else
-  jdtls_base="https://download.eclipse.org/jdtls/milestones/${JDTLS_VERSION}"
+# jdtls (Eclipse JDT Language Server) milestone release. `latest` picks the
+# newest milestone; pin one (e.g. 1.50.0) with the JDTLS_VERSION build arg.
+#
+# download.eclipse.org has been seen answering every path with a 200
+# "Temporary shutdown" HTML page, so each Eclipse mirror is tried in turn
+# and a download only counts once it is a valid gzip archive.
+JDTLS_MIRRORS=(
+  "https://download.eclipse.org"
+  "https://ftp.fau.de/eclipse"
+  "https://ftp.osuosl.org/pub/eclipse"
+  "https://mirror.dkm.cz/eclipse"
+)
+
+# Prints the tarball URL for JDTLS_VERSION on one mirror, or fails.
+jdtls_tarball_url() {
+  local milestones="$1/jdtls/milestones" version file
+  version="${JDTLS_VERSION}"
+  if [ "${version}" = "latest" ]; then
+    version="$(curl -fsSL "${milestones}/" \
+      | grep -oE '[0-9]+\.[0-9]+\.[0-9]+/' | tr -d / | sort -uV | tail -n 1)"
+  fi
+  [ -n "${version}" ] || return 1
+  file="$(curl -fsSL "${milestones}/${version}/latest.txt" | tr -d '[:space:]')" || file=""
+  if [[ ! "${file}" =~ ^jdt-language-server-.*\.tar\.gz$ ]]; then
+    file="$(curl -fsSL "${milestones}/${version}/" \
+      | grep -oE 'jdt-language-server-[0-9.]+-[0-9]+\.tar\.gz' | sort -uV | tail -n 1)"
+  fi
+  [ -n "${file}" ] || return 1
+  echo "${milestones}/${version}/${file}"
+}
+
+jdtls_archive="$(mktemp)"
+jdtls_ok=""
+for mirror in "${JDTLS_MIRRORS[@]}"; do
+  if url="$(jdtls_tarball_url "${mirror}")" \
+    && curl -fsSL "${url}" -o "${jdtls_archive}" \
+    && gzip -t "${jdtls_archive}" 2>/dev/null; then
+    echo "jdtls: ${url}"
+    jdtls_ok=1
+    break
+  fi
+  echo "jdtls: no usable download from ${mirror}" >&2
+done
+if [ -z "${jdtls_ok}" ]; then
+  echo "jdtls: every mirror failed" >&2
+  exit 1
 fi
-jdtls_file="$(curl -fsSL "${jdtls_base}/latest.txt" | tr -d '[:space:]')"
 mkdir -p /opt/jdtls
-curl -fsSL "${jdtls_base}/${jdtls_file}" | tar -xz -C /opt/jdtls
+tar -xzf "${jdtls_archive}" -C /opt/jdtls
+rm -f "${jdtls_archive}"
 ln -sf /opt/jdtls/bin/jdtls /usr/local/bin/jdtls
