@@ -1,3 +1,10 @@
+# [1.6.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v1.5.1...v1.6.0) (2026-10-21)
+
+
+### Features
+
+* **ad-lfl-kit:** scope checks to changes against HEAD ([#19](https://github.com/leonardo-marziali/agentic-development-kit/issues/19)) ([a98a633](https://github.com/leonardo-marziali/agentic-development-kit/commit/a98a633f994a52ac2cae3852ab925b36c7a108b0))
+
 ## [1.5.1](https://github.com/leonardo-marziali/agentic-development-kit/compare/v1.5.0...v1.5.1) (2026-09-14)
 
 
