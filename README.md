@@ -34,6 +34,7 @@ project:
 .claude-plugin/marketplace.json   Marketplace manifest listing available plugins
 .claude/commands/                 Repo-local Claude Code slash commands
 .claude/hooks/                    This repo's own development hooks (not shipped)
+.devcontainer/                    Dev container for working on this repo
 images/claude-devcontainer/       Dev container image published to GHCR
 packages/                         Shared npm packages the plugins depend on
   ad-lfl-kit/                     Lint-fix-loop kit: file tracking + Stop-hook loop
@@ -144,6 +145,28 @@ pnpm install
 
 This installs the root `devDependencies` and runs the `prepare` script,
 which sets up Husky's Git hooks (including `commit-msg` commit linting).
+
+### Dev container
+
+[`.devcontainer/devcontainer.json`](.devcontainer/devcontainer.json)
+develops this repository inside its own
+[`claude-devcontainer`](images/claude-devcontainer/README.md) image (_Dev
+Containers: Reopen in Container_ in VS Code, or
+`npx @devcontainers/cli up --workspace-folder .`). On top of the image it:
+
+- runs `pnpm install` (pnpm via Corepack) when the container is created;
+- mounts the `claude-config` volume on `/home/node/.claude`, so the Claude
+  Code login survives rebuilds;
+- keeps the container running when VS Code disconnects
+  (`"shutdownAction": "none"`), and on every start runs
+  [`claude-server.sh`](.devcontainer/claude-server.sh), which starts
+  `claude remote-control` in a detached `tmux` session named `claude`.
+  Attach with `tmux attach -t claude` (to log in the first time, or to see
+  it), and detach with `Ctrl-b d`.
+
+Forward `CLAUDE_CODE_OAUTH_TOKEN`, `GITHUB_PERSONAL_ACCESS_TOKEN`,
+`SONARQUBE_TOKEN` and `SONARQUBE_URL` from the host environment if you use
+them.
 
 ### Commits
 
