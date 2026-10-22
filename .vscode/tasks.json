@@ -1,0 +1,13 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "claude login",
+      "type": "shell",
+      "command": "bash .devcontainer/claude-login.sh",
+      "presentation": { "reveal": "always", "panel": "dedicated", "close": true },
+      "runOptions": { "runOn": "folderOpen" },
+      "problemMatcher": []
+    }
+  ]
+}

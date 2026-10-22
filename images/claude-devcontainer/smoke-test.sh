@@ -5,7 +5,7 @@
 set -euo pipefail
 
 for bin in claude marksman jdtls java pyright-langserver \
-  typescript-language-server markdownlint prettier sonar docker gh tmux; do
+  typescript-language-server markdownlint prettier sonar docker gh; do
   path="$(command -v "${bin}")" || { echo "missing binary: ${bin}" >&2; exit 1; }
   printf '%-28s %s\n' "${bin}" "${path}"
 done

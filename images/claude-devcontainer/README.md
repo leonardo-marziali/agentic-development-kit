@@ -27,7 +27,6 @@ In another project, create `.devcontainer/devcontainer.json`:
   "name": "my-project",
   "image": "ghcr.io/leonardo-marziali/claude-devcontainer:latest",
   "remoteEnv": {
-    "CLAUDE_CODE_OAUTH_TOKEN": "${localEnv:CLAUDE_CODE_OAUTH_TOKEN}",
     "GITHUB_PERSONAL_ACCESS_TOKEN": "${localEnv:GITHUB_PERSONAL_ACCESS_TOKEN}",
     "SONARQUBE_TOKEN": "${localEnv:SONARQUBE_TOKEN}",
     "SONARQUBE_URL": "${localEnv:SONARQUBE_URL}"
@@ -40,18 +39,16 @@ the docker-outside-of-docker and GitHub CLI features, the Claude Code VS
 Code extension) in its metadata label, so nothing else is required. The
 `remoteEnv` entries are optional — forward only the ones you use:
 
-- `CLAUDE_CODE_OAUTH_TOKEN` — Claude Code login, created with
-  `claude setup-token` (or forward `ANTHROPIC_API_KEY` instead, or just run
-  `claude` in the container and log in interactively).
 - `GITHUB_PERSONAL_ACCESS_TOKEN` — the `github@claude-plugins-official`
   MCP server.
 - `SONARQUBE_TOKEN`, `SONARQUBE_URL` — the `sonarqube` plugin's MCP server.
 
-### Keeping the login and the session
+### Keeping the login
 
-Two more settings are worth adding — this repository's own
+Log in once with `claude auth login` in a container terminal. To keep the
+login, add a setting — this repository's own
 [`.devcontainer/devcontainer.json`](../../.devcontainer/devcontainer.json)
-uses both:
+uses it:
 
 - **Persist your login.** Rebuilding the container discards `~/.claude`,
   and with it the login. Mount a named volume there:
@@ -65,16 +62,6 @@ uses both:
   image's plugin set only reaches it through `claude plugin install` /
   `claude plugin update`, or by removing the volume
   (`docker volume rm claude-config`) and logging in again.
-
-- **Keep the process alive.** Closing the terminal or stopping `claude`
-  ends the session, and disconnecting VS Code may stop the container. Set
-  `"shutdownAction": "none"` and run server mode (`claude remote-control`)
-  inside `tmux`, which the image includes:
-
-  ```sh
-  tmux new-session -d -s claude 'claude remote-control'
-  tmux attach -t claude   # Ctrl-b d to detach again
-  ```
 
 ## What's inside
 
@@ -105,7 +92,6 @@ works inside the container. The list lives in
 | `pyright`                                  | `pyright-lsp`           |
 | `typescript`, `typescript-language-server` | `typescript-lsp`        |
 | Python 3 + PyYAML                          | `skill-creator` scripts |
-| `tmux`                                     | Claude Code server mode |
 
 The `docker` CLI talks to the host's Docker daemon (docker-outside-of-docker),
 which is what the SonarQube MCP server container runs on.

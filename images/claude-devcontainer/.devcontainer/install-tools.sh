@@ -13,7 +13,6 @@
 #   typescript-lsp              typescript-language-server + typescript
 #   skill-creator               python3 + PyYAML
 #   all plugins with hooks      node (base image)
-#   claude server mode          tmux (keeps `claude remote-control` alive)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -37,7 +36,7 @@ esac
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y --no-install-recommends \
-  ca-certificates curl git gnupg jq ripgrep tmux unzip \
+  ca-certificates curl git gnupg jq ripgrep unzip \
   openjdk-21-jdk-headless \
   python3 python3-pip python3-venv python3-yaml
 rm -rf /var/lib/apt/lists/*

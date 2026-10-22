@@ -1,31 +1,34 @@
 {
   "$schema": "https://raw.githubusercontent.com/devcontainers/spec/main/schemas/devContainer.schema.json",
   "name": "agentic-development-kit",
-  // The image this repository builds and publishes (images/claude-devcontainer).
-  // Its metadata label already carries remoteUser `node`, the
-  // docker-outside-of-docker and GitHub CLI features, and the Claude Code VS
-  // Code extension.
+  /*
+    The image this repository builds and publishes (images/claude-devcontainer).
+    Its metadata label already carries remoteUser `node`, the
+    docker-outside-of-docker and GitHub CLI features, and the Claude Code VS
+    Code extension.
+  */
   "image": "ghcr.io/leonardo-marziali/claude-devcontainer:latest",
-  // Persist the Claude Code login (and settings, plugins, history) across
-  // container rebuilds. On first use Docker seeds the empty volume with the
-  // image's ~/.claude, so the baked-in plugins carry over.
+  /*
+    Persist the Claude Code login (and settings, plugins, history) across
+    container rebuilds. On first use Docker seeds the empty volume with the
+    image's ~/.claude, so the baked-in plugins carry over.
+  */
   "mounts": ["source=claude-config,target=/home/node/.claude,type=volume"],
-  "remoteEnv": {
-    "CLAUDE_CODE_OAUTH_TOKEN": "${localEnv:CLAUDE_CODE_OAUTH_TOKEN}",
-    "GITHUB_PERSONAL_ACCESS_TOKEN": "${localEnv:GITHUB_PERSONAL_ACCESS_TOKEN}",
-    "SONARQUBE_TOKEN": "${localEnv:SONARQUBE_TOKEN}",
-    "SONARQUBE_URL": "${localEnv:SONARQUBE_URL}"
-  },
+  /*
+    Repository-scoped secrets: GITHUB_PERSONAL_ACCESS_TOKEN,
+    SONARQUBE_TOKEN and SONARQUBE_URL come from
+    the gitignored `.env` at the repo root (copy `.env.example`), not from the
+    host environment, so they cannot clash with other projects. The file is
+    created empty if missing so the container still starts without it.
+  */
+  "initializeCommand": "touch .env",
+  "runArgs": ["--pull=always", "--env-file", "${localWorkspaceFolder}/.env"],
   "containerEnv": {
     "COREPACK_ENABLE_DOWNLOAD_PROMPT": "0"
   },
-  // Keep the container running when VS Code disconnects, so the Claude Code
-  // server in tmux (below) outlives the editor window.
-  "shutdownAction": "none",
-  // pnpm comes from Corepack, at the version pinned in package.json's
-  // `packageManager`.
-  "postCreateCommand": "sudo corepack enable && pnpm install",
-  // Runs `claude remote-control` in a detached tmux session, so closing a
-  // terminal or the editor does not end it. Attach with `tmux attach -t claude`.
-  "postStartCommand": "bash .devcontainer/claude-server.sh"
+  /*
+    pnpm comes from Corepack, at the version pinned in package.json's
+   `packageManager`.
+  */
+  "postCreateCommand": "sudo corepack enable && pnpm install"
 }

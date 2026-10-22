@@ -157,16 +157,12 @@ Containers: Reopen in Container_ in VS Code, or
 - runs `pnpm install` (pnpm via Corepack) when the container is created;
 - mounts the `claude-config` volume on `/home/node/.claude`, so the Claude
   Code login survives rebuilds;
-- keeps the container running when VS Code disconnects
-  (`"shutdownAction": "none"`), and on every start runs
-  [`claude-server.sh`](.devcontainer/claude-server.sh), which starts
-  `claude remote-control` in a detached `tmux` session named `claude`.
-  Attach with `tmux attach -t claude` (to log in the first time, or to see
-  it), and detach with `Ctrl-b d`.
+- on folder open, runs the `claude login` VS Code task
+  ([`claude-login.sh`](.devcontainer/claude-login.sh)) in a terminal, which
+  starts `claude auth login` if you aren't logged in yet.
 
-Forward `CLAUDE_CODE_OAUTH_TOKEN`, `GITHUB_PERSONAL_ACCESS_TOKEN`,
-`SONARQUBE_TOKEN` and `SONARQUBE_URL` from the host environment if you use
-them.
+Forward `GITHUB_PERSONAL_ACCESS_TOKEN`, `SONARQUBE_TOKEN` and `SONARQUBE_URL`
+from the host environment if you use them.
 
 ### Commits
 
