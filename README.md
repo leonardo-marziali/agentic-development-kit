@@ -41,6 +41,7 @@ packages/                         Shared npm packages the plugins depend on
 plugins/                          Individual plugins hosted by this marketplace
   markdown/                       Authoring/linting skills, LSP config, and hooks
   prettier/                       Format-on-edit hook and a manual formatting skill
+  python/                         ruff + pyright hooks and skills, pyright LSP
   git/                            Safety-checked branching and Conventional Commits
   github/                         Pull request lifecycle: open, watch checks, merge
   java/                           Reserved for a future Java plugin
@@ -100,6 +101,10 @@ Additional tooling used but not installed as an npm dependency:
   language server used by the `markdown` plugin's editor integration.
   Install it separately, e.g. `brew install marksman`. Only needed if you
   use that plugin's LSP features.
+- [`ruff`](https://docs.astral.sh/ruff/) — needed only to run the `python`
+  plugin's test suite locally, e.g. `pipx install ruff` or
+  `uv tool install ruff`. Without it, the suite's ruff-dependent tests skip
+  (CI installs it and runs them).
 
 ### Shared packages and plugin dependencies
 
@@ -107,7 +112,7 @@ Additional tooling used but not installed as an npm dependency:
 installed plugins can depend on it. Today that is
 [`@leonardo-marziali/ad-lfl-kit`](packages/ad-lfl-kit) — the "track what this
 session touched, then check it before the session ends" loop that the
-`markdown` and `sonarqube` plugins both build on.
+`markdown`, `sonarqube` and `python` plugins build on.
 
 `packages/*` is the only pnpm workspace. **`plugins/*` is deliberately not a
 workspace member**, because a plugin has to resolve the same published
@@ -179,12 +184,14 @@ pnpm test
 cd packages/ad-lfl-kit && pnpm test
 cd plugins/markdown && pnpm test
 cd plugins/prettier && pnpm test
+cd plugins/python && pnpm test
 ```
 
 The root `pnpm test` covers this repo's own hooks in `.claude/hooks/`, the
 scripts in `scripts/`, and the shared packages in `packages/`. See a plugin's
 own README ([markdown](plugins/markdown/README.md),
-[prettier](plugins/prettier/README.md)) for what its suite covers.
+[prettier](plugins/prettier/README.md), [python](plugins/python/README.md))
+for what its suite covers.
 
 A plugin suite needs that plugin's dependencies present, so run `npm ci` in
 the plugin directory first if it declares any.
@@ -197,7 +204,7 @@ runs whichever suites are affected by a given pull request (via
 change) and uploads each one's coverage to
 [Codecov](https://codecov.io/gh/leonardo-marziali/agentic-development-kit)
 under its own flag (`repo-root`, `ad-lfl-kit`, `markdown-plugin`,
-`prettier-plugin`).
+`prettier-plugin`, `python-plugin`).
 [`codecov.yml`](codecov.yml) carries each flag's last-known coverage forward
 on commits that don't re-upload it, so the badge above — the combined
 coverage across every flag — stays accurate even though the suites upload

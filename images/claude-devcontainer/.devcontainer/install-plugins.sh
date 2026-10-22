@@ -6,7 +6,7 @@
 #
 # `claude plugin install` also runs `npm ci --ignore-scripts` for any plugin
 # that ships a package-lock.json (this repo's markdown, prettier and
-# sonarqube plugins), so node/npm must already be on PATH.
+# sonarqube and python plugins), so node/npm must already be on PATH.
 set -euo pipefail
 
 MARKETPLACES=(
@@ -20,9 +20,11 @@ MARKETPLACES=(
 
 PLUGINS=(
   # agentic-development-kit (github@ pulls in github@claude-plugins-official
-  # as a declared dependency)
+  # and python@ pulls in pyright-lsp@claude-plugins-official, as declared
+  # dependencies)
   "markdown@agentic-development-kit"
   "prettier@agentic-development-kit"
+  "python@agentic-development-kit"
   "sonarqube@agentic-development-kit"
   "git@agentic-development-kit"
   "github@agentic-development-kit"

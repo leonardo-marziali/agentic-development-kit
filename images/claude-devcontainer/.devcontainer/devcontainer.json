@@ -7,7 +7,8 @@
       "CLAUDE_VERSION": "stable",
       "JDTLS_VERSION": "latest",
       "MARKSMAN_VERSION": "latest",
-      "SONAR_CLI_VERSION": "latest"
+      "SONAR_CLI_VERSION": "latest",
+      "RUFF_VERSION": "latest"
     }
   },
   "features": {

@@ -5,7 +5,7 @@
 set -euo pipefail
 
 for bin in claude marksman jdtls java pyright-langserver \
-  typescript-language-server markdownlint prettier sonar docker gh; do
+  typescript-language-server markdownlint prettier ruff pyright sonar docker gh; do
   path="$(command -v "${bin}")" || { echo "missing binary: ${bin}" >&2; exit 1; }
   printf '%-28s %s\n' "${bin}" "${path}"
 done
@@ -17,6 +17,7 @@ python3 -c 'import yaml'
 expected=(
   markdown@agentic-development-kit
   prettier@agentic-development-kit
+  python@agentic-development-kit
   sonarqube@agentic-development-kit
   git@agentic-development-kit
   github@agentic-development-kit

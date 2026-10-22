@@ -6,6 +6,7 @@
 #   plugin                      needs
 #   markdown                    marksman (LSP), markdownlint-cli (via npx)
 #   prettier                    prettier (via npx)
+#   python                      ruff, pyright (pyright-lsp below)
 #   sonarqube                   sonar CLI, docker CLI (devcontainer feature)
 #   github                      gh CLI (devcontainer feature)
 #   jdtls-lsp                   jdtls + JDK 21
@@ -21,6 +22,7 @@ readonly LATEST="latest"
 JDTLS_VERSION="${JDTLS_VERSION:-${LATEST}}"
 MARKSMAN_VERSION="${MARKSMAN_VERSION:-${LATEST}}"
 SONAR_CLI_VERSION="${SONAR_CLI_VERSION:-${LATEST}}"
+RUFF_VERSION="${RUFF_VERSION:-${LATEST}}"
 
 # Every download is HTTPS-only, redirects included.
 fetch() {
@@ -51,6 +53,18 @@ npm install -g --ignore-scripts \
   typescript \
   typescript-language-server
 npm cache clean --force
+
+# ruff (python plugin), from PyPI into its own venv: Debian marks the system
+# interpreter externally managed. Wheels only, and pip checks each download
+# against the sha256 PyPI's index publishes for it.
+ruff_spec="ruff"
+if [[ "${RUFF_VERSION}" != "${LATEST}" ]]; then
+  ruff_spec="ruff==${RUFF_VERSION}"
+fi
+python3 -m venv /opt/ruff
+/opt/ruff/bin/pip install --no-cache-dir --only-binary=:all: "${ruff_spec}"
+ln -sf /opt/ruff/bin/ruff /usr/local/bin/ruff
+ruff --version
 
 # marksman (markdown LSP)
 if [[ "${MARKSMAN_VERSION}" == "${LATEST}" ]]; then

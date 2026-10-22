@@ -1,0 +1,23 @@
+{
+  "$schema": "https://www.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "python",
+  "version": "0.1.0",
+  "description": "Python linting and formatting with ruff and type checking with pyright, plus the pyright language server via pyright-lsp. Requires ruff and pyright to be installed (or reachable via uvx/npx).",
+  "author": {
+    "name": "Leonardo Marziali",
+    "url": "https://github.com/leonardo-marziali"
+  },
+  "homepage": "https://github.com/leonardo-marziali/agentic-development-kit",
+  "repository": "https://github.com/leonardo-marziali/agentic-development-kit.git",
+  "license": "Apache-2.0",
+  "keywords": ["python", "ruff", "pyright", "linting", "formatting", "type-checking"],
+  "dependencies": ["pyright-lsp@claude-plugins-official"],
+  "userConfig": {
+    "auto_suppress": {
+      "type": "boolean",
+      "title": "Auto-suppress unfixable findings",
+      "description": "When the fix loop hits its attempt cap, write inline `# noqa` / `# pyright: ignore[...]` comments into your files for whatever is still failing. Off by default: the remaining findings are only reported.",
+      "default": false
+    }
+  }
+}

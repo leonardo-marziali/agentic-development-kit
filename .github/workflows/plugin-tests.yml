@@ -34,6 +34,8 @@ jobs:
               - 'plugins/markdown/**'
             prettier:
               - 'plugins/prettier/**'
+            python:
+              - 'plugins/python/**'
             sonarqube:
               - 'plugins/sonarqube/**'
 
@@ -45,6 +47,7 @@ jobs:
           AD_LFL_KIT_CHANGED: ${{ steps.filter.outputs.ad-lfl-kit }}
           MARKDOWN_CHANGED: ${{ steps.filter.outputs.markdown }}
           PRETTIER_CHANGED: ${{ steps.filter.outputs.prettier }}
+          PYTHON_CHANGED: ${{ steps.filter.outputs.python }}
           SONARQUBE_CHANGED: ${{ steps.filter.outputs.sonarqube }}
         run: |
           entries='[]'
@@ -65,6 +68,9 @@ jobs:
           fi
           if [ "$WORKFLOW_CHANGED" = "true" ] || [ "$PRETTIER_CHANGED" = "true" ]; then
             add "prettier" "plugins/prettier" "prettier-plugin"
+          fi
+          if [ "$WORKFLOW_CHANGED" = "true" ] || [ "$PYTHON_CHANGED" = "true" ]; then
+            add "python" "plugins/python" "python-plugin"
           fi
           if [ "$WORKFLOW_CHANGED" = "true" ] || [ "$SONARQUBE_CHANGED" = "true" ]; then
             add "sonarqube" "plugins/sonarqube" "sonarqube-plugin"
@@ -104,6 +110,14 @@ jobs:
         if: hashFiles(format('{0}/package-lock.json', matrix.suite.dir)) != ''
         working-directory: ${{ matrix.suite.dir }}
         run: npm ci --ignore-scripts
+
+      # The python plugin's hooks shell out to ruff, which isn't on npm, so
+      # its suite needs a real one (the suite fails rather than skips when
+      # CI is set). pipx ships on GitHub's Ubuntu runners; pyright comes
+      # through the hooks' own `npx -y pyright` fallback.
+      - name: Install ruff
+        if: matrix.suite.name == 'python'
+        run: pipx install ruff
 
       - name: Run tests with coverage
         working-directory: ${{ matrix.suite.dir }}
