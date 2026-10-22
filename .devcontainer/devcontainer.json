@@ -28,7 +28,10 @@
   },
   /*
     pnpm comes from Corepack, at the version pinned in package.json's
-   `packageManager`.
+   `packageManager`. Plugins are not pnpm workspace members, and Claude Code
+    runs them in place from this checkout (the repo is a directory
+    marketplace), so install each one's dependencies from its own npm
+    lockfile, as Claude Code does when it caches a plugin.
   */
-  "postCreateCommand": "sudo corepack enable && pnpm install"
+  "postCreateCommand": "sudo corepack enable && pnpm install && for d in plugins/*/; do [ -f \"$d/package-lock.json\" ] && (cd \"$d\" && npm ci --ignore-scripts); done; true"
 }
