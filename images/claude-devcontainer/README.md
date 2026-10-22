@@ -114,6 +114,10 @@ each downloaded tool (all default to the newest release):
 - `MARKSMAN_VERSION` — a marksman release tag
 - `SONAR_CLI_VERSION` — a SonarQube CLI version such as `1.10.0.16040`
 - `RUFF_VERSION` — a ruff release on PyPI such as `0.17.1`
+- `MARKETPLACE_REF` — the git ref of this repository's marketplace to
+  install plugins from (empty: the default branch). Pull request builds
+  set it to the PR's branch, so a newly added plugin can be installed
+  before it is merged.
 
 Every download is HTTPS-only and verified before it is installed or run:
 Claude Code against the sha256 in its release manifest, ruff against the

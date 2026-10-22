@@ -8,7 +8,8 @@
       "JDTLS_VERSION": "latest",
       "MARKSMAN_VERSION": "latest",
       "SONAR_CLI_VERSION": "latest",
-      "RUFF_VERSION": "latest"
+      "RUFF_VERSION": "latest",
+      "MARKETPLACE_REF": "${localEnv:MARKETPLACE_REF}"
     }
   },
   "features": {

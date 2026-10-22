@@ -15,6 +15,7 @@ ARG JDTLS_VERSION=latest
 ARG MARKSMAN_VERSION=latest
 ARG SONAR_CLI_VERSION=latest
 ARG RUFF_VERSION=latest
+ARG MARKETPLACE_REF=
 ARG USERNAME=node
 
 # pipefail so a failure anywhere in a pipeline fails the build.
@@ -44,4 +45,4 @@ RUN --mount=type=bind,target=/tmp/devcontainer \
     CLAUDE_VERSION="${CLAUDE_VERSION}" bash /tmp/devcontainer/install-claude.sh \
     && claude --version \
     && sonar --version \
-    && bash /tmp/devcontainer/install-plugins.sh
+    && MARKETPLACE_REF="${MARKETPLACE_REF}" bash /tmp/devcontainer/install-plugins.sh
