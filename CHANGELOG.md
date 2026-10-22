@@ -1,3 +1,10 @@
+# [1.9.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v1.8.1...v1.9.0) (2026-10-22)
+
+
+### Features
+
+* **python:** add python plugin with ruff and pyright checks ([#23](https://github.com/leonardo-marziali/agentic-development-kit/issues/23)) ([7cae994](https://github.com/leonardo-marziali/agentic-development-kit/commit/7cae994bec8eb6cf7e5a9f9bb2ad53484844b95e))
+
 ## [1.8.1](https://github.com/leonardo-marziali/agentic-development-kit/compare/v1.8.0...v1.8.1) (2026-10-22)
 
 
