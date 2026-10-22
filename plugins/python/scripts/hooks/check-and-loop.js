@@ -28,7 +28,6 @@
  * runs per group too, so each group uses the ruff from its own `.venv`.
  */
 
-const fs = require('node:fs');
 const path = require('node:path');
 const {
   readHookInput,
@@ -186,22 +185,27 @@ function giveUp(groups, { outcome, maxAttempts }) {
   );
 }
 
+const GUIDANCE = [
+  'Ruff auto-fixes and formatting were already applied. Fix the remaining ones directly,',
+  "respecting the project's ruff config (pyproject.toml / ruff.toml) and pyright config",
+  '(pyrightconfig.json / [tool.pyright]). If fixing one properly would mean writing',
+  'incorrect code (e.g. a type error caused by an untyped third-party library), suppress',
+  'that specific finding inline instead of forcing a fix: `# noqa: <CODE>` for ruff,',
+  '`# pyright: ignore[<rule>]` for pyright.',
+].join(' ');
+
+// What happens once the attempts run out, per the auto_suppress option.
+function capNotice(maxAttempts) {
+  return autoSuppressEnabled()
+    ? `Whatever is still unresolved after attempt ${maxAttempts} gets suppressed that way automatically.`
+    : `After attempt ${maxAttempts} the loop stops and reports whatever is left.`;
+}
+
 function buildMessage({ attempt, maxAttempts, outcome }) {
+  const heading = `ruff/pyright found unresolved issues in Python files edited this session (attempt ${attempt}/${maxAttempts}):`;
   return {
     stopReason: 'Python files touched in this session still have ruff or pyright findings.',
-    systemMessage:
-      'ruff/pyright found unresolved issues in Python files edited this session ' +
-      `(attempt ${attempt}/${maxAttempts}):\n\n${outcome.report}\n\n` +
-      'Ruff auto-fixes and formatting were already applied. Fix the remaining ones ' +
-      "directly, respecting the project's ruff config (pyproject.toml / ruff.toml) and " +
-      'pyright config (pyrightconfig.json / [tool.pyright]). If fixing one properly ' +
-      'would mean writing incorrect code (e.g. a type error caused by an untyped ' +
-      'third-party library), suppress that specific finding inline instead of forcing ' +
-      'a fix: `# noqa: <CODE>` for ruff, `# pyright: ignore[<rule>]` for pyright. ' +
-      (autoSuppressEnabled()
-        ? `Whatever's still unresolved after attempt ${maxAttempts} will be auto-suppressed ` +
-          'that way, then finish.'
-        : `After attempt ${maxAttempts} the loop stops and reports whatever is left.`),
+    systemMessage: [heading, outcome.report, `${GUIDANCE} ${capNotice(maxAttempts)}`].join('\n\n'),
   };
 }
 
@@ -209,11 +213,9 @@ function main() {
   const input = readHookInput();
   if (!input) return;
 
+  // A session that never touched a Python file has no list: no files, no-op.
   const dir = stateDir({ sessionId: input.session_id, namespace: STATE_NAMESPACE });
-  const listFile = path.join(dir, TOUCHED_FILES);
-  if (!fs.existsSync(listFile)) return;
-
-  const files = readTrackedFiles(listFile).filter(isPythonFile);
+  const files = readTrackedFiles(path.join(dir, TOUCHED_FILES)).filter(isPythonFile);
   const groups = groupByConfigDir(files);
 
   const result = runFixLoop({

@@ -55,6 +55,19 @@ function runHook(scriptName, stdinObj, { env = {} } = {}) {
 }
 
 /*
+Fires the PostToolUse tracking hook for one tool call, the way Claude Code
+does after an Edit/Write. `ctx` is a test's { scratch, pluginData,
+sessionId }.
+*/
+function track(file, { scratch, pluginData, sessionId }, toolName = 'Write') {
+  return runHook(
+    'track-touched.js',
+    { tool_name: toolName, tool_input: { file_path: file }, session_id: sessionId, cwd: scratch },
+    { env: { CLAUDE_PLUGIN_DATA: pluginData } },
+  );
+}
+
+/*
 The integration suites need a real ruff. CI installs one, so there a
 missing ruff must fail loudly; on a dev machine without it, the
 ruff-dependent tests skip instead of failing for an environmental reason.
@@ -67,6 +80,7 @@ module.exports = {
   rmScratchDir,
   uniqueSessionId,
   runHook,
+  track,
   HOOKS_DIR,
   SKIP_WITHOUT_RUFF,
 };

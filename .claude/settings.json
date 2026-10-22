@@ -45,7 +45,8 @@
     "markdown@agentic-development-kit": true,
     "prettier@agentic-development-kit": true,
     "python@agentic-development-kit": true,
-    "github@claude-plugins-official": true
+    "github@claude-plugins-official": true,
+    "pyright-lsp@claude-plugins-official": true
   },
   "extraKnownMarketplaces": {
     "agentic-development-kit": {

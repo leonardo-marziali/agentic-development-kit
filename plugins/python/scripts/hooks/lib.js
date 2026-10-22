@@ -44,17 +44,24 @@ function venvBinDir(venv) {
   return path.join(venv, process.platform === 'win32' ? 'Scripts' : 'bin');
 }
 
-// Walks up from `fromDir` to the nearest `.venv` and returns its bin dir.
-function findVenvBinDir(fromDir) {
-  let dir = path.resolve(fromDir);
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
-    const bin = venvBinDir(path.join(dir, '.venv'));
-    if (fs.existsSync(bin)) return bin;
-    const parent = path.dirname(dir);
-    if (parent === dir) return null;
-    dir = parent;
+/*
+Visits `fromDir` and each of its ancestors up to the filesystem root, and
+returns the first non-null result of `pick(dir)`, or null.
+*/
+function findUp(fromDir, pick) {
+  for (let dir = path.resolve(fromDir); ; dir = path.dirname(dir)) {
+    const found = pick(dir);
+    if (found !== null) return found;
+    if (path.dirname(dir) === dir) return null;
   }
+}
+
+// The bin dir of the nearest `.venv` at or above `fromDir`.
+function findVenvBinDir(fromDir) {
+  return findUp(fromDir, (dir) => {
+    const bin = venvBinDir(path.join(dir, '.venv'));
+    return fs.existsSync(bin) ? bin : null;
+  });
 }
 
 function executableNames(name) {
@@ -129,28 +136,14 @@ in a monorepo), files are grouped by their nearest config directory and
 pyright runs once per group with `-p` pointed there.
 */
 function resolveConfigDir(filePath) {
-  let dir = path.dirname(path.resolve(filePath));
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
-    if (CONFIG_NAMES.some((name) => fs.existsSync(path.join(dir, name)))) {
-      return dir;
-    }
-    const parent = path.dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
+  const fileDir = path.dirname(path.resolve(filePath));
+  const hasConfig = (dir) => CONFIG_NAMES.some((name) => fs.existsSync(path.join(dir, name)));
   // No config anywhere above the file: use the file's own directory.
-  return path.dirname(path.resolve(filePath));
+  return findUp(fileDir, (dir) => (hasConfig(dir) ? dir : null)) ?? fileDir;
 }
 
 function groupByConfigDir(files) {
-  const groups = new Map();
-  for (const file of files) {
-    const dir = resolveConfigDir(file);
-    if (!groups.has(dir)) groups.set(dir, []);
-    groups.get(dir).push(file);
-  }
-  return groups;
+  return Map.groupBy(files, resolveConfigDir);
 }
 
 /*
@@ -163,7 +156,8 @@ function pythonPathFor(configDir) {
   for (const name of CONFIG_NAMES) {
     const configFile = path.join(configDir, name);
     if (!fs.existsSync(configFile)) continue;
-    if (/^\s*"?venv"?\s*[:=]/m.test(fs.readFileSync(configFile, 'utf8'))) return null;
+    // A `venv` key at the start of a line: TOML `venv =` or JSON `"venv":`.
+    if (/^[ \t]*"?venv"?[ \t]*[:=]/m.test(fs.readFileSync(configFile, 'utf8'))) return null;
   }
   const python = path.join(
     venvBinDir(path.join(configDir, '.venv')),
@@ -214,7 +208,7 @@ function formatPyrightReport(diags) {
   return diags
     .map((diag) => {
       const { line, character } = diag.range.start;
-      const message = diag.message.replace(/\n/g, '\n    ');
+      const message = diag.message.replaceAll('\n', '\n    ');
       const rule = diag.rule ? ` (${diag.rule})` : '';
       return `${diag.file}:${line + 1}:${character + 1} - error: ${message}${rule}`;
     })

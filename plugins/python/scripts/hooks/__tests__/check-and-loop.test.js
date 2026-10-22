@@ -18,6 +18,7 @@ const {
   rmScratchDir,
   uniqueSessionId,
   runHook,
+  track,
   SKIP_WITHOUT_RUFF,
 } = require('./helpers');
 
@@ -42,19 +43,6 @@ function writePy(scratch, name, content) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, content);
   return file;
-}
-
-function track(file, { scratch, pluginData, sessionId }) {
-  return runHook(
-    'track-touched.js',
-    {
-      tool_name: 'Write',
-      tool_input: { file_path: file },
-      session_id: sessionId,
-      cwd: scratch,
-    },
-    { env: { CLAUDE_PLUGIN_DATA: pluginData } },
-  );
 }
 
 function stop(

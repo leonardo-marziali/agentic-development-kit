@@ -4,26 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { mkScratchDir, rmScratchDir, uniqueSessionId, runHook } = require('./helpers');
-
-function readTouched(pluginData, sessionId) {
-  const listFile = path.join(pluginData, 'python-session-scope', sessionId, 'touched-files.txt');
-  if (!fs.existsSync(listFile)) return [];
-  return fs.readFileSync(listFile, 'utf8').split('\n').filter(Boolean);
-}
-
-function track(file, sessionId, scratch, pluginData, toolName = 'Write') {
-  return runHook(
-    'track-touched.js',
-    {
-      tool_name: toolName,
-      tool_input: { file_path: file },
-      session_id: sessionId,
-      cwd: scratch,
-    },
-    { env: { CLAUDE_PLUGIN_DATA: pluginData } },
-  );
-}
+const { mkScratchDir, rmScratchDir, uniqueSessionId, track } = require('./helpers');
 
 function setup(t) {
   const scratch = mkScratchDir();
@@ -31,85 +12,72 @@ function setup(t) {
   return { scratch, pluginData: path.join(scratch, 'plugin-data'), sessionId: uniqueSessionId() };
 }
 
-test('tracks a real .py file on Write', (t) => {
-  const { scratch, pluginData, sessionId } = setup(t);
-  const file = path.join(scratch, 'mod.py');
+function touched({ pluginData, sessionId }) {
+  const listFile = path.join(pluginData, 'python-session-scope', sessionId, 'touched-files.txt');
+  return fs.existsSync(listFile)
+    ? fs.readFileSync(listFile, 'utf8').split('\n').filter(Boolean)
+    : [];
+}
+
+// Creates `relPath` under the scratch dir and returns its absolute path.
+function create({ scratch }, relPath) {
+  const file = path.join(scratch, relPath);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, 'x = 1\n');
+  return file;
+}
 
-  const res = track(file, sessionId, scratch, pluginData, 'Write');
+for (const { name, file, tool } of [
+  { name: 'a .py file on Write', file: 'mod.py', tool: 'Write' },
+  { name: 'a .pyi stub on Edit', file: 'mod.pyi', tool: 'Edit' },
+]) {
+  test(`tracks ${name}`, (t) => {
+    const ctx = setup(t);
+    const abs = create(ctx, file);
 
-  assert.equal(res.status, 0);
-  assert.deepEqual(readTouched(pluginData, sessionId), [file]);
-});
+    const res = track(abs, ctx, tool);
 
-test('tracks a real .pyi stub on Edit', (t) => {
-  const { scratch, pluginData, sessionId } = setup(t);
-  const file = path.join(scratch, 'mod.pyi');
-  fs.writeFileSync(file, 'x: int\n');
-
-  const res = track(file, sessionId, scratch, pluginData, 'Edit');
-
-  assert.equal(res.status, 0);
-  assert.deepEqual(readTouched(pluginData, sessionId), [file]);
-});
+    assert.equal(res.status, 0);
+    assert.deepEqual(touched(ctx), [abs]);
+  });
+}
 
 test('resolves a relative file_path against the session cwd', (t) => {
-  const { scratch, pluginData, sessionId } = setup(t);
-  const file = path.join(scratch, 'mod.py');
-  fs.writeFileSync(file, 'x = 1\n');
+  const ctx = setup(t);
+  const abs = create(ctx, 'mod.py');
 
-  track('mod.py', sessionId, scratch, pluginData);
+  track('mod.py', ctx);
 
-  assert.deepEqual(readTouched(pluginData, sessionId), [file]);
-});
-
-test('ignores non-Python files', (t) => {
-  const { scratch, pluginData, sessionId } = setup(t);
-  const file = path.join(scratch, 'notes.txt');
-  fs.writeFileSync(file, 'hello\n');
-
-  track(file, sessionId, scratch, pluginData);
-
-  assert.deepEqual(readTouched(pluginData, sessionId), []);
-});
-
-test('ignores Python files inside a virtualenv', (t) => {
-  const { scratch, pluginData, sessionId } = setup(t);
-  const dir = path.join(scratch, '.venv', 'lib', 'site-packages', 'pkg');
-  fs.mkdirSync(dir, { recursive: true });
-  const file = path.join(dir, 'mod.py');
-  fs.writeFileSync(file, 'x = 1\n');
-
-  track(file, sessionId, scratch, pluginData);
-
-  assert.deepEqual(readTouched(pluginData, sessionId), []);
-});
-
-test('ignores tool names other than Edit/Write', (t) => {
-  const { scratch, pluginData, sessionId } = setup(t);
-  const file = path.join(scratch, 'mod.py');
-  fs.writeFileSync(file, 'x = 1\n');
-
-  track(file, sessionId, scratch, pluginData, 'Read');
-
-  assert.deepEqual(readTouched(pluginData, sessionId), []);
-});
-
-test("ignores a file_path that doesn't exist on disk", (t) => {
-  const { scratch, pluginData, sessionId } = setup(t);
-
-  track(path.join(scratch, 'missing.py'), sessionId, scratch, pluginData);
-
-  assert.deepEqual(readTouched(pluginData, sessionId), []);
+  assert.deepEqual(touched(ctx), [abs]);
 });
 
 test('dedups repeated writes to the same file', (t) => {
-  const { scratch, pluginData, sessionId } = setup(t);
-  const file = path.join(scratch, 'mod.py');
-  fs.writeFileSync(file, 'x = 1\n');
+  const ctx = setup(t);
+  const abs = create(ctx, 'mod.py');
 
-  track(file, sessionId, scratch, pluginData);
-  track(file, sessionId, scratch, pluginData);
+  track(abs, ctx);
+  track(abs, ctx);
 
-  assert.deepEqual(readTouched(pluginData, sessionId), [file]);
+  assert.deepEqual(touched(ctx), [abs]);
 });
+
+/*
+Each case is a tool call the hook must not record: [description, file to
+create (null: leave it missing), path passed to the hook, tool name].
+*/
+for (const [name, created, passed, tool] of [
+  ['non-Python files', 'notes.txt', 'notes.txt', 'Write'],
+  ['Python files inside a virtualenv', '.venv/lib/site-packages/pkg/mod.py', null, 'Write'],
+  ['tool names other than Edit/Write', 'mod.py', 'mod.py', 'Read'],
+  ["a file_path that doesn't exist on disk", null, 'missing.py', 'Write'],
+]) {
+  test(`ignores ${name}`, (t) => {
+    const ctx = setup(t);
+    const abs = created ? create(ctx, created) : null;
+
+    const res = track(passed ? path.join(ctx.scratch, passed) : abs, ctx, tool);
+
+    assert.equal(res.status, 0);
+    assert.deepEqual(touched(ctx), []);
+  });
+}
