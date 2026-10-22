@@ -6,6 +6,10 @@
   // docker-outside-of-docker and GitHub CLI features, and the Claude Code VS
   // Code extension.
   "image": "ghcr.io/leonardo-marziali/claude-devcontainer:latest",
+  // Docker reuses a local copy of `latest` without checking the registry, so
+  // a container created after an image update would otherwise still run the
+  // old image (for example one without tmux, which claude-server.sh needs).
+  "runArgs": ["--pull=always"],
   // Persist the Claude Code login (and settings, plugins, history) across
   // container rebuilds. On first use Docker seeds the empty volume with the
   // image's ~/.claude, so the baked-in plugins carry over.
