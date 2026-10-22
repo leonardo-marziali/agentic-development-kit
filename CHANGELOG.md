@@ -1,3 +1,10 @@
+## [1.8.1](https://github.com/leonardo-marziali/agentic-development-kit/compare/v1.8.0...v1.8.1) (2026-10-22)
+
+
+### Bug Fixes
+
+* **devcontainer:** log in via terminal task instead of remote-control session ([#22](https://github.com/leonardo-marziali/agentic-development-kit/issues/22)) ([dd86629](https://github.com/leonardo-marziali/agentic-development-kit/commit/dd8662983dad86cce6e92a450b248ec3018d3482))
+
 # [1.8.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v1.7.0...v1.8.0) (2026-10-21)
 
 
