@@ -1,3 +1,10 @@
+## [1.9.1](https://github.com/leonardo-marziali/agentic-development-kit/compare/v1.9.0...v1.9.1) (2026-10-22)
+
+
+### Bug Fixes
+
+* **devcontainer:** install plugin dependencies from their npm lockfiles ([#25](https://github.com/leonardo-marziali/agentic-development-kit/issues/25)) ([b328f15](https://github.com/leonardo-marziali/agentic-development-kit/commit/b328f15f83970de603a2c0956bfeaf7ded6f1530))
+
 # [1.9.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v1.8.1...v1.9.0) (2026-10-22)
 
 
