@@ -28,7 +28,10 @@
   },
   /*
     pnpm comes from Corepack, at the version pinned in package.json's
-   `packageManager`.
+   `packageManager`. Plugins are not pnpm workspace members, so their hooks
+    load @leonardo-marziali/ad-lfl-kit from each plugin's own node_modules:
+    install those from their npm lockfiles, as Claude Code does when it caches
+    a plugin.
   */
-  "postCreateCommand": "sudo corepack enable && pnpm install"
+  "postCreateCommand": "sudo corepack enable && pnpm install && for d in plugins/*/; do [ -f \"$d/package-lock.json\" ] && (cd \"$d\" && npm ci --ignore-scripts); done; true"
 }
