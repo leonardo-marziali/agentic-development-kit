@@ -6,13 +6,19 @@
 #
 # `claude plugin install` also runs `npm ci --ignore-scripts` for any plugin
 # that ships a package-lock.json (this repo's markdown, prettier and
-# sonarqube plugins), so node/npm must already be on PATH.
+# sonarqube and python plugins), so node/npm must already be on PATH.
 set -euo pipefail
+
+# Git ref of this repository's marketplace to install from. Empty (the
+# default, and what every published image uses) means the default branch.
+# Pull request builds set it to the PR's branch, so a plugin the PR adds is
+# installable before it reaches main.
+MARKETPLACE_REF="${MARKETPLACE_REF:-}"
 
 MARKETPLACES=(
   # This repository. Installed from GitHub rather than the build context so
   # `claude plugin update` keeps working in containers built from the image.
-  "leonardo-marziali/agentic-development-kit"
+  "leonardo-marziali/agentic-development-kit${MARKETPLACE_REF:+@${MARKETPLACE_REF}}"
   "anthropics/claude-plugins-official"
   "obra/superpowers-marketplace"
   "upstash/context7"
@@ -20,9 +26,11 @@ MARKETPLACES=(
 
 PLUGINS=(
   # agentic-development-kit (github@ pulls in github@claude-plugins-official
-  # as a declared dependency)
+  # and python@ pulls in pyright-lsp@claude-plugins-official, as declared
+  # dependencies)
   "markdown@agentic-development-kit"
   "prettier@agentic-development-kit"
+  "python@agentic-development-kit"
   "sonarqube@agentic-development-kit"
   "git@agentic-development-kit"
   "github@agentic-development-kit"

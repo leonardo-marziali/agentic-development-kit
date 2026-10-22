@@ -50,6 +50,12 @@ jobs:
       # needs `"image": ...` to get docker-outside-of-docker, gh and
       # remoteUser too.
       - uses: devcontainers/ci@513af61f4de4f75d37e4438f184ba4358f0fc1ca # v0.3.1900000450
+        # Pull requests install this repo's marketplace from their own branch
+        # (devcontainer.json passes it through as a build arg), so a plugin
+        # the PR adds is installable before it reaches main. Published images
+        # leave it empty and track the default branch.
+        env:
+          MARKETPLACE_REF: ${{ github.event_name == 'pull_request' && github.head_ref || '' }}
         with:
           subFolder: images/claude-devcontainer
           imageName: ${{ env.IMAGE_NAME }}

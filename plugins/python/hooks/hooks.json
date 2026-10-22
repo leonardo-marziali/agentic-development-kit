@@ -1,0 +1,46 @@
+{
+  "description": "Formats Python files with ruff as Claude edits them, tracks the ones this session touches, then lints them with ruff and type-checks them with pyright — looping on what's left — when the session tries to stop.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/format.js\"",
+            "async": false
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/track-touched.js\"",
+            "async": false
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/check-and-loop.js\"",
+            "async": false,
+            "timeout": 180
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/check-and-loop.js\"",
+            "async": false,
+            "timeout": 180
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -14,6 +14,8 @@ ARG CLAUDE_VERSION=stable
 ARG JDTLS_VERSION=latest
 ARG MARKSMAN_VERSION=latest
 ARG SONAR_CLI_VERSION=latest
+ARG RUFF_VERSION=latest
+ARG MARKETPLACE_REF=
 ARG USERNAME=node
 
 # pipefail so a failure anywhere in a pipeline fails the build.
@@ -30,6 +32,7 @@ RUN --mount=type=bind,target=/tmp/devcontainer \
     JDTLS_VERSION="${JDTLS_VERSION}" \
     MARKSMAN_VERSION="${MARKSMAN_VERSION}" \
     SONAR_CLI_VERSION="${SONAR_CLI_VERSION}" \
+    RUFF_VERSION="${RUFF_VERSION}" \
       bash /tmp/devcontainer/install-tools.sh \
     && ln -sfn "$(dirname "$(dirname "$(readlink -f "$(command -v javac)")")")" /usr/lib/jvm/default-jdk
 
@@ -42,4 +45,4 @@ RUN --mount=type=bind,target=/tmp/devcontainer \
     CLAUDE_VERSION="${CLAUDE_VERSION}" bash /tmp/devcontainer/install-claude.sh \
     && claude --version \
     && sonar --version \
-    && bash /tmp/devcontainer/install-plugins.sh
+    && MARKETPLACE_REF="${MARKETPLACE_REF}" bash /tmp/devcontainer/install-plugins.sh
