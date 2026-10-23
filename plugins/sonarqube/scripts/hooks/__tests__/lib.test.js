@@ -8,8 +8,11 @@ const { spawnSync } = require('node:child_process');
 
 const {
   isAnalyzable,
-  analysisDepth,
-  issuesBlockSession,
+  blockingPolicy,
+  blocks,
+  isSecret,
+  perEditFeedbackEnabled,
+  parseAnalysis,
   gitIgnoreStatus,
   FALLBACK_EXCLUDED_DIRS,
 } = require('../lib');
@@ -122,41 +125,57 @@ test('the fallback does not exclude a path that merely contains the name', (t) =
   assert.equal(isAnalyzable(writeFile(dir, 'src/build-config.ts')), true);
 });
 
-test('analysisDepth reads the plugin option and normalises case', (t) => {
+function withOption(t, name, value) {
+  const key = `CLAUDE_PLUGIN_OPTION_${name}`;
+  const saved = process.env[key];
   t.after(() => {
-    delete process.env.CLAUDE_PLUGIN_OPTION_ANALYSIS_DEPTH;
+    if (saved === undefined) delete process.env[key];
+    else process.env[key] = saved;
   });
+  if (value === undefined) delete process.env[key];
+  else process.env[key] = value;
+}
 
-  process.env.CLAUDE_PLUGIN_OPTION_ANALYSIS_DEPTH = 'deep';
-  assert.equal(analysisDepth(), 'DEEP');
-
-  process.env.CLAUDE_PLUGIN_OPTION_ANALYSIS_DEPTH = ' STANDARD ';
-  assert.equal(analysisDepth(), 'STANDARD');
+test('blockingPolicy defaults to HIGH and reads the plugin option case-insensitively', (t) => {
+  withOption(t, 'MIN_BLOCKING_SEVERITY', undefined);
+  assert.deepEqual(blockingPolicy(), { key: 'high', threshold: 'HIGH' });
+  process.env.CLAUDE_PLUGIN_OPTION_MIN_BLOCKING_SEVERITY = 'Blocker';
+  assert.deepEqual(blockingPolicy(), { key: 'blocker', threshold: 'BLOCKER' });
+  process.env.CLAUDE_PLUGIN_OPTION_MIN_BLOCKING_SEVERITY = 'secrets-only';
+  assert.equal(blockingPolicy().threshold, null);
+  process.env.CLAUDE_PLUGIN_OPTION_MIN_BLOCKING_SEVERITY = 'everything';
+  assert.equal(blockingPolicy().key, 'high', 'an unknown value falls back to the default');
 });
 
-test('analysisDepth falls back to the CLI default when unset or unrecognised', (t) => {
-  t.after(() => {
-    delete process.env.CLAUDE_PLUGIN_OPTION_ANALYSIS_DEPTH;
-  });
-
-  delete process.env.CLAUDE_PLUGIN_OPTION_ANALYSIS_DEPTH;
-  assert.equal(analysisDepth(), null);
-
-  process.env.CLAUDE_PLUGIN_OPTION_ANALYSIS_DEPTH = 'EXHAUSTIVE';
-  assert.equal(analysisDepth(), null);
+test('blocks: secrets always; other issues by rank against the threshold', () => {
+  const high = { key: 'high', threshold: 'HIGH' };
+  const secretsOnly = { key: 'secrets-only', threshold: null };
+  assert.equal(isSecret({ rule: 'secrets:S6290' }), true);
+  assert.equal(blocks({ rule: 'secrets:S6290', severity: 'INFO' }, secretsOnly), true);
+  assert.equal(blocks({ rule: 'python:S5754', severity: 'CRITICAL' }, high), true);
+  assert.equal(blocks({ rule: 'python:S5754', severity: 'HIGH' }, high), true);
+  assert.equal(blocks({ rule: 'javascript:S1854', severity: 'MEDIUM' }, high), false);
+  assert.equal(blocks({ rule: 'python:S5754', severity: 'BLOCKER' }, secretsOnly), false);
 });
 
-test('issuesBlockSession defaults to on and only an explicit "secrets" turns it off', (t) => {
-  t.after(() => {
-    delete process.env.CLAUDE_PLUGIN_OPTION_BLOCK_ON;
+test('perEditFeedbackEnabled is on unless explicitly turned off', (t) => {
+  withOption(t, 'PER_EDIT_FEEDBACK', undefined);
+  assert.equal(perEditFeedbackEnabled(), true);
+  process.env.CLAUDE_PLUGIN_OPTION_PER_EDIT_FEEDBACK = 'false';
+  assert.equal(perEditFeedbackEnabled(), false);
+  process.env.CLAUDE_PLUGIN_OPTION_PER_EDIT_FEEDBACK = 'true';
+  assert.equal(perEditFeedbackEnabled(), true);
+});
+
+test('parseAnalysis: exit 0 and 1 are results; anything else is a tool failure', () => {
+  assert.deepEqual(parseAnalysis({ status: 1, stdout: '{"issues":[]}' }), {
+    ok: true,
+    result: { issues: [] },
   });
-
-  delete process.env.CLAUDE_PLUGIN_OPTION_BLOCK_ON;
-  assert.equal(issuesBlockSession(), true);
-
-  process.env.CLAUDE_PLUGIN_OPTION_BLOCK_ON = 'secrets-and-issues';
-  assert.equal(issuesBlockSession(), true);
-
-  process.env.CLAUDE_PLUGIN_OPTION_BLOCK_ON = 'Secrets';
-  assert.equal(issuesBlockSession(), false);
+  assert.deepEqual(parseAnalysis({ status: 2, stdout: '', stderr: 'not installed\n' }), {
+    ok: false,
+    reason: 'not installed',
+  });
+  assert.equal(parseAnalysis({ error: new Error('ETIMEDOUT') }).reason, 'ETIMEDOUT');
+  assert.equal(parseAnalysis({ status: 0, stdout: 'garbage' }).ok, false);
 });

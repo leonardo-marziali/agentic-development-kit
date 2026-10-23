@@ -1,9 +1,9 @@
 ---
 name: analyze
-description: Use when the user asks to "run sonar", "run SonarQube", "scan for secrets", "check this for Sonar issues", or wants SonarQube analysis over code this session never touched. Runs the sonar CLI and works through the findings.
+description: Use when the user asks to "run sonar", "run SonarQube", "run SonarLint", "scan for secrets", "check this for Sonar issues", or wants SonarQube analysis over code this session never touched. Runs SonarQube for IDE's engine locally and works through the findings.
 argument-hint: '[file paths...] | [natural-language description of files to include]'
 disable-model-invocation: true
-allowed-tools: Bash(sonar analyze *) Read Edit Grep Glob
+allowed-tools: Bash(node *sonarlint.js *) Read Edit Grep Glob
 ---
 
 # SonarQube Analysis
@@ -15,8 +15,15 @@ files this session didn't create or edit. The plugin's hooks only ever
 analyse files touched during the current session; use this skill whenever
 the user wants existing code scanned too.
 
-Requires the `sonar` CLI on PATH. If it isn't installed, say so and stop —
-do not try to install it.
+It runs SonarQube for IDE's own analyzers locally (SLOOP) through the
+plugin's CLI. `sonarlint` below means:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/cli/sonarlint.js" --data-dir "${CLAUDE_PLUGIN_DATA}"
+```
+
+If it exits 2 saying SLOOP is not installed, tell the user and offer
+`/sonarqube:setup`. Don't install anything without asking.
 
 ## 1. Resolve the target
 
@@ -54,47 +61,36 @@ anything that isn't source this project wrote and maintains:
 Analyse a file the user explicitly names even if it would normally be
 skipped — but say that you're including it, and why.
 
-## 2. Find the project binding
+## 2. Analyse
 
-Look for `.sonarlint/connectedMode.json` at or above the target. If one
-exists, read `projectKey` from it and pass it as `--project`, running the
-CLI with its working directory set to the directory holding
-`.sonarlint/`. See the `sonarqube-connected-mode` skill for the details,
-including monorepos with more than one binding.
+Pass the files (or directories) in one call. A directory expands to what
+git considers part of the project.
 
-Without a binding, run without `--project`.
+```bash
+sonarlint files <paths...> --format json --min-severity INFO
+```
 
-## 3. Analyse
-
-1. **Secrets first**. The scan is local — it sends no code anywhere and
-   works against an unreachable server — though the CLI still needs
-   credentials configured before it will run anything:
-
-   ```bash
-   sonar analyze secrets <paths...>
-   ```
-
-2. **Then the full analysis**, once per binding group:
-
-   ```bash
-   sonar analyze --file <path> [--file <path>...] --format json
-   ```
-
-   Add `--project <key>` when a binding was found, and `--depth DEEP`
-   only if the user asks for a more thorough pass — it is noticeably
-   slower.
+Secrets are part of the same pass: the secrets analyzer is local and
+content-based, so it covers `.env`, config, and IaC files too.
 
 Read the exit code — it is the result, not the output:
 
-| Exit | Meaning                           | What to do                    |
-| ---- | --------------------------------- | ----------------------------- |
-| 0    | Clean                             | Report nothing found          |
-| 51   | Findings, or failed quality gate  | Triage and fix (step 4)       |
-| 1    | Command, auth, or network failure | Report it; `sonar auth login` |
-| 2    | Invalid options                   | Fix the invocation and retry  |
-| 130  | Interrupted                       | Say it was interrupted        |
+- **0** — Clean, or only issues below the threshold. Report what was found, if
+  anything.
+- **1** — Issues at/above `--min-severity`. Triage and fix (step 4).
+- **2** — The tool could not run. Show stderr; see `/sonarqube:setup`.
 
-Exit `1` is **not** a clean result. Never report "no issues found" for it.
+Exit `2` is **not** a clean result. Never report "no issues found" for it.
+
+The first analysis in a project takes ~20-30s while the engine starts;
+later ones take about a second.
+
+## 3. Find what the server already knows (optional)
+
+Local analysis covers the working tree. For what SonarQube Server or
+Cloud recorded for the project (open issues, quality gate), use the
+`sonarqube-web-api` skill with the `projectKey` from
+`.sonarlint/connectedMode.json` (see `sonarqube-connected-mode`).
 
 ## 4. Triage and fix
 
@@ -110,14 +106,14 @@ severity ordering and false-positive rules. In short:
   rule, and do not add `NOSONAR` comments to make findings disappear.
 - If a finding is genuinely a false positive, say which one and why, and
   let the user decide. Marking issues resolved on the server is a
-  deliberate action — see the `sonarqube-mcp-usage` skill.
+  deliberate action — see the `sonarqube-web-api` skill.
 
-Re-run the analysis after fixing, and repeat until clean or until
-something needs a human judgment call.
+Re-run the analysis after fixing. Stop after two fix-and-recheck rounds,
+or sooner if something needs a human judgment call.
 
 ## 5. Report
 
 A short summary: what was scanned, what was found by severity, what was
 fixed, and anything left unresolved and why. Call out explicitly any
-stage that could not run (an unauthenticated CLI, an unreachable server)
-so "clean" is never confused with "not checked".
+file that was skipped or analyzer that could not load, so "clean" is
+never confused with "not checked".

@@ -1,7 +1,7 @@
 ---
 name: sonarqube-connected-mode
 user-invocable: false
-description: Use when you need a SonarQube projectKey, are setting up or debugging .sonarlint/connectedMode.json, are running the sonar CLI or MCP tools against a bound project, or are working out which project a file in a monorepo belongs to.
+description: Use when you need a SonarQube projectKey, are setting up or debugging .sonarlint/connectedMode.json, are calling `sonar api` against a bound project, need the Cloud organization, or are working out which project a file in a monorepo belongs to.
 ---
 
 # SonarQube Connected Mode
@@ -61,38 +61,35 @@ repo/
 
 `packages/api/src/handler.ts` binds to `monorepo-api`, not to the root.
 
-## Using it with the CLI
+## Local analysis and bindings
 
-`sonar analyze` resolves project context from its **own working
-directory**, so a binding is only honoured if the CLI runs from the
-directory containing `.sonarlint/`. Two sub-projects therefore need two
-runs, not one:
+The plugin's local analysis (SonarQube for IDE's engine, run offline)
+doesn't need a binding: it uses the analyzers' default rules for every
+file. Its hooks still read the nearest binding for each touched file and
+label findings with that project, so in a monorepo the report says which
+SonarQube project a finding belongs to. That project key is what to use
+for a follow-up `sonar api` call.
 
-```bash
-cd packages/api && sonar analyze --file src/handler.ts --project monorepo-api
-cd packages/web && sonar analyze --file src/page.tsx   --project monorepo-root
-```
+Server-side quality profiles are not applied locally yet, so a rule your
+organization turned off can still be reported locally. See the README's
+known limitations.
 
-This plugin's Stop hook does exactly that: it groups the session's
-touched files by their nearest binding directory and runs the CLI once
-per group, from that directory, with that group's `--project`. Files with
-no binding anywhere above them form a single group that is analysed
-without `--project`.
+## Using it with `sonar api`
 
-## Using it with the MCP server
-
-The MCP server has no default project key configured (see
-`sonarqube-mcp-usage`), so tools that need one need it supplied. Read it
-from `connectedMode.json` rather than guessing or searching — the
-committed binding is the authoritative answer for that repository.
+The Web API needs the project key on almost every call, and SonarQube
+Cloud also needs the organization — the CLI does not add either for you
+(see `sonarqube-web-api`). Read both from `connectedMode.json`
+(`projectKey`, `sonarCloudOrganization`) rather than guessing or
+searching: the committed binding is the authoritative answer for that
+repository.
 
 ## When there is no binding
 
 A missing binding is not an error, and not something to fix uninvited:
 
-- **The CLI still works.** Local analysis runs without `--project`;
-  secrets detection never needed a server at all.
-- **The MCP server needs a key.** If project-search doesn't give an
+- **Local analysis still works.** It never needed a binding or a
+  server.
+- **`sonar api` needs a key.** If a project search doesn't give an
   unambiguous match, ask the user rather than picking one.
 - **Don't create the file unprompted.** Writing a binding commits a
   guess about someone's SonarQube instance into their repository. Offer
@@ -100,12 +97,11 @@ A missing binding is not an error, and not something to fix uninvited:
 
 ## Troubleshooting
 
-| Symptom                     | Likely cause                            |
-| --------------------------- | --------------------------------------- |
-| Runs but reports no project | CLI not run from the binding directory  |
-| Wrong project's issues      | A parent binding shadowed a nearer one  |
-| Server rejects a valid key  | Key belongs to a different instance/org |
-| Nothing found walking up    | No binding committed; run without it    |
+| Symptom                    | Likely cause                            |
+| -------------------------- | --------------------------------------- |
+| Wrong project's issues     | A parent binding shadowed a nearer one  |
+| Server rejects a valid key | Key belongs to a different instance/org |
+| Nothing found walking up   | No binding committed; run without it    |
 
 If `connectedMode.json` exists but is malformed, treat it as absent and
 say so — analysing against a guessed key is worse than analysing without

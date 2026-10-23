@@ -62,7 +62,7 @@ Then:
 - Say which finding, and why it can't happen here. Be specific — "the
   caller validates this" with the caller named, not "this is fine".
 - Let the user decide. Marking an issue won't-fix on the server changes
-  shared state everyone sees (see `sonarqube-mcp-usage`).
+  shared state everyone sees (see `sonarqube-web-api`).
 
 **Never** rewrite working code purely to make a rule stop firing. A
 contorted workaround is worse than the finding it silences, and it hides
@@ -102,8 +102,9 @@ everyone on the project.
 Group findings by severity, name the file and line, and say what you did
 about each. Be explicit about two things people otherwise assume:
 
-- **What could not be checked.** An unauthenticated CLI or an unreachable
-  server means a stage did not run. "Not checked" is not "clean", and
+- **What could not be checked.** A `sonarlint` exit 2, a skipped file,
+  an analyzer that couldn't load, or a `sonar api` call that failed means
+  something did not run. "Not checked" is not "clean", and
   saying so is the difference between a useful report and a misleading
   one.
 - **What you left alone, and why.** A finding you judged a false positive
@@ -111,6 +112,9 @@ about each. Be explicit about two things people otherwise assume:
 
 ## Related skills
 
-- `analyze` (`/sonarqube:analyze`) — run the CLI over chosen files.
-- `sonarqube-mcp-usage` — server-side issues, rules, quality gates.
+- `analyze` (`/sonarqube:analyze`) — analyse chosen files locally.
+- `fix` (`/sonarqube:fix`) — work through findings or one rule.
+- `sonarlint-analysis` — the local CLI, its output and exit codes.
+- `sonarqube-web-api` — server-side issues, rules, quality gates via
+  `sonar api`.
 - `sonarqube-connected-mode` — where the project key comes from.

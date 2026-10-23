@@ -2,11 +2,10 @@
 
 /*
  * Integration suite for the Stop/SubagentStop hook. It runs the hook script
- * exactly as Claude Code does, against a stand-in `sonar` executable rather
- * than the real CLI — which is a prerequisite this repository deliberately
- * doesn't install, and which would otherwise make the suite unrunnable in CI.
- * The stand-in logs its argv and cwd, so the tests still assert on the real
- * contract: which subcommand ran, with which --project, from which directory.
+ * exactly as Claude Code does, against a stand-in `sonarlint` CLI (see
+ * helpers.js) that logs how it was called and answers from a spec — so the
+ * tests assert on the real contract (which files were analyzed, from which
+ * cwd, what blocks and what doesn't) without needing a SLOOP install.
  */
 
 const test = require('node:test');
@@ -17,26 +16,23 @@ const {
   setup,
   writeFile,
   runHook,
-  installFakeSonar,
+  installFakeSonarlint,
+  writeSpec,
   readInvocations,
-  fakeSonarEnv,
-  noSonarEnv,
-  systemSonarInstalled,
+  issue,
+  gitRepo,
 } = require('./helpers');
-
-const SECRET_REPORT = 'src/app.js:3 aws-access-key-id: hardcoded credential';
-const ISSUE_REPORT = '{"issues":[{"rule":"javascript:S1481","message":"Remove this unused var"}]}';
 
 function writeBinding(dir, binding) {
   fs.mkdirSync(path.join(dir, '.sonarlint'), { recursive: true });
   fs.writeFileSync(path.join(dir, '.sonarlint', 'connectedMode.json'), JSON.stringify(binding));
 }
 
-function track(file, { sessionId, scratch, pluginData, env = {} }) {
+function track(file, { sessionId, scratch, pluginData }) {
   return runHook(
     'track-touched.js',
     { tool_name: 'Write', tool_input: { file_path: file }, session_id: sessionId, cwd: scratch },
-    { env: { CLAUDE_PLUGIN_DATA: pluginData, ...env } },
+    { env: { CLAUDE_PLUGIN_DATA: pluginData } },
   );
 }
 
@@ -52,352 +48,248 @@ function stateDirFor(pluginData, sessionId) {
   return path.join(pluginData, 'sonarqube-session-scope', sessionId);
 }
 
-test('no tracked files: no-op, empty stdout', (t) => {
-  const ctx = setup(t);
-  const { binDir } = installFakeSonar(ctx.scratch);
+const SECRET = issue('src/app.js', 'secrets:S6290', 'BLOCKER', 3);
+const HIGH = issue('src/app.js', 'javascript:S2259', 'HIGH', 5, { type: 'BUG' });
+const MEDIUM = issue('src/app.js', 'javascript:S1854', 'MEDIUM', 7);
 
-  const res = stop({ ...ctx, env: fakeSonarEnv(ctx.scratch, binDir) });
+test('no tracked files: no-op, the CLI is never run', (t) => {
+  const ctx = setup(t);
+  const fake = installFakeSonarlint(ctx.scratch);
+
+  const res = stop({ ...ctx, env: fake.env });
 
   assert.equal(res.status, 0);
   assert.equal(res.stdout.trim(), '');
+  assert.deepEqual(readInvocations(fake.logFile), []);
 });
 
-test('sonar not installed: no-op with one stderr note, never blocks', (t) => {
-  if (systemSonarInstalled()) {
-    t.skip('a real `sonar` is installed in a fixed system location');
-    return;
-  }
+test('the touched files are analyzed in one run, as json, from the session cwd', (t) => {
   const ctx = setup(t);
-  const file = writeFile(ctx.scratch, 'src/app.js');
-  const env = noSonarEnv(ctx.scratch);
-  track(file, { ...ctx, env });
+  const fake = installFakeSonarlint(ctx.scratch, { files: { issues: [] } });
+  const a = writeFile(ctx.scratch, 'src/app.js');
+  const b = writeFile(ctx.scratch, 'src/job.py');
+  track(a, ctx);
+  track(b, ctx);
 
-  const res = stop({ ...ctx, env });
+  stop({ ...ctx, env: fake.env });
 
-  assert.equal(res.status, 0);
-  assert.equal(res.stdout.trim(), '');
-  assert.match(res.stderr, /`sonar` CLI was not found/);
+  const [call] = readInvocations(fake.logFile);
+  assert.equal(call.cwd, fs.realpathSync(ctx.scratch));
+  assert.deepEqual(call.argv.slice(0, 3), ['files', a, b]);
+  assert.ok(call.argv.includes('--format') && call.argv.includes('json'));
+  assert.ok(call.argv.includes('--timeout'), 'the CLI is bounded below the hook timeout');
 });
 
-test('secrets found: blocks the stop with decision continue', (t) => {
+test('a secret blocks the stop with decision continue', (t) => {
   const ctx = setup(t);
-  const { binDir } = installFakeSonar(ctx.scratch, {
-    secrets: { status: 51, stdout: SECRET_REPORT },
-  });
-  const env = fakeSonarEnv(ctx.scratch, binDir);
-  track(writeFile(ctx.scratch, 'src/app.js'), { ...ctx, env });
+  const fake = installFakeSonarlint(ctx.scratch, { files: { issues: [SECRET] } });
+  track(writeFile(ctx.scratch, 'src/app.js'), ctx);
 
-  const res = stop({ ...ctx, env });
+  const res = stop({ ...ctx, env: fake.env });
 
-  assert.ok(res.json, `expected JSON stdout, got: ${res.stdout}`);
   assert.equal(res.json.hookSpecificOutput.decision, 'continue');
   assert.equal(res.json.hookSpecificOutput.hookEventName, 'Stop');
-  assert.match(res.json.hookSpecificOutput.systemMessage, /aws-access-key-id/);
-  assert.match(res.json.hookSpecificOutput.systemMessage, /attempt 1\/3/);
-});
-
-test('secrets found: the message tells Claude to rotate, and not to suppress', (t) => {
-  const ctx = setup(t);
-  const { binDir } = installFakeSonar(ctx.scratch, {
-    secrets: { status: 51, stdout: SECRET_REPORT },
-  });
-  const env = fakeSonarEnv(ctx.scratch, binDir);
-  track(writeFile(ctx.scratch, 'src/app.js'), { ...ctx, env });
-
-  const message = stop({ ...ctx, env }).json.hookSpecificOutput.systemMessage;
-
-  assert.match(message, /rotating/);
+  const message = res.json.hookSpecificOutput.systemMessage;
+  assert.match(message, /src\/app\.js:3 BLOCKER secrets:S6290/);
+  assert.match(message, /rotat/);
   assert.match(message, /NOSONAR/);
 });
 
-test('secrets clean but full analysis finds issues: still blocks', (t) => {
+test('HIGH blocks under the default policy; MEDIUM alone does not', (t) => {
   const ctx = setup(t);
-  const { binDir, logFile } = installFakeSonar(ctx.scratch, {
-    secrets: { status: 0 },
-    analysis: { status: 51, stdout: ISSUE_REPORT },
+  const fake = installFakeSonarlint(ctx.scratch, { files: { issues: [HIGH, MEDIUM] } });
+  track(writeFile(ctx.scratch, 'src/app.js'), ctx);
+
+  const blocked = stop({ ...ctx, env: fake.env });
+  assert.equal(blocked.json.hookSpecificOutput.decision, 'continue');
+  assert.match(blocked.json.hookSpecificOutput.systemMessage, /javascript:S2259/);
+  assert.doesNotMatch(blocked.json.hookSpecificOutput.systemMessage, /javascript:S1854/);
+
+  const ctx2 = setup(t);
+  const fake2 = installFakeSonarlint(ctx2.scratch, { files: { issues: [MEDIUM] } });
+  track(writeFile(ctx2.scratch, 'src/app.js'), ctx2);
+  const clean = stop({ ...ctx2, env: fake2.env });
+  assert.equal(clean.stdout.trim(), '');
+});
+
+test('min_blocking_severity=medium blocks on MEDIUM; secrets-only lets HIGH through but not a secret', (t) => {
+  const ctx = setup(t);
+  const fake = installFakeSonarlint(ctx.scratch, { files: { issues: [MEDIUM] } });
+  track(writeFile(ctx.scratch, 'src/app.js'), ctx);
+  const res = stop({
+    ...ctx,
+    env: { ...fake.env, CLAUDE_PLUGIN_OPTION_MIN_BLOCKING_SEVERITY: 'medium' },
   });
-  const env = fakeSonarEnv(ctx.scratch, binDir);
-  track(writeFile(ctx.scratch, 'src/app.js'), { ...ctx, env });
+  assert.equal(res.json.hookSpecificOutput.decision, 'continue');
 
-  const res = stop({ ...ctx, env });
+  const ctx2 = setup(t);
+  const fake2 = installFakeSonarlint(ctx2.scratch, { files: { issues: [HIGH] } });
+  track(writeFile(ctx2.scratch, 'src/app.js'), ctx2);
+  const env2 = { ...fake2.env, CLAUDE_PLUGIN_OPTION_MIN_BLOCKING_SEVERITY: 'secrets-only' };
+  assert.equal(stop({ ...ctx2, env: env2 }).stdout.trim(), '');
 
-  assert.equal(res.json?.hookSpecificOutput?.decision, 'continue');
-  assert.match(res.json.hookSpecificOutput.systemMessage, /S1481/);
-  assert.deepEqual(
-    readInvocations(logFile).map((call) => call.stage),
-    ['secrets', 'analysis'],
-  );
+  const ctx3 = setup(t);
+  const fake3 = installFakeSonarlint(ctx3.scratch, { files: { issues: [SECRET] } });
+  track(writeFile(ctx3.scratch, 'src/app.js'), ctx3);
+  const env3 = { ...fake3.env, CLAUDE_PLUGIN_OPTION_MIN_BLOCKING_SEVERITY: 'secrets-only' };
+  assert.equal(stop({ ...ctx3, env: env3 }).json.hookSpecificOutput.decision, 'continue');
 });
 
 test('everything clean: silent, and the session state is cleared', (t) => {
   const ctx = setup(t);
-  const { binDir } = installFakeSonar(ctx.scratch, {
-    secrets: { status: 0 },
-    analysis: { status: 0 },
-  });
-  const env = fakeSonarEnv(ctx.scratch, binDir);
-  track(writeFile(ctx.scratch, 'src/app.js'), { ...ctx, env });
+  const fake = installFakeSonarlint(ctx.scratch, { files: { issues: [] } });
+  track(writeFile(ctx.scratch, 'src/app.js'), ctx);
 
-  const res = stop({ ...ctx, env });
+  const res = stop({ ...ctx, env: fake.env });
 
   assert.equal(res.stdout.trim(), '');
   assert.equal(fs.existsSync(stateDirFor(ctx.pluginData, ctx.sessionId)), false);
 });
 
-test('full analysis exit 1 (unauthenticated/unreachable): reports but does not block', (t) => {
+test('a tool failure (exit 2) is reported, never blocks, and keeps the state for the next stop', (t) => {
   const ctx = setup(t);
-  const { binDir } = installFakeSonar(ctx.scratch, {
-    secrets: { status: 0 },
-    analysis: { status: 1, stderr: 'You are not authenticated' },
+  const fake = installFakeSonarlint(ctx.scratch, {
+    files: {
+      status: 2,
+      stderr: 'sonarlint: SLOOP is not installed (looked in /x). Run /sonarqube:setup\n',
+    },
   });
-  const env = fakeSonarEnv(ctx.scratch, binDir);
-  track(writeFile(ctx.scratch, 'src/app.js'), { ...ctx, env });
+  track(writeFile(ctx.scratch, 'src/app.js'), ctx);
 
-  const res = stop({ ...ctx, env });
+  const res = stop({ ...ctx, env: fake.env });
 
+  assert.equal(res.status, 0);
   assert.equal(res.stdout.trim(), '');
-  assert.match(res.stderr, /could not complete/);
-  assert.match(res.stderr, /sonar auth login/);
+  assert.match(res.stderr, /were NOT checked/);
+  assert.match(res.stderr, /Run \/sonarqube:setup/);
+  assert.ok(
+    fs.existsSync(path.join(stateDirFor(ctx.pluginData, ctx.sessionId), 'touched-files.txt')),
+  );
 });
 
-test('secrets still gate when the full analysis cannot run', (t) => {
+test('skipped files and analyzers that could not load are reported on stderr', (t) => {
   const ctx = setup(t);
-  const { binDir } = installFakeSonar(ctx.scratch, {
-    secrets: { status: 51, stdout: SECRET_REPORT },
-    analysis: { status: 1, stderr: 'You are not authenticated' },
+  const fake = installFakeSonarlint(ctx.scratch, {
+    files: {
+      issues: [],
+      skipped: [{ file: 'src/gone.js', reason: 'not found' }],
+      skippedAnalyzers: [{ language: 'JS', reason: 'UNSATISFIED_NODE_JS' }],
+    },
   });
-  const env = fakeSonarEnv(ctx.scratch, binDir);
-  track(writeFile(ctx.scratch, 'src/app.js'), { ...ctx, env });
+  track(writeFile(ctx.scratch, 'src/app.js'), ctx);
 
-  const res = stop({ ...ctx, env });
+  const res = stop({ ...ctx, env: fake.env });
 
-  assert.equal(res.json?.hookSpecificOutput?.decision, 'continue');
-  assert.match(res.json.hookSpecificOutput.systemMessage, /aws-access-key-id/);
-});
-
-test('a secrets stage that could not run says the session went ungated', (t) => {
-  const ctx = setup(t);
-  /*
-   * `sonar analyze` refuses to run at all without credentials, exiting 1
-   * before it scans anything — so this is not a clean session, it is an
-   * unchecked one, and the note has to say which.
-   */
-  const { binDir } = installFakeSonar(ctx.scratch, {
-    secrets: { status: 1, stderr: 'Not authenticated.' },
-    analysis: { status: 1, stderr: 'Not authenticated.' },
-  });
-  const env = fakeSonarEnv(ctx.scratch, binDir);
-  track(writeFile(ctx.scratch, 'src/app.js'), { ...ctx, env });
-
-  const res = stop({ ...ctx, env });
-
-  assert.equal(res.stdout.trim(), '');
-  assert.match(res.stderr, /NOTHING was scanned for secrets/);
-  assert.match(res.stderr, /sonar auth login/);
-});
-
-test('full analysis exit 2 is reported as a bug in the hook, and does not block', (t) => {
-  const ctx = setup(t);
-  const { binDir } = installFakeSonar(ctx.scratch, {
-    secrets: { status: 0 },
-    analysis: { status: 2, stderr: 'unknown option --file' },
-  });
-  const env = fakeSonarEnv(ctx.scratch, binDir);
-  track(writeFile(ctx.scratch, 'src/app.js'), { ...ctx, env });
-
-  const res = stop({ ...ctx, env });
-
-  assert.equal(res.stdout.trim(), '');
-  assert.match(res.stderr, /BUG/);
-  assert.match(res.stderr, /did NOT run/);
+  assert.match(res.stderr, /skipped src\/gone\.js: not found/);
+  assert.match(res.stderr, /JS analyzer could not load \(UNSATISFIED_NODE_JS\)/);
 });
 
 test('attempt cap: blocks 3 times, then reports and lets the stop through', (t) => {
   const ctx = setup(t);
-  const { binDir } = installFakeSonar(ctx.scratch, {
-    secrets: { status: 51, stdout: SECRET_REPORT },
-  });
-  const env = fakeSonarEnv(ctx.scratch, binDir);
-  track(writeFile(ctx.scratch, 'src/app.js'), { ...ctx, env });
+  const fake = installFakeSonarlint(ctx.scratch, { files: { issues: [SECRET] } });
+  const file = writeFile(ctx.scratch, 'src/app.js', 'const k = "x";\n');
+  track(file, ctx);
 
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    const res = stop({ ...ctx, env });
-    assert.equal(
-      res.json?.hookSpecificOutput?.decision,
-      'continue',
-      `attempt ${attempt} should block`,
-    );
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const res = stop({ ...ctx, env: fake.env });
+    assert.equal(res.json.hookSpecificOutput.decision, 'continue', `attempt ${attempt}`);
+    assert.match(res.json.hookSpecificOutput.systemMessage, new RegExp(`attempt ${attempt}/3`));
   }
 
-  const final = stop({ ...ctx, env });
-
+  const final = stop({ ...ctx, env: fake.env });
   assert.equal(final.stdout.trim(), '');
   assert.match(final.stderr, /findings remain after 3 attempts/);
-  assert.match(final.stderr, /without suppressing anything/);
+  assert.equal(
+    fs.readFileSync(file, 'utf8'),
+    'const k = "x";\n',
+    'nothing is ever written to the file',
+  );
   assert.equal(fs.existsSync(stateDirFor(ctx.pluginData, ctx.sessionId)), false);
-});
-
-test('the cap never writes suppressions into the tracked files', (t) => {
-  const ctx = setup(t);
-  const { binDir } = installFakeSonar(ctx.scratch, {
-    secrets: { status: 51, stdout: SECRET_REPORT },
-  });
-  const env = fakeSonarEnv(ctx.scratch, binDir);
-  const original = 'const token = "AKIAIOSFODNN7EXAMPLE";\n';
-  const file = writeFile(ctx.scratch, 'src/app.js', original);
-  track(file, { ...ctx, env });
-
-  for (let attempt = 0; attempt < 4; attempt++) {
-    stop({ ...ctx, env });
-  }
-
-  assert.equal(fs.readFileSync(file, 'utf8'), original);
 });
 
 test('SubagentStop echoes its own hook event name in the block payload', (t) => {
   const ctx = setup(t);
-  const { binDir } = installFakeSonar(ctx.scratch, {
-    secrets: { status: 51, stdout: SECRET_REPORT },
-  });
-  const env = fakeSonarEnv(ctx.scratch, binDir);
-  track(writeFile(ctx.scratch, 'src/app.js'), { ...ctx, env });
+  const fake = installFakeSonarlint(ctx.scratch, { files: { issues: [SECRET] } });
+  track(writeFile(ctx.scratch, 'src/app.js'), ctx);
 
-  const res = stop({ ...ctx, env, hookEventName: 'SubagentStop' });
+  const res = stop({ ...ctx, env: fake.env, hookEventName: 'SubagentStop' });
 
   assert.equal(res.json.hookSpecificOutput.hookEventName, 'SubagentStop');
 });
 
-test('block_on=secrets skips the full analysis entirely', (t) => {
+test('pre-existing HIGH findings on unchanged lines are reported, not blocked on; secrets still block', (t) => {
   const ctx = setup(t);
-  const { binDir, logFile } = installFakeSonar(ctx.scratch, {
-    secrets: { status: 0 },
-    analysis: { status: 51, stdout: ISSUE_REPORT },
+  const repo = gitRepo(ctx.scratch);
+  const lines = Array.from({ length: 30 }, (_, i) => `line ${i + 1}`);
+  const file = writeFile(ctx.scratch, 'src/app.js', `${lines.join('\n')}\n`);
+  repo.commitAll();
+  lines[19] = 'changed line 20';
+  fs.writeFileSync(file, `${lines.join('\n')}\n`);
+  track(file, ctx);
+
+  const old = issue('src/app.js', 'javascript:S2259', 'HIGH', 3);
+  const fresh = issue('src/app.js', 'javascript:S3776', 'CRITICAL', 20);
+  const fake = installFakeSonarlint(ctx.scratch, { files: { issues: [old] } });
+
+  const res = stop({ ...ctx, env: fake.env });
+  assert.equal(res.stdout.trim(), '', 'a finding only on an unchanged line does not block');
+  assert.match(res.stderr, /pre-existing finding\(s\) at\/above HIGH/);
+  assert.match(res.stderr, /src\/app\.js:3 HIGH javascript:S2259/);
+
+  // A stop that didn't block cleared the session's state; the next edit re-tracks it.
+  track(file, ctx);
+  writeSpec(fake.specFile, {
+    files: { issues: [old, fresh, issue('src/app.js', 'secrets:S6290', 'BLOCKER', 1)] },
   });
-  const env = fakeSonarEnv(ctx.scratch, binDir, { CLAUDE_PLUGIN_OPTION_BLOCK_ON: 'secrets' });
-  track(writeFile(ctx.scratch, 'src/app.js'), { ...ctx, env });
+  const blocked = stop({ ...ctx, env: fake.env });
+  const message = blocked.json.hookSpecificOutput.systemMessage;
+  assert.match(message, /javascript:S3776/);
+  assert.match(message, /secrets:S6290/, 'a secret blocks even on an unchanged line');
+  assert.doesNotMatch(message, /javascript:S2259/);
+});
 
-  const res = stop({ ...ctx, env });
+test('connected mode: findings are grouped under the binding that owns them', (t) => {
+  const ctx = setup(t);
+  writeBinding(path.join(ctx.scratch, 'api'), {
+    projectKey: 'acme_api',
+    sonarCloudOrganization: 'acme',
+  });
+  const a = writeFile(ctx.scratch, 'api/src/handler.ts');
+  const b = writeFile(ctx.scratch, 'web/page.ts');
+  track(a, ctx);
+  track(b, ctx);
+  const fake = installFakeSonarlint(ctx.scratch, {
+    files: {
+      issues: [
+        issue('api/src/handler.ts', 'secrets:S6290', 'BLOCKER', 1),
+        issue('web/page.ts', 'typescript:S2259', 'HIGH', 2),
+      ],
+    },
+  });
 
-  assert.equal(res.stdout.trim(), '');
-  assert.deepEqual(
-    readInvocations(logFile).map((call) => call.stage),
-    ['secrets'],
+  const message = stop({ ...ctx, env: fake.env }).json.hookSpecificOutput.systemMessage;
+
+  assert.match(message, /## acme_api \(SonarQube Cloud org acme\)[^#]*api\/src\/handler\.ts:1/);
+  assert.match(
+    message,
+    new RegExp(
+      `## ${fs.realpathSync(ctx.scratch).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^#]*web/page\\.ts:2`,
+    ),
   );
-});
-
-test('analysis_depth is passed through to the CLI', (t) => {
-  const ctx = setup(t);
-  const { binDir, logFile } = installFakeSonar(ctx.scratch, {
-    secrets: { status: 0 },
-    analysis: { status: 0 },
-  });
-  const env = fakeSonarEnv(ctx.scratch, binDir, {
-    CLAUDE_PLUGIN_OPTION_ANALYSIS_DEPTH: 'DEEP',
-  });
-  track(writeFile(ctx.scratch, 'src/app.js'), { ...ctx, env });
-
-  stop({ ...ctx, env });
-
-  const analysis = readInvocations(logFile).find((call) => call.stage === 'analysis');
-  assert.ok(analysis.argv.includes('--depth'));
-  assert.equal(analysis.argv[analysis.argv.indexOf('--depth') + 1], 'DEEP');
-});
-
-test('connected mode: derives --project and runs from the binding root', (t) => {
-  const ctx = setup(t);
-  const { binDir, logFile } = installFakeSonar(ctx.scratch, {
-    secrets: { status: 0 },
-    analysis: { status: 0 },
-  });
-  const env = fakeSonarEnv(ctx.scratch, binDir);
-  writeBinding(ctx.scratch, { projectKey: 'my-project', sonarQubeUri: 'https://sonar.example' });
-  track(writeFile(ctx.scratch, 'src/app.js'), { ...ctx, env });
-
-  stop({ ...ctx, env });
-
-  const analysis = readInvocations(logFile).find((call) => call.stage === 'analysis');
-  assert.equal(analysis.argv[analysis.argv.indexOf('--project') + 1], 'my-project');
-  assert.equal(analysis.cwd, fs.realpathSync(ctx.scratch));
-});
-
-test('no connected mode: one group, no --project', (t) => {
-  const ctx = setup(t);
-  const { binDir, logFile } = installFakeSonar(ctx.scratch, {
-    secrets: { status: 0 },
-    analysis: { status: 0 },
-  });
-  const env = fakeSonarEnv(ctx.scratch, binDir);
-  track(writeFile(ctx.scratch, 'a.js'), { ...ctx, env });
-  track(writeFile(ctx.scratch, 'b.js'), { ...ctx, env });
-
-  stop({ ...ctx, env });
-
-  const analyses = readInvocations(logFile).filter((call) => call.stage === 'analysis');
-  assert.equal(analyses.length, 1);
-  assert.equal(analyses[0].argv.includes('--project'), false);
-});
-
-test('monorepo: each binding gets its own run, project key and cwd', (t) => {
-  const ctx = setup(t);
-  const { binDir, logFile } = installFakeSonar(ctx.scratch, {
-    secrets: { status: 0 },
-    analysis: { status: 0 },
-  });
-  const env = fakeSonarEnv(ctx.scratch, binDir);
-  const api = path.join(ctx.scratch, 'packages', 'api');
-  const web = path.join(ctx.scratch, 'packages', 'web');
-  fs.mkdirSync(api, { recursive: true });
-  fs.mkdirSync(web, { recursive: true });
-  writeBinding(api, { projectKey: 'api-key' });
-  writeBinding(web, { projectKey: 'web-key', sonarCloudOrganization: 'my-org' });
-
-  track(writeFile(ctx.scratch, 'packages/api/src/a.js'), { ...ctx, env });
-  track(writeFile(ctx.scratch, 'packages/web/src/b.js'), { ...ctx, env });
-
-  stop({ ...ctx, env });
-
-  const analyses = readInvocations(logFile).filter((call) => call.stage === 'analysis');
-  assert.equal(analyses.length, 2);
-  assert.deepEqual(
-    analyses.map((call) => [call.argv[call.argv.indexOf('--project') + 1], call.cwd]),
-    [
-      ['api-key', fs.realpathSync(api)],
-      ['web-key', fs.realpathSync(web)],
-    ],
-  );
-});
-
-test('a finding in one binding group names that project in the report', (t) => {
-  const ctx = setup(t);
-  const { binDir } = installFakeSonar(ctx.scratch, {
-    secrets: { status: 0 },
-    analysis: { status: 51, stdout: ISSUE_REPORT },
-  });
-  const env = fakeSonarEnv(ctx.scratch, binDir);
-  writeBinding(ctx.scratch, { projectKey: 'my-project', sonarCloudOrganization: 'my-org' });
-  track(writeFile(ctx.scratch, 'src/app.js'), { ...ctx, env });
-
-  const message = stop({ ...ctx, env }).json.hookSpecificOutput.systemMessage;
-
-  assert.match(message, /my-project/);
-  assert.match(message, /SonarQube Cloud org my-org/);
 });
 
 test('a deleted file drops out of the set before analysis runs', (t) => {
   const ctx = setup(t);
-  const { binDir, logFile } = installFakeSonar(ctx.scratch, {
-    secrets: { status: 0 },
-    analysis: { status: 0 },
-  });
-  const env = fakeSonarEnv(ctx.scratch, binDir);
-  const kept = writeFile(ctx.scratch, 'kept.js');
-  const removed = writeFile(ctx.scratch, 'removed.js');
-  track(kept, { ...ctx, env });
-  track(removed, { ...ctx, env });
-  fs.rmSync(removed);
+  const fake = installFakeSonarlint(ctx.scratch, { files: { issues: [] } });
+  const kept = writeFile(ctx.scratch, 'src/kept.js');
+  const gone = writeFile(ctx.scratch, 'src/gone.js');
+  track(kept, ctx);
+  track(gone, ctx);
+  fs.rmSync(gone);
 
-  stop({ ...ctx, env });
+  stop({ ...ctx, env: fake.env });
 
-  const secrets = readInvocations(logFile).find((call) => call.stage === 'secrets');
-  assert.deepEqual(secrets.argv, ['analyze', 'secrets', kept]);
+  const [call] = readInvocations(fake.logFile);
+  assert.ok(call.argv.includes(kept));
+  assert.ok(!call.argv.includes(gone));
 });

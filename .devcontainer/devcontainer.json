@@ -15,8 +15,8 @@
   */
   "mounts": ["source=claude-config,target=/home/node/.claude,type=volume"],
   /*
-    Repository-scoped secrets: GITHUB_PERSONAL_ACCESS_TOKEN,
-    SONARQUBE_TOKEN and SONARQUBE_URL come from
+    Repository-scoped secrets: GITHUB_PERSONAL_ACCESS_TOKEN and the
+    SonarQube CLI's SONARQUBE_CLI_* variables come from
     the gitignored `.env` at the repo root (copy `.env.example`), not from the
     host environment, so they cannot clash with other projects. The file is
     created empty if missing so the container still starts without it.

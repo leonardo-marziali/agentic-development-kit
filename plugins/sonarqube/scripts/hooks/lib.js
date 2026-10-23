@@ -1,15 +1,17 @@
 'use strict';
 
 /*
- * Constants and small predicates shared by this plugin's two hooks. The
- * generic loop machinery — hook input, session state, file tracking, the
- * capped fix loop, spawning CLI shims — comes from
- * @leonardo-marziali/ad-lfl-kit; the SonarQube-specific parts live in
- * sonar.js and connected-mode.js.
+ * Constants and small predicates shared by this plugin's hooks. The generic
+ * loop machinery — hook input, session state, file tracking, the capped fix
+ * loop, change scoping — comes from @leonardo-marziali/ad-lfl-kit; local
+ * analysis goes through the plugin's own `sonarlint` CLI (cli/sonarlint.js),
+ * and binding discovery lives in connected-mode.js.
  */
 
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 const { runBin } = require('@leonardo-marziali/ad-lfl-kit');
+const { rank } = require('../../cli/severity');
 
 /*
  * track-touched.js writes the list and check-and-loop.js reads it, so both
@@ -93,24 +95,74 @@ function isAnalyzable(filePath) {
 }
 
 /*
- * `analysis_depth` in plugin.json's userConfig, surfaced to hook processes as
- * CLAUDE_PLUGIN_OPTION_ANALYSIS_DEPTH. Anything unrecognised (including a
- * plugin installed before the option existed) falls back to the CLI's own
- * default by passing no --depth at all.
+ * `min_blocking_severity` in plugin.json's userConfig, surfaced to hooks as
+ * CLAUDE_PLUGIN_OPTION_MIN_BLOCKING_SEVERITY. Secrets block under every
+ * setting; "secrets-only" blocks on nothing else. Anything unrecognised
+ * (including a plugin installed before the option existed) gets the default.
  */
-function analysisDepth() {
-  const raw = (process.env.CLAUDE_PLUGIN_OPTION_ANALYSIS_DEPTH || '').trim().toUpperCase();
-  return raw === 'STANDARD' || raw === 'DEEP' ? raw : null;
+const BLOCKING_LEVELS = {
+  blocker: 'BLOCKER',
+  high: 'HIGH',
+  medium: 'MEDIUM',
+  'secrets-only': null,
+};
+const DEFAULT_BLOCKING = 'high';
+
+function blockingPolicy() {
+  const raw = (process.env.CLAUDE_PLUGIN_OPTION_MIN_BLOCKING_SEVERITY || '').trim().toLowerCase();
+  const key = Object.hasOwn(BLOCKING_LEVELS, raw) ? raw : DEFAULT_BLOCKING;
+  return { key, threshold: BLOCKING_LEVELS[key] };
+}
+
+function isSecret(issue) {
+  return String(issue.rule || '').startsWith('secrets:');
+}
+
+function blocks(issue, policy = blockingPolicy()) {
+  if (isSecret(issue)) return true;
+  return policy.threshold !== null && rank(issue.severity) >= rank(policy.threshold);
 }
 
 /*
- * `block_on` in plugin.json's userConfig. Only an explicit "secrets" narrows
- * the loop to the local secrets scan; everything else (including unset) gets
- * the documented default, which also runs the full analysis.
+ * `per_edit_feedback` (boolean, default true). Hooks receive it as a string.
  */
-function issuesBlockSession() {
-  const raw = (process.env.CLAUDE_PLUGIN_OPTION_BLOCK_ON || '').trim().toLowerCase();
-  return raw !== 'secrets';
+function perEditFeedbackEnabled() {
+  const raw = (process.env.CLAUDE_PLUGIN_OPTION_PER_EDIT_FEEDBACK || '').trim().toLowerCase();
+  return raw !== 'false' && raw !== '0';
+}
+
+/*
+ * Runs the plugin's `sonarlint` CLI with node itself (process.execPath), so
+ * it works without a PATH and on every platform. SONARLINT_CLI overrides the
+ * script — the test suite's stand-in. The data dir reaches the CLI through
+ * CLAUDE_PLUGIN_DATA, which Claude Code exports to hooks.
+ */
+const CLI_PATH = path.join(__dirname, '..', '..', 'cli', 'sonarlint.js');
+
+function runSonarlint(args, { cwd, timeoutMs }) {
+  return spawnSync(process.execPath, [process.env.SONARLINT_CLI || CLI_PATH, ...args], {
+    cwd,
+    encoding: 'utf8',
+    timeout: timeoutMs,
+    maxBuffer: 32 * 1024 * 1024,
+  });
+}
+
+/*
+ * Parses `sonarlint files --format json` output. Exit 0/1 both mean the
+ * analysis ran (1 = something at/above the threshold); anything else is the
+ * tool failing, which the caller reports and never blocks on.
+ */
+function parseAnalysis(result) {
+  if (result.error) return { ok: false, reason: result.error.message };
+  if (result.status !== 0 && result.status !== 1) {
+    return { ok: false, reason: (result.stderr || '').trim() || `exit ${result.status}` };
+  }
+  try {
+    return { ok: true, result: JSON.parse(result.stdout) };
+  } catch {
+    return { ok: false, reason: 'unreadable output from sonarlint' };
+  }
 }
 
 module.exports = {
@@ -120,6 +172,12 @@ module.exports = {
   FALLBACK_EXCLUDED_DIRS,
   gitIgnoreStatus,
   isAnalyzable,
-  analysisDepth,
-  issuesBlockSession,
+  BLOCKING_LEVELS,
+  blockingPolicy,
+  isSecret,
+  blocks,
+  perEditFeedbackEnabled,
+  CLI_PATH,
+  runSonarlint,
+  parseAnalysis,
 };
