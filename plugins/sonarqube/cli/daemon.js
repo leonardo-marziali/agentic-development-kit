@@ -374,6 +374,13 @@ async function main() {
   }
 }
 
-if (require.main === module) main();
+if (require.main === module) {
+  // main() handles failures of run() itself; this catches what throws before
+  // it (a bad argv), which would otherwise be an unhandled rejection.
+  main().catch((error) => {
+    process.stderr.write(`sonarlint daemon: ${error.message}\n`);
+    process.exit(2);
+  });
+}
 
 module.exports = { Daemon, parseArgv };
