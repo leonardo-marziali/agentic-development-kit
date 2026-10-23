@@ -1,3 +1,10 @@
+# [2.1.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.0.0...v2.1.0) (2026-10-23)
+
+
+### Features
+
+* **devcontainer:** install the SonarLint VS Code extension ([a7e1248](https://github.com/leonardo-marziali/agentic-development-kit/commit/a7e1248d467753d5d999095f54f22e5f5a058204))
+
 # [2.0.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v1.9.1...v2.0.0) (2026-10-23)
 
 
