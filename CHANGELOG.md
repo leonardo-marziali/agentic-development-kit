@@ -1,3 +1,130 @@
+# [2.0.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v1.9.1...v2.0.0) (2026-10-23)
+
+
+* feat(sonarqube)!: replace MCP with sonar api and local SonarLint analysis ([#26](https://github.com/leonardo-marziali/agentic-development-kit/issues/26)) ([a70c05e](https://github.com/leonardo-marziali/agentic-development-kit/commit/a70c05ec8bee1842155160423567277dd1d7b02b))
+
+
+### BREAKING CHANGES
+
+* the plugin no longer registers the `sonarqube` MCP
+server. Use `sonar api` (see the sonarqube-web-api skill) instead.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01TZq3ZGPfok41w4q4H9SC3R
+
+* feat(sonarqube): add pinned SLOOP provisioning
+
+Pin the SonarLint backend (sonarlint-backend-cli 12.1.1.87771, with a
+bundled Temurin 21 JRE per platform) and the nine analyzers SonarLint for
+VS Code ships, each with a SHA-256 computed from a download whose .sha1
+matched Maven Central.
+
+- install-sloop.js installs into the plugin data dir; downloads honour
+  SONARLINT_ARTIFACT_BASE_URL for an internal mirror, and --from-dir
+  installs offline
+- every artifact is verified before use and the install fails closed:
+  no manifest is written unless everything checked out
+- check-updates.js diffs the pins against Maven metadata without ever
+  rewriting them
+- musl Linux and unsupported platforms fall back to the no-arch archive
+  with a system Java 17+
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01TZq3ZGPfok41w4q4H9SC3R
+
+* feat(sonarqube): add sonarlint CLI and per-project SLOOP daemon
+
+A thin `sonarlint` CLI (files, stdin, rules, daemon, doctor) talks over
+a private Unix socket / named pipe to a per-project daemon that keeps
+SLOOP warm: ~20s cold, ~1s per analysis afterwards.
+
+- JSON-RPC to SLOOP via vscode-jsonrpc (zero dependencies, pinned in
+  the plugin's npm lockfile); standalone mode, no network, no telemetry
+- every file the daemon reads is held to the project root, symlinks
+  included; stdin analysis registers a virtual file and writes nothing
+- compact output for an LLM reader: issues sorted worst-first, clean
+  files as a count, exit 0/1/2 against --min-severity
+- one analysis at a time with timeouts; SLOOP is restarted once, and a
+  second crash leaves a marker so later calls fail fast with exit 2
+- integration test against a real SLOOP (skipped when not installed)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01TZq3ZGPfok41w4q4H9SC3R
+
+* feat(sonarqube)!: run SonarQube for IDE analysis in the hooks
+
+The hooks now use the local SLOOP engine through the plugin's sonarlint
+CLI instead of `sonar analyze`, which was Cloud-only and refused to run
+even its local secrets stage without credentials. Analysis is offline
+and identical for SonarQube Server, Cloud, or no server at all.
+
+- SessionStart warms the project's daemon in the background
+- PostToolUse reports MAJOR/MEDIUM+ issues and secrets on the edited
+  file's changed lines as additionalContext; it never blocks and never
+  pays a cold JVM start
+- Stop/SubagentStop block on secrets anywhere in a touched file and on
+  issues at/above min_blocking_severity on lines changed vs HEAD;
+  pre-existing findings are reported once instead
+- tool failures are reported and never block, and keep the session
+  state so the next stop retries
+- tests drive the hooks through a stand-in CLI via SONARLINT_CLI
+* the `analysis_depth` and `block_on` options are
+replaced by `min_blocking_severity`, `per_edit_feedback` and
+`daemon_idle_minutes`, and the hooks no longer call the `sonar` CLI.
+Run /sonarqube:setup once to install the local engine.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01TZq3ZGPfok41w4q4H9SC3R
+
+* feat(sonarqube): add local analysis skills
+
+- sonarlint-analysis: when and how Claude runs the local CLI, how to
+  read its output and exit codes, the severity policy, and a two-round
+  cap on fix-and-recheck
+- fix (/sonarqube:fix): work through findings or one rule key, reading
+  the rule first, fixing minimally, never adding NOSONAR unasked
+- setup (/sonarqube:setup): doctor, pinned install, mirror and offline
+  installs, troubleshooting, update checks
+- analyze: now runs the local engine instead of `sonar analyze`
+- connected-mode and triage skills describe the local engine
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01TZq3ZGPfok41w4q4H9SC3R
+
+* docs(sonarqube): document local analysis, SLOOP protocol and connected mode
+
+- rewrite the plugin README: requirements, setup, the hooks and their
+  blocking policy, the sonarlint CLI, options, enterprise notes (no MCP,
+  offline, mirrors), version pinning, known limitations, testing
+- docs/SLOOP_PROTOCOL_NOTES.md: artifacts, transport, handshake,
+  callbacks and result shapes, each marked as read from source or
+  confirmed against a live backend
+- docs/CONNECTED_MODE.md: phase-2 design for binding to SonarQube
+  Server/Cloud, with the exact RPC methods and token handling
+- point the root README, .env.example and devcontainer at the SonarQube
+  CLI's SONARQUBE_CLI_* variables instead of the MCP server's
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01TZq3ZGPfok41w4q4H9SC3R
+
+* ci(sonarqube): install the pinned SonarLint engine for the plugin suite
+
+The sonarqube plugin's integration test drives a real SLOOP and skips
+without one. Install it (cached on sloop.lock.json) before running the
+suite, so CI exercises real analysis rather than only the stand-in.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01TZq3ZGPfok41w4q4H9SC3R
+
+* fix(sonarqube): exit 2 when the daemon fails before it starts
+
+main() only caught failures of run(); a throw from parsing argv became an
+unhandled rejection. Catch it at the entry point and exit 2, like every
+other daemon failure.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01TZq3ZGPfok41w4q4H9SC3R
+
 ## [1.9.1](https://github.com/leonardo-marziali/agentic-development-kit/compare/v1.9.0...v1.9.1) (2026-10-22)
 
 
