@@ -1,6 +1,18 @@
 {
-  "description": "Session-scoped SonarQube analysis: tracks the files this session touches, then scans them for secrets and Sonar findings when the session tries to stop.",
+  "description": "Local SonarQube for IDE analysis (SLOOP) for agentic development: warms a per-project daemon at session start, reports issues in each edited file as it is written, tracks the files this session touches, then blocks the session from ending while they still have secrets or high-severity findings.",
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/warm-daemon.js\"",
+            "async": true,
+            "timeout": 60
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Edit|Write",
@@ -9,6 +21,12 @@
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/track-touched.js\"",
             "async": false
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/feedback.js\"",
+            "async": false,
+            "timeout": 20
           }
         ]
       }

@@ -2,35 +2,36 @@
 'use strict';
 
 /*
- * Stop / SubagentStop hook: runs SonarQube analysis over only the files this
- * session touched (per track-touched.js) and, if anything is found, blocks the
- * stop with `decision: "continue"` so Claude is handed the findings and keeps
- * working on them.
+ * Stop / SubagentStop hook: analyzes the files this session touched (per
+ * track-touched.js) with the local SonarQube for IDE engine — the plugin's
+ * `sonarlint` CLI, backed by a warm SLOOP daemon — and, if anything blocking
+ * is found, blocks the stop with `decision: "continue"` so Claude is handed
+ * the findings and keeps working on them.
  *
- * Unlike the markdown plugin's equivalent there is no `fix` pass: the `sonar`
- * CLI has no local auto-fix, so every finding is Claude's to resolve in the
- * source. For the same reason there is no auto-suppression at the attempt cap.
- * Writing NOSONAR comments on the way out would quietly bury exactly the
- * findings this plugin exists to surface, and a secret that has already
- * reached disk is never something a hook should be allowed to silence. At the
- * cap the loop reports what is left and lets the session end.
+ * What blocks:
  *
- * Two stages, in order of how much they can be trusted to run:
+ *   - Any secret, always, under every setting — wherever it is in a touched
+ *     file. A credential on disk is a leak regardless of who wrote the line.
+ *   - Issues at or above `min_blocking_severity` (default HIGH, i.e.
+ *     BLOCKER/CRITICAL/HIGH) on lines this working tree changed vs HEAD. A
+ *     one-line edit to an old file doesn't make its existing debt the
+ *     session's problem; those findings are reported once and let through.
  *
- *   1. Secrets — the scan is local (no code leaves the machine), so it is
- *      unaffected by an unreachable server. Always runs, always blocks.
- *   2. Full analysis — always attempted, never gated on environment
- *      variables (see sonar.js). Blocks on findings; an unauthenticated or
- *      unreachable server is reported to stderr and does not block.
+ * Analysis is fully local: SLOOP runs offline against analyzers installed by
+ * /sonarqube:setup, so it behaves the same whether the project is on
+ * SonarQube Server, SonarQube Cloud, or neither.
  *
- * Neither stage runs at all on a CLI with no credentials configured: `sonar
- * analyze` exits 1 before scanning anything. That is reported prominently
- * rather than swallowed, because it means the session is not being gated —
- * and a hook that stays quiet in that state is worse than no hook at all.
+ * Unlike the markdown plugin's equivalent there is no auto-fix pass and no
+ * auto-suppression at the attempt cap. Writing NOSONAR comments on the way
+ * out would quietly bury exactly the findings this plugin exists to surface,
+ * and a secret that has already reached disk is never something a hook
+ * should be allowed to silence. At the cap the loop reports what is left and
+ * lets the session end.
  *
- * `sonar analyze` takes project context from its own process cwd, so files are
- * grouped by their nearest .sonarlint/connectedMode.json (see
- * connected-mode.js) and analysed per group with cwd set there.
+ * A tool failure (SLOOP not installed, a crashed daemon, a timeout) is
+ * reported on stderr and never blocks — a session must not be trapped by a
+ * broken toolchain — and leaves the session state in place, so the next stop
+ * tries again.
  */
 
 const fs = require('node:fs');
@@ -40,145 +41,129 @@ const {
   stateDir,
   readTrackedFiles,
   runFixLoop,
+  scopesFor,
+  partitionByScope,
 } = require('@leonardo-marziali/ad-lfl-kit');
 const {
   STATE_NAMESPACE,
   TOUCHED_FILES,
   OWN_STATE_FILES,
   isAnalyzable,
-  analysisDepth,
-  issuesBlockSession,
+  blockingPolicy,
+  blocks,
+  isSecret,
+  runSonarlint,
+  parseAnalysis,
 } = require('./lib');
-const { sonarAvailable, resolveSonarBin, analyzeSecrets, analyzeFull } = require('./sonar');
 const { groupByBinding, describeGroup } = require('./connected-mode');
 
 const PREFIX = 'sonarqube plugin:';
 
 /*
- * Collects stderr notes and emits each distinct one only once per hook run —
- * an unreachable server would otherwise produce the same line for every
- * binding group.
+ * The hook runs under a 180s timeout. A cold daemon needs ~20-30s before the
+ * first analysis completes, so the CLI gets 150s and the rest is margin.
  */
-function createNotes() {
-  const seen = new Set();
-  return {
-    add(message) {
-      if (seen.has(message)) return;
-      seen.add(message);
-    },
-    emit() {
-      for (const message of seen) {
-        process.stderr.write(`${PREFIX} ${message}\n`);
-      }
-    },
-  };
+const ANALYSIS_TIMEOUT_S = 150;
+
+class ToolFailure extends Error {}
+
+function formatIssue(issue) {
+  const where = issue.line ? `${issue.relFile}:${issue.line}` : issue.relFile;
+  const fix = issue.hasQuickFix ? ' (quick fix available)' : '';
+  return `- ${where} ${issue.severity} ${issue.rule}: ${issue.message}${fix}`;
 }
 
 /*
- * An analysis that did not find anything is not necessarily an analysis that
- * ran. Everything other than a clean exit gets explained on stderr, and none
- * of it blocks: a session must never be trapped by a broken toolchain, an
- * expired token, or a bug in this hook.
+ * One section per connected-mode binding, so a monorepo's findings say which
+ * SonarQube project they belong to — the key Claude needs if it goes on to
+ * look the project up with `sonar api`.
  */
-function noteNonFinding(outcome, label, notes) {
-  switch (outcome.kind) {
-    case 'clean':
-      return;
-    case 'invalid-options':
-      /*
-       * Exit 2 means this hook built an argument list the CLI rejected —
-       * our bug, not the user's code. Say so unmistakably rather than
-       * letting it read as "nothing found".
-       */
-      notes.add(
-        `BUG — \`sonar\` rejected the arguments this hook passed (exit 2) for ${label}. ` +
-          `The ${outcome.label} stage did NOT run, so nothing was checked. ` +
-          `Please report this with the following output:\n${outcome.report}`,
-      );
-      return;
-    case 'unavailable':
-      notes.add(
-        `could not execute \`sonar\` for ${label}; skipping the ${outcome.label} stage ` +
-          `(${outcome.report}).`,
-      );
-      return;
-    case 'interrupted':
-      notes.add(`the ${outcome.label} stage was interrupted for ${label}; not blocking.`);
-      return;
-    default:
-      notes.add(
-        `the ${outcome.label} stage could not complete for ${label} (exit ${outcome.status}) — ` +
-          'the CLI most likely has no credentials configured, or the server is unreachable. ' +
-          'Run `sonar auth login` to fix it. Not blocking the session on it' +
-          (outcome.label === 'secrets'
-            ? ', so NOTHING was scanned for secrets this session.'
-            : '.') +
-          (outcome.report ? `\n${outcome.report}` : ''),
-      );
-  }
-}
-
-function section(stage, label, report) {
-  return `## ${stage} — ${label}\n\n${report || '(no output)'}`;
+function sections(issues, cwd) {
+  const groups = groupByBinding([...new Set(issues.map((i) => i.abs))], { fallbackDir: cwd });
+  return groups
+    .map((group) => {
+      const inGroup = new Set(group.files);
+      const lines = issues.filter((i) => inGroup.has(i.abs)).map(formatIssue);
+      return `## ${describeGroup(group)}\n\n${lines.join('\n')}`;
+    })
+    .join('\n\n');
 }
 
 /*
- * runFixLoop's check: returns { failed, report }. `failed` is true only when
- * an analysis actually ran and actually found something.
+ * runFixLoop's check: returns { failed, report }, or throws ToolFailure when
+ * the analysis could not run at all (runFixLoop then neither blocks nor
+ * discards state).
  */
-function analyze(groups, { depth, withIssues, notes }) {
-  let failed = false;
-  const sections = [];
+function analyze(files, { cwd, notes }) {
+  const run = runSonarlint(
+    [
+      'files',
+      ...files,
+      '--format',
+      'json',
+      '--min-severity',
+      'INFO',
+      '--timeout',
+      String(ANALYSIS_TIMEOUT_S),
+    ],
+    { cwd, timeoutMs: (ANALYSIS_TIMEOUT_S + 20) * 1000 },
+  );
+  const parsed = parseAnalysis(run);
+  if (!parsed.ok) throw new ToolFailure(parsed.reason);
 
-  for (const group of groups) {
-    const label = describeGroup(group);
-
-    const secrets = analyzeSecrets(group.files, { cwd: group.dir });
-    if (secrets.kind === 'findings') {
-      failed = true;
-      sections.push(section('Secrets', label, secrets.report));
-    } else {
-      noteNonFinding(secrets, label, notes);
-    }
-
-    if (!withIssues) continue;
-
-    const issues = analyzeFull(group.files, {
-      projectKey: group.binding?.projectKey,
-      depth,
-      cwd: group.dir,
-    });
-    if (issues.kind === 'findings') {
-      failed = true;
-      sections.push(section('Issues', label, issues.report));
-    } else {
-      noteNonFinding(issues, label, notes);
-    }
+  const { result } = parsed;
+  for (const skip of result.skipped || []) notes.add(`skipped ${skip.file}: ${skip.reason}`);
+  for (const analyzer of result.skippedAnalyzers || []) {
+    notes.add(
+      `the ${analyzer.language} analyzer could not load (${analyzer.reason}); those files were not checked.`,
+    );
   }
 
-  return { failed, report: sections.join('\n\n').trim() };
+  const policy = blockingPolicy();
+  const issues = result.issues.map((issue) => ({
+    ...issue,
+    abs: path.resolve(cwd, issue.file),
+    relFile: issue.file,
+  }));
+  const candidates = issues.filter((issue) => blocks(issue, policy));
+  const secrets = candidates.filter(isSecret);
+  const scoped = partitionByScope(
+    candidates.filter((issue) => !isSecret(issue)),
+    { scopes: scopesFor(files), getFile: (i) => i.abs, getLine: (i) => i.line },
+  );
+
+  if (scoped.outOfScope.length) {
+    notes.add(
+      `${scoped.outOfScope.length} pre-existing finding(s) at/above ${policy.threshold} on lines this ` +
+        'session did not change were not blocked on:\n' +
+        scoped.outOfScope.map(formatIssue).join('\n'),
+    );
+  }
+
+  const blocking = [...secrets, ...scoped.inScope];
+  return { failed: blocking.length > 0, report: sections(blocking, cwd) };
 }
 
 function buildMessage({ attempt, maxAttempts, outcome }) {
   return {
     stopReason: 'Files touched in this session still have SonarQube findings.',
     systemMessage:
-      'SonarQube analysis found unresolved findings in files edited this session ' +
-      `(attempt ${attempt}/${maxAttempts}):\n\n${outcome.report}\n\n` +
+      'SonarQube for IDE analysis (local, SLOOP) found unresolved findings in files edited this ' +
+      `session (attempt ${attempt}/${maxAttempts}):\n\n${outcome.report}\n\n` +
       'Fix these in the source. A secret must be removed from the file entirely — ' +
       'move it to an environment variable or a secret store — and, because it has ' +
       'already been written to disk and may be in git history, tell the user it needs ' +
       'rotating. Do not silence anything with a NOSONAR comment or by rewriting code ' +
       'purely to dodge a rule; if a finding is a genuine false positive, say which one ' +
-      'and why instead of suppressing it. ' +
+      'and why instead of suppressing it. To understand a rule, run the `sonarlint rules ' +
+      '--key <rule>` command described in the sonarlint-analysis skill. ' +
       `After attempt ${maxAttempts} the loop stops and reports whatever is left.`,
   };
 }
 
 /*
  * runFixLoop's onCap: attempts have run out, so the stop goes through. Report
- * only — nothing is written to the user's files. See the header comment for
- * why auto-suppression is deliberately absent here.
+ * only — nothing is written to the user's files.
  */
 function giveUp({ maxAttempts, outcome }) {
   process.stderr.write(
@@ -189,29 +174,26 @@ function giveUp({ maxAttempts, outcome }) {
   );
 }
 
+function createNotes() {
+  const seen = new Set();
+  return {
+    add: (message) => seen.add(message),
+    emit: () => {
+      for (const message of seen) process.stderr.write(`${PREFIX} ${message}\n`);
+    },
+  };
+}
+
 function main() {
   const input = readHookInput();
   if (!input) return;
-
-  /*
-   * A missing prerequisite must never block a session, so this is a plain
-   * no-op with one line of explanation rather than an error.
-   */
-  if (!sonarAvailable()) {
-    process.stderr.write(
-      `${PREFIX} the \`sonar\` CLI was not found (looked for "${resolveSonarBin()}" on PATH and ` +
-        'in the usual install locations), so no analysis ran. Install the SonarQube CLI to ' +
-        "enable this plugin's hooks.\n",
-    );
-    return;
-  }
 
   const dir = stateDir({ sessionId: input.session_id, namespace: STATE_NAMESPACE });
   const listFile = path.join(dir, TOUCHED_FILES);
   if (!fs.existsSync(listFile)) return;
 
+  const cwd = input.cwd || process.cwd();
   const files = readTrackedFiles(listFile).filter(isAnalyzable);
-  const groups = groupByBinding(files, { fallbackDir: input.cwd || process.cwd() });
   const notes = createNotes();
 
   const result = runFixLoop({
@@ -219,8 +201,7 @@ function main() {
     dir,
     stateFiles: OWN_STATE_FILES,
     files,
-    check: () =>
-      analyze(groups, { depth: analysisDepth(), withIssues: issuesBlockSession(), notes }),
+    check: () => analyze(files, { cwd, notes }),
     onCap: giveUp,
     buildMessage,
   });
@@ -228,7 +209,11 @@ function main() {
   notes.emit();
 
   if (result.reason === 'error') {
-    process.stderr.write(`${PREFIX} analysis invocation failed: ${result.error.message}\n`);
+    const message = result.error instanceof ToolFailure ? result.error.message : result.error.stack;
+    process.stderr.write(
+      `${PREFIX} local analysis could not run, so the files this session touched were NOT ` +
+        `checked; not blocking the session on it.\n${message}\n`,
+    );
   }
 }
 
