@@ -1,4 +1,5 @@
 {
-  "sonarCloudOrganization": "leonardo-marziali",
-  "projectKey": "leonardo-marziali_agentic-development-kit"
+    "sonarCloudOrganization": "leonardo-marziali",
+    "projectKey": "leonardo-marziali_agentic-development-kit",
+    "region": "EU"
 }
