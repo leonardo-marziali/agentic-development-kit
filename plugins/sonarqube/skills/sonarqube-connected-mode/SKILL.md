@@ -61,23 +61,18 @@ repo/
 
 `packages/api/src/handler.ts` binds to `monorepo-api`, not to the root.
 
-## Using it with the CLI
+## Local analysis and bindings
 
-`sonar analyze` resolves project context from its **own working
-directory**, so a binding is only honoured if the CLI runs from the
-directory containing `.sonarlint/`. Two sub-projects therefore need two
-runs, not one:
+The plugin's local analysis (SonarQube for IDE's engine, run offline)
+doesn't need a binding: it uses the analyzers' default rules for every
+file. Its hooks still read the nearest binding for each touched file and
+label findings with that project, so in a monorepo the report says which
+SonarQube project a finding belongs to. That project key is what to use
+for a follow-up `sonar api` call.
 
-```bash
-cd packages/api && sonar analyze --file src/handler.ts --project monorepo-api
-cd packages/web && sonar analyze --file src/page.tsx   --project monorepo-root
-```
-
-This plugin's Stop hook does exactly that: it groups the session's
-touched files by their nearest binding directory and runs the CLI once
-per group, from that directory, with that group's `--project`. Files with
-no binding anywhere above them form a single group that is analysed
-without `--project`.
+Server-side quality profiles are not applied locally yet, so a rule your
+organization turned off can still be reported locally. See the README's
+known limitations.
 
 ## Using it with `sonar api`
 
@@ -92,8 +87,8 @@ repository.
 
 A missing binding is not an error, and not something to fix uninvited:
 
-- **The CLI still works.** Local analysis runs without `--project`;
-  secrets detection never needed a server at all.
+- **Local analysis still works.** It never needed a binding or a
+  server.
 - **`sonar api` needs a key.** If a project search doesn't give an
   unambiguous match, ask the user rather than picking one.
 - **Don't create the file unprompted.** Writing a binding commits a
@@ -102,12 +97,11 @@ A missing binding is not an error, and not something to fix uninvited:
 
 ## Troubleshooting
 
-| Symptom                     | Likely cause                            |
-| --------------------------- | --------------------------------------- |
-| Runs but reports no project | CLI not run from the binding directory  |
-| Wrong project's issues      | A parent binding shadowed a nearer one  |
-| Server rejects a valid key  | Key belongs to a different instance/org |
-| Nothing found walking up    | No binding committed; run without it    |
+| Symptom                    | Likely cause                            |
+| -------------------------- | --------------------------------------- |
+| Wrong project's issues     | A parent binding shadowed a nearer one  |
+| Server rejects a valid key | Key belongs to a different instance/org |
+| Nothing found walking up   | No binding committed; run without it    |
 
 If `connectedMode.json` exists but is malformed, treat it as absent and
 say so — analysing against a guessed key is worse than analysing without
