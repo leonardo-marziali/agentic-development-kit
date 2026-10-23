@@ -1,0 +1,129 @@
+{
+  "$comment": "Pinned SonarLint backend (SLOOP) and analyzer artifacts. Never resolved at runtime: bump deliberately with scripts/check-updates.js, then re-pin every sha256 from a verified download. Maven Central publishes only .sha1/.md5/.asc, so the sha256 values are computed at pin time (each artifact's .sha1 was checked against Maven Central first).",
+  "backend": {
+    "groupId": "org.sonarsource.sonarlint.core",
+    "artifactId": "sonarlint-backend-cli",
+    "version": "12.1.1.87771",
+    "mainClass": "org.sonarsource.sonarlint.core.backend.cli.SonarLintServerCli",
+    "distributions": {
+      "linux-x64": {
+        "classifier": "linux_x64",
+        "extension": "tar.gz",
+        "bundledJre": true,
+        "sha256": "f1bae58fc17284a583cd28bbc7f04b0c795b8d6c82144d8e6c6afe608833dfb6"
+      },
+      "linux-arm64": {
+        "classifier": "linux_aarch64",
+        "extension": "tar.gz",
+        "bundledJre": true,
+        "sha256": "006b8ffa99c32222939f9e4a807f46b8b0b04292c7e76d47576888388c2856ea"
+      },
+      "darwin-x64": {
+        "classifier": "macosx_x64",
+        "extension": "tar.gz",
+        "bundledJre": true,
+        "sha256": "d32cc2383a2910e4f7d9b182fd399ec12b476dc41e884789222fd8bbf1d07634"
+      },
+      "darwin-arm64": {
+        "classifier": "macosx_aarch64",
+        "extension": "tar.gz",
+        "bundledJre": true,
+        "sha256": "4cd1922be90c7ca1d12a54032e660a041370bddd17019eb960028a46a85fc1a9"
+      },
+      "win32-x64": {
+        "classifier": "windows_x64",
+        "extension": "zip",
+        "bundledJre": true,
+        "sha256": "cf18199b89dd9e720f896c8724874a607df1d2b504b8085e9073db8d64fab3fd"
+      },
+      "no-arch": {
+        "classifier": "no-arch",
+        "extension": "zip",
+        "bundledJre": false,
+        "sha256": "14dbc44a7c263b552b0d2590bc5f4cc7b9bde13b35bfd3067c72e98707ab12d2"
+      }
+    }
+  },
+  "analyzers": [
+    {
+      "key": "javascript",
+      "groupId": "org.sonarsource.javascript",
+      "artifactId": "sonar-javascript-plugin",
+      "version": "14.1.0.46226",
+      "sha256": "31ecddea45b65e9471e690884730092140ebf5922ccdb8e50a9e1fed2fe079d5",
+      "languages": ["JS", "TS", "CSS"]
+    },
+    {
+      "key": "python",
+      "groupId": "org.sonarsource.python",
+      "artifactId": "sonar-python-plugin",
+      "version": "5.32.0.37250",
+      "sha256": "f659212a6846a0044a88d98f2ac6a744ad151cddee8be953b8cdd4fb74a21641",
+      "languages": ["PYTHON", "IPYTHON"]
+    },
+    {
+      "key": "java",
+      "groupId": "org.sonarsource.java",
+      "artifactId": "sonar-java-plugin",
+      "version": "8.44.0.48651",
+      "sha256": "308760b0ae888f32489014d8392faeb0b9ac1b3074729858c9415ce0454e2ef3",
+      "languages": ["JAVA"]
+    },
+    {
+      "key": "text",
+      "groupId": "org.sonarsource.text",
+      "artifactId": "sonar-text-plugin",
+      "version": "2.53.0.13730",
+      "sha256": "f283bcc126b87e916fdd2d19221a50ae54300545b07c173c4f83aab724d69448",
+      "languages": ["SECRETS", "TEXT"]
+    },
+    {
+      "key": "iac",
+      "groupId": "org.sonarsource.iac",
+      "artifactId": "sonar-iac-plugin",
+      "version": "2.23.0.24355",
+      "sha256": "50dbcd884a778e55def898b32e1099918312baf4c873193f7aabf0dcce7f1c1e",
+      "languages": [
+        "TERRAFORM",
+        "CLOUDFORMATION",
+        "KUBERNETES",
+        "DOCKER",
+        "AZURERESOURCEMANAGER",
+        "GITHUBACTIONS",
+        "JSON"
+      ]
+    },
+    {
+      "key": "go",
+      "groupId": "org.sonarsource.go",
+      "artifactId": "sonar-go-plugin",
+      "version": "1.47.0.9174",
+      "sha256": "d02725c40b2b19321da672268a484e35d2fdcc2b055149d7deb2cc52f9223047",
+      "languages": ["GO"]
+    },
+    {
+      "key": "php",
+      "groupId": "org.sonarsource.php",
+      "artifactId": "sonar-php-plugin",
+      "version": "4.1.0.16998",
+      "sha256": "79e01d87fa098e784e2675d2900006623f6ef2dbeccb751d6b3c39911d7bb7f3",
+      "languages": ["PHP"]
+    },
+    {
+      "key": "html",
+      "groupId": "org.sonarsource.html",
+      "artifactId": "sonar-html-plugin",
+      "version": "3.28.0.8018",
+      "sha256": "ad23ba9d8a2168ccc8990aaee7671bdbe2d28e45ae97366af050ff04948f166b",
+      "languages": ["HTML"]
+    },
+    {
+      "key": "xml",
+      "groupId": "org.sonarsource.xml",
+      "artifactId": "sonar-xml-plugin",
+      "version": "2.19.0.8138",
+      "sha256": "b9397446584e3ac2a9bd62a1bb7e15f6059e03bcde9bfff6699d6360cda150c9",
+      "languages": ["XML"]
+    }
+  ]
+}
