@@ -42,6 +42,7 @@ plugins/                          Individual plugins hosted by this marketplace
   markdown/                       Authoring/linting skills, LSP config, and hooks
   prettier/                       Format-on-edit hook and a manual formatting skill
   python/                         ruff + pyright hooks and skills, pyright LSP
+  sonarqube/                      Local SonarLint analysis hooks, `sonar api` skills
   git/                            Safety-checked branching and Conventional Commits
   github/                         Pull request lifecycle: open, watch checks, merge
   java/                           Reserved for a future Java plugin
@@ -166,8 +167,9 @@ Containers: Reopen in Container_ in VS Code, or
   ([`claude-login.sh`](.devcontainer/claude-login.sh)) in a terminal, which
   starts `claude auth login` if you aren't logged in yet.
 
-Forward `GITHUB_PERSONAL_ACCESS_TOKEN`, `SONARQUBE_TOKEN` and `SONARQUBE_URL`
-from the host environment if you use them.
+Put `GITHUB_PERSONAL_ACCESS_TOKEN` and the SonarQube CLI's
+`SONARQUBE_CLI_TOKEN` / `SONARQUBE_CLI_SERVER` / `SONARQUBE_CLI_ORG` in the
+gitignored `.env` (copy `.env.example`) if you use them.
 
 ### Commits
 
@@ -185,12 +187,14 @@ cd packages/ad-lfl-kit && pnpm test
 cd plugins/markdown && pnpm test
 cd plugins/prettier && pnpm test
 cd plugins/python && pnpm test
+cd plugins/sonarqube && pnpm test
 ```
 
 The root `pnpm test` covers this repo's own hooks in `.claude/hooks/`, the
 scripts in `scripts/`, and the shared packages in `packages/`. See a plugin's
 own README ([markdown](plugins/markdown/README.md),
-[prettier](plugins/prettier/README.md), [python](plugins/python/README.md))
+[prettier](plugins/prettier/README.md), [python](plugins/python/README.md),
+[sonarqube](plugins/sonarqube/README.md))
 for what its suite covers.
 
 A plugin suite needs that plugin's dependencies present, so run `npm ci` in
@@ -204,7 +208,7 @@ runs whichever suites are affected by a given pull request (via
 change) and uploads each one's coverage to
 [Codecov](https://codecov.io/gh/leonardo-marziali/agentic-development-kit)
 under its own flag (`repo-root`, `ad-lfl-kit`, `markdown-plugin`,
-`prettier-plugin`, `python-plugin`).
+`prettier-plugin`, `python-plugin`, `sonarqube-plugin`).
 [`codecov.yml`](codecov.yml) carries each flag's last-known coverage forward
 on commits that don't re-upload it, so the badge above — the combined
 coverage across every flag — stays accurate even though the suites upload

@@ -2,189 +2,216 @@
 
 [![sonarqube plugin coverage](https://codecov.io/gh/leonardo-marziali/agentic-development-kit/branch/main/graph/badge.svg?flag=sonarqube-plugin)](https://codecov.io/gh/leonardo-marziali/agentic-development-kit)
 
-Plugin that keeps a session from ending while the files it touched still
-contain secrets or SonarQube findings, and teaches Claude to read a
-SonarQube Server or SonarQube Cloud instance through the CLI's
-`sonar api` command — no MCP server, no container runtime.
+SonarQube for IDE, for an agent. While Claude writes code, this plugin
+runs Sonar's own IDE analysis engine (SLOOP, the backend of SonarQube for
+IntelliJ, VS Code and Eclipse) **locally and offline** on every file Claude
+edits, hands Claude the findings as it goes, and keeps the session from
+ending while touched files still have secrets or high-severity issues.
+For what the server knows — open issues, quality gates, rules, measures —
+it teaches Claude to call SonarQube Server or SonarQube Cloud through the
+SonarQube CLI's `sonar api`.
+
+No MCP server, no container runtime.
 
 ## Requirements
 
-**The [SonarQube CLI][cli] (`sonar`)** is a prerequisite. This plugin
-does **not** install it, and deliberately gives no install instructions —
-how you get it is your platform's business, not the plugin's. If it isn't
-found, every hook no-ops with a single note on stderr — a missing
-optional tool never blocks a session.
+- **Node.js 22.12 or later** — the hooks run on it, and the JS/TS analyzer
+  needs it.
+- **The local engine**, installed once with `/sonarqube:setup` (see
+  [Installation](#installation)). Until it is, the hooks do nothing
+  except say so when a session ends.
+- **The [SonarQube CLI][cli] (`sonar`)** — only for reading the server
+  through `sonar api`. Local analysis doesn't use it. The plugin doesn't
+  install the CLI.
 
 [cli]: https://docs.sonarsource.com/sonarqube-cloud/advanced-setup/sonarqube-cli/
 
-The CLI must be authenticated, either with `sonar auth login` (stored in
-the system keychain) or with `SONARQUBE_CLI_TOKEN` /
-`SONARQUBE_CLI_SERVER` / `SONARQUBE_CLI_ORG`. The plugin never reads or
-stores a token itself.
-
-## What This Plugin Provides
-
-### Validation hooks
-
-- **Session-scoped analysis**: only files created or edited _during the
-  current session_ get analysed. Pre-existing code is left alone unless
-  you ask for it (see [`/sonarqube:analyze`](#skills) below).
-- A `PostToolUse` hook (on `Edit`/`Write`) records every file the session
-  touches. There is no language or extension filter — Sonar decides what
-  it supports, and a leaked credential is worth finding whatever file it
-  is in.
-- **Scope follows git**, the way SonarQube for IDE does: a file the
-  repository ignores is not this project's source and is not analysed.
-  `.gitignore` already says precisely what a project treats as generated
-  or vendored, it's maintained by the people who own the repo, and it
-  covers what a hardcoded list of directory names always misses — a
-  `target/`, a `.next/`, a project-specific output folder nobody else
-  would think to name. The question asked is "is this ignored?", not "is
-  it tracked?", so a file Claude has just created is still in scope.
-  Outside any git repository there is no such statement to read, and a
-  heuristic list of the usual generated and vendored directory names
-  applies instead.
-- `Stop` and `SubagentStop` hooks then run two stages over that set:
-
-  1. **Secrets** (`sonar analyze secrets`) — the scan itself is local, so
-     no code leaves your machine and an unreachable server can't make it
-     flaky. Always runs, and findings always block.
-  2. **Full analysis** (`sonar analyze --file …`) — always _attempted_,
-     never gated on environment variables, so an already-authenticated
-     CLI is used as-is. Findings block; an unauthenticated CLI or an
-     unreachable server is reported on stderr and does **not** block.
-
-- **Autonomous fix loop**: when something is found, the `Stop` hook
-  blocks the session from ending and hands Claude the findings, so it
-  keeps working on them. Up to 3 attempts per session.
-- **Nothing is ever written to your files.** Unlike the sibling
-  `markdown` plugin, there is no auto-suppression at the attempt cap: the
-  remaining findings are reported and the session ends. Auto-inserting
-  `NOSONAR` comments would quietly bury exactly the findings this plugin
-  exists to surface, and a secret must never be suppressible by a hook.
-- Once the session's files are clean (or the cap is hit), the tracked
-  file list is cleared.
-
-#### Connected mode
-
-`sonar analyze` takes project context from its own working directory, so
-the hooks group the session's files by their nearest
-`.sonarlint/connectedMode.json` and run the CLI once per group — from
-that directory, with that group's `--project`. A monorepo with two bound
-sub-projects gets two correctly-scoped runs. Files with no binding above
-them form one group, analysed without `--project`.
-
-### Remote data via `sonar api`
-
-Server-side questions — open issues, hotspots, quality gates, rule
-rationale, measures, branches and pull requests — go through
-`sonar api <method> <endpoint>`, which calls any Web API endpoint with the
-CLI's own credentials and works the same against SonarQube Server and
-SonarQube Cloud. The `sonarqube-web-api` skill holds the recipes and the
-Server/Cloud differences (Cloud needs `organization=`, V2 paths are
-rewritten by the CLI).
-
-This replaces the SonarQube MCP server the plugin used to ship. It needed
-a container runtime and duplicated what the CLI already authenticates
-for.
-
-### Skills
-
-#### Analysis
-
-- **analyze** (`/sonarqube:analyze [path]`): explicitly run SonarQube
-  over `path` (or the project) — including files this session never
-  touched. This is the deliberate escape hatch for scanning pre-existing
-  code. Manual invocation only; Claude won't trigger it on its own.
-
-#### Knowledge
-
-- **sonarqube-connected-mode**: `.sonarlint/connectedMode.json` — its
-  shape, how the nearest binding is resolved, monorepos, and what to do
-  when there is no binding.
-- **sonarqube-issue-triage**: what to fix first, handling a detected
-  secret, telling a real defect from a false positive, quality gates, and
-  when a suppression is ever justified.
-- **sonarqube-web-api**: reading a SonarQube instance through
-  `sonar api` — recipes, Server vs Cloud differences, and when a write
-  needs the user's say-so.
-
-#### Naming convention
-
-Skill names are prefixed with the most specific subject they document,
-not mechanically with the plugin name. Knowledge skills here all concern
-SonarQube itself, so they take the `sonarqube-` prefix; the
-user-invocable skill gets a short verb name with no prefix (`analyze`).
+The CLI authenticates on its own, with `sonar auth login` (stored in the
+system keychain) or `SONARQUBE_CLI_TOKEN` / `SONARQUBE_CLI_SERVER` /
+`SONARQUBE_CLI_ORG`. The plugin never reads, stores or logs a token.
 
 ## Installation
 
 Add this repository as a plugin marketplace in Claude Code and install
-the `sonarqube` plugin from it, or copy the `plugins/sonarqube`
-directory into your own plugin setup.
+the `sonarqube` plugin from it:
 
-## Usage
-
-Once installed, the plugin analyses files **this session created or
-edited**:
-
-- When you finish a conversation with Claude Code (looping on remaining
-  findings, up to 3 attempts, before giving up)
-- When Claude Code agents complete their work
-
-Pre-existing code is never touched by these hooks. Run
-`/sonarqube:analyze [path]` to scan it explicitly.
-
-### Options
-
-The plugin declares two options, prompted when you enable it and
-changeable later from the plugin's configuration:
-
-**`analysis_depth`** — `STANDARD` (default) or `DEEP`.
-
-Passed to `sonar analyze` as `--depth`. `DEEP` analyses more thoroughly
-and takes noticeably longer; the `Stop` hook runs under a 180-second
-timeout, so `STANDARD` is the safer choice on large changesets.
-
-**`block_on`** — `secrets-and-issues` (default) or `secrets`.
-
-Which findings stop the session from ending. `secrets` runs only the
-local secrets scan, which is fast and sends no code anywhere.
-`secrets-and-issues` also runs the full analysis and blocks on its
-findings too.
-
-Secrets always block, under either setting. That is the point of the
-plugin, and there is no option to turn it off.
-
-### Authentication
-
-The hooks never inspect environment variables to decide whether to run
-the full analysis; they attempt it and read the exit code. So a CLI
-authenticated with:
-
-```bash
-sonar auth login -s https://sonarqube.example.com
+```text
+/plugin install sonarqube --marketplace leonardo-marziali/agentic-development-kit
 ```
 
-works with nothing else configured. `SONARQUBE_CLI_TOKEN` /
-`SONARQUBE_CLI_ORG` work too, if you prefer them.
+Then install the local engine once:
 
-If neither is set up, the CLI exits 1 for **both** stages — it declines to
-analyse anything at all without credentials — and the hook says so on
-stderr without blocking. Nothing is gated in that state, so the note for
-the secrets stage spells that out explicitly rather than letting a silent
-session read as a clean one.
+```text
+/sonarqube:setup
+```
 
-(Verified against CLI 1.7.0: the secrets scan makes no server call — it
-still reports findings with an unreachable server configured — but the
-CLI does require credentials to be present before it will run.)
+That downloads the pinned backend (with a bundled Java 21 runtime) and
+nine analyzer jars — about 160-210 MB, depending on the platform — into
+the plugin's data directory (`~/.claude/plugins/data/…`), verifies every
+SHA-256, and runs `doctor`. Uninstalling the plugin removes it.
+
+## What This Plugin Provides
+
+### Hooks
+
+- **`SessionStart`** — starts this project's analysis daemon in the
+  background and warms it up, so the ~20s JVM and analyzer start-up isn't
+  paid inside an edit.
+- **`PostToolUse`** (`Edit`/`Write`) — records the file as touched, then,
+  if the daemon is warm, analyzes it and gives Claude the MAJOR/MEDIUM+
+  issues and secrets on the lines just changed. Never blocks.
+- **`Stop` / `SubagentStop`** — analyzes every file the session touched,
+  and **blocks** the session from ending on secrets and on issues at/above
+  `min_blocking_severity` on changed lines, up to 3 attempts.
+
+How the Stop gate decides:
+
+- **Secrets always block**, in any touched file, under every setting. A
+  credential on disk is a leak no matter who wrote the line.
+- **Other issues block only on lines the working tree changed vs `HEAD`**
+  (plus two lines of context). A one-line edit to an old file doesn't make
+  its existing debt the session's problem. Pre-existing findings at the
+  blocking level are reported once on stderr and let through.
+- **Scope follows git**, the way SonarQube for IDE does: a file the
+  repository ignores is not analyzed. Outside git, a short list of
+  well-known generated/vendored directory names stands in.
+- **A broken tool never blocks.** If the engine isn't installed, crashed,
+  or timed out, the hook says the files were _not checked_ and lets the
+  session end, keeping its state so the next stop tries again.
+- **Nothing is ever written to your files.** At the attempt cap the
+  remaining findings are reported, not suppressed. Auto-inserted
+  `NOSONAR` comments would bury exactly what this plugin exists to
+  surface.
+
+In a monorepo, findings are grouped by the nearest
+`.sonarlint/connectedMode.json`, so the report names the SonarQube project
+each one belongs to.
+
+### The `sonarlint` CLI
+
+The hooks and skills share one CLI, `cli/sonarlint.js`:
+
+```text
+sonarlint files <paths...>        analyze files or directories
+sonarlint stdin --path <p>        analyze content not yet on disk
+sonarlint rules --key <rule>      a rule's description
+sonarlint rules --search <text>   find rule keys
+sonarlint daemon start|stop|status
+sonarlint doctor                  check Java, install, analyzers, daemon
+```
+
+Output is built for an LLM reader: one line per issue, worst first;
+clean files are a count, never a list. `--format json` gives
+`{issues: [{file, line, endLine, rule, severity, type, message,
+hasQuickFix}], summary, skipped, failed}`. Exit codes: `0` clean or
+below `--min-severity` (default HIGH), `1` issues at/above it, `2` the
+tool couldn't run.
+
+Behind it, one **daemon per project** (keyed by a hash of the git root)
+keeps SLOOP warm: the first analysis takes ~20-30s, later ones about a
+second. The daemon listens on a Unix socket (a named pipe on Windows) in a
+private, per-user `0700` directory, runs one analysis at a time, restarts
+SLOOP once if it crashes, and exits after `daemon_idle_minutes`.
+
+### Skills
+
+User-invocable:
+
+- **`/sonarqube:analyze [paths]`** — analyze any files, including code the
+  session never touched.
+- **`/sonarqube:fix [rule | paths]`** — work through findings, or one rule.
+- **`/sonarqube:setup`** — install, repair, mirror/offline configuration.
+
+Knowledge (loaded when relevant):
+
+- **sonarlint-analysis** — when and how Claude runs the local CLI, reading
+  its output, the severity policy, and a two-round fix-and-recheck cap.
+- **sonarqube-web-api** — reading SonarQube Server or Cloud through
+  `sonar api`: recipes, Server vs Cloud differences, and when a write
+  needs the user's say-so.
+- **sonarqube-connected-mode** — `.sonarlint/connectedMode.json`, nearest
+  binding, monorepos.
+- **sonarqube-issue-triage** — what to fix first, secrets, false
+  positives, quality gates, suppressions.
+
+Skill names follow the repository's convention: knowledge skills take
+the most specific subject they document (`sonarlint-` for the local
+engine, `sonarqube-` for the server), and user-invocable skills get short
+verb names.
+
+## Options
+
+Prompted when you enable the plugin; changeable later in `/config`.
+
+**`min_blocking_severity`** — `high` (default), `blocker`, `medium`, or
+`secrets-only`. Which local findings on changed lines keep a session
+from ending: `high` means BLOCKER and CRITICAL/HIGH. Secrets block under
+every setting.
+
+**`per_edit_feedback`** — `true` (default). Whether the `PostToolUse`
+hook shows Claude the issues in each edited file. The trade-off: a second
+or two per edit for issues seen while the change is fresh, against
+seeing them only at the Stop gate.
+
+**`daemon_idle_minutes`** — `30` (default). The daemon is a JVM using
+roughly 0.5-1 GB; it exits after this long without a request.
+
+## Enterprise notes
+
+- **No MCP, no containers.** Server data goes through the `sonar` CLI
+  your organization already authenticates; local analysis is a local
+  process.
+- **Offline at analysis time.** SLOOP runs in standalone mode with no
+  connections and no telemetry capability; the daemon makes no network
+  calls. The only download is the explicit setup step.
+- **Mirrors.** Set `SONARLINT_ARTIFACT_BASE_URL` to an Artifactory or
+  Nexus Maven 2 root and setup downloads from there.
+- **Air-gapped.** `node scripts/install-sloop.js --from-dir <dir>`
+  installs from a directory holding the artifacts under their Maven file
+  names.
+- **Unsupported platforms** (musl/Alpine, anything without a bundled JRE)
+  use the no-arch build with Java 17+ from `SONARLINT_JAVA` or
+  `JAVA_HOME`.
+- **Data locations.** Engine and analyzers: `${CLAUDE_PLUGIN_DATA}` (or
+  `SONARLINT_HOME`). Daemon socket, pid and log: a private per-user
+  directory under the OS temp dir.
+
+## Version pinning
+
+`sloop.lock.json` pins the backend (`sonarlint-backend-cli` 12.1.1.87771)
+and each analyzer to an exact version — the set SonarLint for VS Code
+ships — with a SHA-256 per artifact. Maven Central publishes only SHA-1
+and MD5, so each SHA-256 was computed from a download whose `.sha1` was
+first checked against Maven Central. Install fails closed on any
+mismatch; nothing is resolved to "latest" at runtime.
+
+To bump: `node scripts/check-updates.js` prints which pins are behind.
+Update `sloop.lock.json`, re-pin the SHA-256 from a verified download, and
+run the integration test. The script never edits the lock itself.
+
+## Known limitations
+
+- **Standalone rules only.** Local analysis uses each analyzer's default
+  rule set, not your server's quality profile, so it can report a rule
+  your organization disabled (or miss one it added). Connected mode is
+  designed in [docs/CONNECTED_MODE.md](docs/CONNECTED_MODE.md) but not
+  implemented.
+- **No security hotspots, taint analysis or C#/C/C++.** Hotspots and
+  taint vulnerabilities come from a server; C# needs an analyzer not on
+  Maven Central; C/C++ needs a compilation database.
+- **Cold start.** The first analysis in a project takes ~20-30s; the
+  per-edit hook skips files until the daemon is warm, and the Stop hook
+  allows 150s.
+- **Very large non-git directories are slow.** The JS/TS analyzer scans
+  under the project root; rooting a daemon at a large non-git directory
+  (your home, say) can exceed the analysis timeout. Inside a git
+  repository the root is the repository.
+- **Memory.** One JVM per project you work in, until it idles out.
+
+See [docs/SLOOP_PROTOCOL_NOTES.md](docs/SLOOP_PROTOCOL_NOTES.md) for how
+the plugin talks to SLOOP, and what was verified against a live backend.
 
 ## Testing
-
-The hooks (`scripts/hooks/*.js`) have a versioned test suite under
-`scripts/hooks/__tests__/`, using Node's built-in test runner. The hooks'
-one runtime dependency, `@leonardo-marziali/ad-lfl-kit`, is pinned in
-`package-lock.json`; install it with `npm ci` first — the same install
-Claude Code runs when it caches the plugin.
 
 ```bash
 cd plugins/sonarqube
@@ -192,21 +219,31 @@ npm ci
 pnpm test
 ```
 
-The suite does **not** require the `sonar` CLI. It runs the hooks against
-a stand-in executable that logs its argv and cwd, so the tests still
-assert the real contract — which subcommand ran, with which `--project`,
-from which directory — while staying runnable anywhere. Covered: session
-scoping, both analysis stages, every documented exit code, the 3-attempt
-cap (and that it writes nothing to your files), both plugin options, and
-connected-mode binding resolution including monorepos.
+The suites use Node's built-in test runner:
 
-Coverage uses Node's built-in test-runner coverage (no extra dependency):
+- **`cli/__tests__/`** — argument parsing, output formatting, severity
+  normalisation, path containment, data/runtime paths, and provisioning
+  (checksums, offline and mirror installs, fail-closed behaviour).
+- **`cli/__tests__/integration.test.js`** — starts a real daemon over a
+  fixture project and asserts the rule keys SLOOP reports (an unused JS
+  variable, a bare Python `except`, a GitHub token). Skipped, with a
+  message, unless the engine is installed
+  (`node scripts/install-sloop.js`, or point `SONARLINT_HOME` at an
+  install).
+- **`scripts/hooks/__tests__/`** — every hook, run as Claude Code runs
+  it, against a stand-in CLI (`SONARLINT_CLI`) that logs its argv and
+  answers from a spec: session scoping, the blocking policy and its
+  options, change scoping vs `HEAD`, tool failures, the 3-attempt cap,
+  connected-mode grouping, and per-edit feedback.
+
+Coverage uses Node's built-in test-runner coverage:
 
 ```bash
 pnpm test:coverage
 ```
 
 This writes `coverage/lcov.info`, which the
-[Plugin Tests](../../.github/workflows/plugin-tests.yml) GitHub Actions
-workflow uploads to Codecov on every pull request that touches this
-plugin — that's what the badge above reflects.
+[Plugin Tests](../../.github/workflows/plugin-tests.yml) workflow uploads
+to Codecov on every pull request that touches this plugin. CI installs
+the engine first (cached on `sloop.lock.json`), so the integration test
+runs there.
