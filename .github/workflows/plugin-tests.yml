@@ -119,6 +119,22 @@ jobs:
         if: matrix.suite.name == 'python'
         run: pipx install ruff
 
+      # The sonarqube plugin's integration test drives a real SLOOP
+      # (SonarQube for IDE's backend) and skips without one. Install the
+      # pinned engine into the CLI's default data dir, cached on the lock
+      # file so the ~200 MB download happens only when the pins change.
+      - name: Cache SonarLint engine
+        if: matrix.suite.name == 'sonarqube'
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/sonarqube-claude
+          key: sloop-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('plugins/sonarqube/sloop.lock.json') }}
+
+      - name: Install SonarLint engine
+        if: matrix.suite.name == 'sonarqube'
+        working-directory: plugins/sonarqube
+        run: node scripts/install-sloop.js
+
       - name: Run tests with coverage
         working-directory: ${{ matrix.suite.dir }}
         run: pnpm test:coverage
