@@ -110,7 +110,7 @@ severity ordering and false-positive rules. In short:
   rule, and do not add `NOSONAR` comments to make findings disappear.
 - If a finding is genuinely a false positive, say which one and why, and
   let the user decide. Marking issues resolved on the server is a
-  deliberate action — see the `sonarqube-mcp-usage` skill.
+  deliberate action — see the `sonarqube-web-api` skill.
 
 Re-run the analysis after fixing, and repeat until clean or until
 something needs a human judgment call.

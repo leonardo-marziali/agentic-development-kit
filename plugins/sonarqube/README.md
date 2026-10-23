@@ -3,78 +3,24 @@
 [![sonarqube plugin coverage](https://codecov.io/gh/leonardo-marziali/agentic-development-kit/branch/main/graph/badge.svg?flag=sonarqube-plugin)](https://codecov.io/gh/leonardo-marziali/agentic-development-kit)
 
 Plugin that keeps a session from ending while the files it touched still
-contain secrets or SonarQube findings, and embeds the official SonarQube
-MCP server for server-side issue triage.
+contain secrets or SonarQube findings, and teaches Claude to read a
+SonarQube Server or SonarQube Cloud instance through the CLI's
+`sonar api` command — no MCP server, no container runtime.
 
 ## Requirements
 
-Both are prerequisites. This plugin does **not** install either, and
-deliberately gives no install instructions — how you get them is your
-platform's business, not the plugin's.
-
-- **The [SonarQube CLI][cli] (`sonar`)**, for the hooks. If it isn't
-  found, every hook no-ops with a single note on stderr — a missing
-  optional tool never blocks a session.
-- **A container runtime**, for the MCP server, which runs as a container.
-  Docker Desktop is not required — see below.
+**The [SonarQube CLI][cli] (`sonar`)** is a prerequisite. This plugin
+does **not** install it, and deliberately gives no install instructions —
+how you get it is your platform's business, not the plugin's. If it isn't
+found, every hook no-ops with a single note on stderr — a missing
+optional tool never blocks a session.
 
 [cli]: https://docs.sonarsource.com/sonarqube-cloud/advanced-setup/sonarqube-cli/
 
-### Container runtime
-
-Any Docker-compatible runtime works. These all provide a `docker` CLI, so
-the plugin uses them with **no configuration at all**:
-
-- **Docker Desktop** (Mac, Windows, Linux) — the default assumption.
-- **OrbStack** (Mac) — fast and light; starts quicker and uses less
-  RAM/CPU than Docker Desktop. Free for personal use, paid for commercial
-  use at larger companies.
-- **Colima** (Mac, Linux) — command-line only, no GUI, Lima underneath.
-  Fully open source with no licensing restrictions.
-- **Rancher Desktop** (Mac, Windows, Linux) — open source, backed by
-  SUSE. Has a GUI, switches between containerd and dockerd as the
-  runtime, and bundles Kubernetes.
-- **Lima** (Mac, Linux) — the VM layer Colima and others build on. CLI
-  only, more DIY.
-
-**Podman** takes one extra step. It is daemonless and rootless by
-default — a different security model — and its CLI is `podman`, not
-`docker`. Install its `docker` shim (the `podman-docker` package on
-Linux; on macOS, Podman Desktop can provide the alias) and everything
-below applies unchanged.
-
-The plugin invokes `docker` directly rather than offering a setting for
-this. Every runtime above already answers to that name, so a setting
-would be configuration surface that only one runtime ever uses — and
-which its own shim already solves.
-
-The image is referenced as `docker.io/sonarsource/sonarqube-mcp` rather
-than by short name. Podman has no implicit Docker Hub default, so a short
-name would either consult `unqualified-search-registries` or prompt — and
-a prompt on a stdio server hangs the connection. Docker ignores the
-prefix.
-
-### Credentials
-
-The MCP server also needs two environment variables:
-
-| Variable          | Value                                       |
-| ----------------- | ------------------------------------------- |
-| `SONARQUBE_TOKEN` | A user token for your instance              |
-| `SONARQUBE_URL`   | Your Server URL, or `https://sonarcloud.io` |
-
-The token is read from your environment — never stored in the plugin —
-and reaches the container as a bare `-e SONARQUBE_TOKEN`, so it never
-appears in the container's argument list.
-
-The hooks need neither variable. They use whatever credentials the CLI
-already has, including a session persisted by `sonar auth login`.
-
-They do need the CLI to _have_ credentials, though. `sonar analyze`
-refuses to run at all when none are configured, exiting 1 before it scans
-anything — **including the secrets stage**. An unauthenticated CLI
-therefore means the session isn't being gated, which the hook says
-loudly on stderr rather than passing over in silence.
+The CLI must be authenticated, either with `sonar auth login` (stored in
+the system keychain) or with `SONARQUBE_CLI_TOKEN` /
+`SONARQUBE_CLI_SERVER` / `SONARQUBE_CLI_ORG`. The plugin never reads or
+stores a token itself.
 
 ## What This Plugin Provides
 
@@ -128,12 +74,19 @@ that directory, with that group's `--project`. A monorepo with two bound
 sub-projects gets two correctly-scoped runs. Files with no binding above
 them form one group, analysed without `--project`.
 
-### MCP server
+### Remote data via `sonar api`
 
-The plugin ships `.mcp.json`, so installing it registers the official
-`sonarsource/sonarqube-mcp` server (stdio, via your container runtime)
-without any further setup. See [Toolsets](#toolsets) for exactly what it
-exposes.
+Server-side questions — open issues, hotspots, quality gates, rule
+rationale, measures, branches and pull requests — go through
+`sonar api <method> <endpoint>`, which calls any Web API endpoint with the
+CLI's own credentials and works the same against SonarQube Server and
+SonarQube Cloud. The `sonarqube-web-api` skill holds the recipes and the
+Server/Cloud differences (Cloud needs `organization=`, V2 paths are
+rewritten by the CLI).
+
+This replaces the SonarQube MCP server the plugin used to ship. It needed
+a container runtime and duplicated what the CLI already authenticates
+for.
 
 ### Skills
 
@@ -152,8 +105,9 @@ exposes.
 - **sonarqube-issue-triage**: what to fix first, handling a detected
   secret, telling a real defect from a false positive, quality gates, and
   when a suppression is ever justified.
-- **sonarqube-mcp-usage**: the MCP server's enabled and disabled
-  toolsets, and how to work with it.
+- **sonarqube-web-api**: reading a SonarQube instance through
+  `sonar api` — recipes, Server vs Cloud differences, and when a write
+  needs the user's say-so.
 
 #### Naming convention
 
@@ -161,64 +115,6 @@ Skill names are prefixed with the most specific subject they document,
 not mechanically with the plugin name. Knowledge skills here all concern
 SonarQube itself, so they take the `sonarqube-` prefix; the
 user-invocable skill gets a short verb name with no prefix (`analyze`).
-
-## Toolsets
-
-`SONARQUBE_TOOLSETS` is set explicitly in `.mcp.json`, so the server's
-surface is exactly the following — documented here so the boundaries are
-visible without reading the vendor docs.
-
-### Enabled
-
-| Toolset           | What it does                                      |
-| ----------------- | ------------------------------------------------- |
-| Analysis          | Run analyzers on a snippet or file content        |
-| IDE               | Bridge to a running SonarQube for IDE instance    |
-| Projects          | Find projects, discover branches and PRs          |
-| Issues            | Search issues, change status (resolve, won't-fix) |
-| Security hotspots | Search and review security-sensitive code         |
-| Quality gates     | List gates, check a project's pass/fail           |
-| Rules             | Details and rationale for a rule                  |
-| Duplications      | Find duplicated blocks                            |
-| Measures          | LOC, complexity, coverage %, violation counts     |
-| Dependency risks  | SCA findings (see tier note below)                |
-| Coverage          | Line-by-line detail, under-covered file discovery |
-| Agentic readiness | Vortex tooling for code that passes analysis      |
-| Sources           | Raw source and SCM blame info                     |
-| Languages         | Languages the instance supports                   |
-| Portfolios        | Browse portfolios (Enterprise tier)               |
-
-Three of those have their own requirements beyond being enabled:
-
-- **Dependency risks** needs SonarQube Server 2025.4 Enterprise+ with
-  Advanced Security, or the SonarQube Cloud equivalent.
-- **Sources** needs the "See Source Code" permission.
-- **Portfolios** needs the Enterprise tier.
-
-### Disabled
-
-| Toolset        | Why it's off                                  |
-| -------------- | --------------------------------------------- |
-| Vortex context | Cloud-only; needs a Vortex entitlement        |
-| Vortex         | Unified toolset for Vortex-entitled orgs      |
-| System         | ping/status/health/logs; some need Administer |
-| Webhooks       | Create/list webhooks; requires Administer     |
-
-### Advanced options — all disabled
-
-- **Debug logging.**
-- **Read-only mode** — would restrict the server to read-only tools,
-  disabling issue-status changes and webhook creation.
-- **Custom SSL CA certificate** — for internally-signed TLS.
-
-### Other settings — unset
-
-- **No default project key.** `SONARQUBE_PROJECT_KEY` is not pre-filled,
-  so `projectKey` must be given per request. In practice it comes from
-  `.sonarlint/connectedMode.json`.
-- **No workspace mount / host path.** Only `run_advanced_code_analysis`
-  and the Vortex context tools need it, and both are off — so leaving it
-  unset is consistent, not an oversight.
 
 ## Installation
 

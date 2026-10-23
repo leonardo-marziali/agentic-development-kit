@@ -1,7 +1,7 @@
 ---
 name: sonarqube-connected-mode
 user-invocable: false
-description: Use when you need a SonarQube projectKey, are setting up or debugging .sonarlint/connectedMode.json, are running the sonar CLI or MCP tools against a bound project, or are working out which project a file in a monorepo belongs to.
+description: Use when you need a SonarQube projectKey, are setting up or debugging .sonarlint/connectedMode.json, are calling `sonar api` against a bound project, need the Cloud organization, or are working out which project a file in a monorepo belongs to.
 ---
 
 # SonarQube Connected Mode
@@ -79,12 +79,14 @@ per group, from that directory, with that group's `--project`. Files with
 no binding anywhere above them form a single group that is analysed
 without `--project`.
 
-## Using it with the MCP server
+## Using it with `sonar api`
 
-The MCP server has no default project key configured (see
-`sonarqube-mcp-usage`), so tools that need one need it supplied. Read it
-from `connectedMode.json` rather than guessing or searching — the
-committed binding is the authoritative answer for that repository.
+The Web API needs the project key on almost every call, and SonarQube
+Cloud also needs the organization — the CLI does not add either for you
+(see `sonarqube-web-api`). Read both from `connectedMode.json`
+(`projectKey`, `sonarCloudOrganization`) rather than guessing or
+searching: the committed binding is the authoritative answer for that
+repository.
 
 ## When there is no binding
 
@@ -92,7 +94,7 @@ A missing binding is not an error, and not something to fix uninvited:
 
 - **The CLI still works.** Local analysis runs without `--project`;
   secrets detection never needed a server at all.
-- **The MCP server needs a key.** If project-search doesn't give an
+- **`sonar api` needs a key.** If a project search doesn't give an
   unambiguous match, ask the user rather than picking one.
 - **Don't create the file unprompted.** Writing a binding commits a
   guess about someone's SonarQube instance into their repository. Offer

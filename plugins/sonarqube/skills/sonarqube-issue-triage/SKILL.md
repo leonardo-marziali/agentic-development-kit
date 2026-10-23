@@ -62,7 +62,7 @@ Then:
 - Say which finding, and why it can't happen here. Be specific — "the
   caller validates this" with the caller named, not "this is fine".
 - Let the user decide. Marking an issue won't-fix on the server changes
-  shared state everyone sees (see `sonarqube-mcp-usage`).
+  shared state everyone sees (see `sonarqube-web-api`).
 
 **Never** rewrite working code purely to make a rule stop firing. A
 contorted workaround is worse than the finding it silences, and it hides
@@ -112,5 +112,6 @@ about each. Be explicit about two things people otherwise assume:
 ## Related skills
 
 - `analyze` (`/sonarqube:analyze`) — run the CLI over chosen files.
-- `sonarqube-mcp-usage` — server-side issues, rules, quality gates.
+- `sonarqube-web-api` — server-side issues, rules, quality gates via
+  `sonar api`.
 - `sonarqube-connected-mode` — where the project key comes from.
