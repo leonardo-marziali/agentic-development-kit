@@ -21,7 +21,7 @@
   "remoteUser": "node",
   "customizations": {
     "vscode": {
-      "extensions": ["anthropic.claude-code"]
+      "extensions": ["anthropic.claude-code", "SonarSource.sonarlint-vscode"]
     }
   }
 }
