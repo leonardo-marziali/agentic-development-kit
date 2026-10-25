@@ -10,7 +10,8 @@
  * up the JS/TS bridge costs ~20s, a warm analysis ~2s. A hook that paid the
  * cold cost on every edit would be unusable.
  *
- *   node daemon.js --root <dir> --data-dir <dir> [--idle-minutes N] [--warm]
+ *   node daemon.js --root <dir> --data-dir <dir> [--idle-minutes N]
+ *                  [--max-heap-mb N] [--bridge-max-heap-mb N] [--warm]
  *
  * Lifecycle: started on demand by the CLI (detached), exits after an idle
  * timeout, on `daemon stop`, or on SIGTERM. Runs one analysis at a time —
@@ -26,7 +27,12 @@
 const fs = require('node:fs');
 const net = require('node:net');
 const path = require('node:path');
-const { Sloop } = require('./sloop');
+const {
+  Sloop,
+  BridgeOutOfMemory,
+  DEFAULT_MAX_HEAP_MB,
+  DEFAULT_BRIDGE_MAX_HEAP_MB,
+} = require('./sloop');
 const { resolveInside } = require('./fs-guard');
 const { daemonPaths, ensurePrivateDir, writePrivateFile } = require('./paths');
 const { readInstall } = require('./provision');
@@ -38,24 +44,46 @@ const WARMUP_FILES = [
 ];
 
 function parseArgv(argv) {
-  const options = { root: null, dataDir: null, idleMinutes: 30, warm: false };
+  const options = {
+    root: null,
+    dataDir: null,
+    idleMinutes: 30,
+    maxHeapMb: DEFAULT_MAX_HEAP_MB,
+    bridgeMaxHeapMb: DEFAULT_BRIDGE_MAX_HEAP_MB,
+    warm: false,
+  };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--root') options.root = argv[++i];
     else if (arg === '--data-dir') options.dataDir = argv[++i];
     else if (arg === '--idle-minutes') options.idleMinutes = Number(argv[++i]);
+    else if (arg === '--max-heap-mb') options.maxHeapMb = Number(argv[++i]);
+    else if (arg === '--bridge-max-heap-mb') options.bridgeMaxHeapMb = Number(argv[++i]);
     else if (arg === '--warm') options.warm = true;
   }
   if (!options.root || !options.dataDir) throw new Error('daemon needs --root and --data-dir');
   if (!Number.isFinite(options.idleMinutes) || options.idleMinutes <= 0) options.idleMinutes = 30;
+  if (!Number.isInteger(options.maxHeapMb) || options.maxHeapMb <= 0)
+    options.maxHeapMb = DEFAULT_MAX_HEAP_MB;
+  if (!Number.isInteger(options.bridgeMaxHeapMb) || options.bridgeMaxHeapMb <= 0)
+    options.bridgeMaxHeapMb = DEFAULT_BRIDGE_MAX_HEAP_MB;
   return options;
 }
 
 class Daemon {
-  constructor({ root, dataDir, idleMinutes, warm }) {
+  constructor({
+    root,
+    dataDir,
+    idleMinutes,
+    maxHeapMb = DEFAULT_MAX_HEAP_MB,
+    bridgeMaxHeapMb = DEFAULT_BRIDGE_MAX_HEAP_MB,
+    warm,
+  }) {
     this.root = fs.realpathSync(root);
     this.dataDir = dataDir;
     this.idleMs = idleMinutes * 60_000;
+    this.maxHeapMb = maxHeapMb;
+    this.bridgeMaxHeapMb = bridgeMaxHeapMb;
     this.warm = warm;
     this.paths = daemonPaths(this.root);
     this.state = 'starting';
@@ -109,6 +137,8 @@ class Daemon {
       storageDir: path.join(this.dataDir, 'storage', this.paths.hash),
       onLog: (line) => this.log(line),
       onExit: (code) => this.onSloopExit(code),
+      maxHeapMb: this.maxHeapMb,
+      bridgeMaxHeapMb: this.bridgeMaxHeapMb,
     });
     this.sloop = sloop;
     try {
@@ -143,6 +173,20 @@ class Daemon {
     this.restarts += 1;
     this.log(`SLOOP exited (code ${code}); restarting once`);
     this.ready = this.startSloop();
+    this.ready.catch(() => {});
+  }
+
+  /*
+   * A deliberate restart, not a crash, so it doesn't count towards giving up.
+   * Queued requests wait on the new `ready`.
+   */
+  recycleSloop(reason) {
+    this.log(`recycling SLOOP: ${reason}`);
+    const old = this.sloop;
+    this.ready = old
+      .stop()
+      .catch((error) => this.log(`stopping SLOOP failed: ${error.message}`))
+      .then(() => this.startSloop());
     this.ready.catch(() => {});
   }
 
@@ -237,6 +281,8 @@ class Daemon {
       backendVersion: this.manifest?.backendVersion,
       skippedLanguages: this.sloop?.skippedLanguages || [],
       idleMinutes: this.idleMs / 60_000,
+      maxHeapMb: this.maxHeapMb,
+      bridgeMaxHeapMb: this.bridgeMaxHeapMb,
       log: this.paths.log,
     };
   }
@@ -281,6 +327,10 @@ class Daemon {
     let result = { issues: [], failed: [] };
     try {
       if (entries.length) result = await this.sloop.analyze(entries, { timeoutMs });
+    } catch (error) {
+      if (error instanceof BridgeOutOfMemory)
+        this.recycleSloop('the JS/TS bridge ran out of memory');
+      throw error;
     } finally {
       if (virtualAbs) this.sloop.forget([virtualAbs]);
     }

@@ -32,6 +32,22 @@
       "default": 30,
       "min": 1,
       "max": 1440
+    },
+    "daemon_max_heap_mb": {
+      "type": "number",
+      "title": "Daemon Java heap limit (MB)",
+      "description": "The analysis daemon's JVM heap ceiling (-Xmx). Without it the JVM may grow to a quarter of the machine's or container's RAM. Raise it if the daemon log reports OutOfMemoryError on large projects. Takes effect when the daemon next starts (`sonarlint daemon stop` to restart it now).",
+      "default": 768,
+      "min": 256,
+      "max": 8192
+    },
+    "bridge_max_heap_mb": {
+      "type": "number",
+      "title": "JS/TS analyzer Node heap limit (MB)",
+      "description": "The heap limit (--max-old-space-size) for the separate Node process that analyzes JavaScript and TypeScript, which the Java heap limit doesn't cover. Too low and JS/TS analysis fails with an out-of-memory error that names this option. Takes effect when the daemon next starts (`sonarlint daemon stop` to restart it now).",
+      "default": 1024,
+      "min": 512,
+      "max": 16384
     }
   }
 }

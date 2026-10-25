@@ -156,6 +156,20 @@ seeing them only at the Stop gate.
 **`daemon_idle_minutes`** — `30` (default). The daemon is a JVM using
 roughly 0.5-1 GB; it exits after this long without a request.
 
+**`daemon_max_heap_mb`** — `768` (default). The daemon JVM's heap ceiling
+(`-Xmx`). Without one, Java may grow to a quarter of the machine's — or
+the dev container's — RAM. Raise it if the daemon log reports
+`OutOfMemoryError`; a running daemon keeps its old limit until it
+restarts (`sonarlint daemon stop`). `SONARLINT_MAX_HEAP_MB` overrides it.
+
+**`bridge_max_heap_mb`** — `1024` (default). JavaScript and TypeScript
+are analyzed in a separate Node process (the SonarJS bridge) that
+`-Xmx` doesn't cover; this becomes its `--max-old-space-size`. If the
+bridge runs out of memory, the analysis fails (exit `2`) with a message
+naming this option, instead of quietly dropping every JS/TS finding, and
+the daemon restarts SLOOP so the next analysis gets a fresh bridge.
+`SONARLINT_BRIDGE_MAX_HEAP_MB` overrides it.
+
 ## Enterprise notes
 
 - **No MCP, no containers.** Server data goes through the `sonar` CLI

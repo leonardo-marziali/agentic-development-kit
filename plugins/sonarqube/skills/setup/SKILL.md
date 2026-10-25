@@ -63,6 +63,10 @@ nothing unverified is used.
   runs take ~1s.
 - **A daemon uses memory after work is done** — It exits after
   `daemon_idle_minutes`; or `sonarlint daemon stop`.
+- **Daemon log shows `OutOfMemoryError`** — Raise `daemon_max_heap_mb` (default
+  768), then `sonarlint daemon stop` so the next analysis starts with it.
+- **`the JS/TS analyzer ran out of memory`** — Raise `bridge_max_heap_mb`
+  (default 1024), then `sonarlint daemon stop`.
 
 ## 4. Updates (maintainers)
 

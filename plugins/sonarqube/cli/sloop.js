@@ -26,6 +26,30 @@ const SCOPE_ID = 'project';
 const LOG_BUFFER = 300;
 
 /*
+ * Without -Xmx the JVM takes a quarter of the machine's (or container's) RAM
+ * as its heap ceiling and grows towards it. Analysing this repository peaks
+ * well under 200 MB of heap, so 768 MB leaves headroom without letting one
+ * daemon per project crowd out everything else in a dev container.
+ */
+const DEFAULT_MAX_HEAP_MB = 768;
+
+/*
+ * The JS/TS analyzer runs in its own Node process (the SonarJS bridge), which
+ * -Xmx doesn't reach. Unbounded, V8 sizes its old space from the machine's
+ * RAM. The analyzer turns sonar.javascript.node.maxspace into the bridge's
+ * --max-old-space-size, and reads it when it starts the bridge — so it goes
+ * on every analysis request, the first of which starts it.
+ */
+const DEFAULT_BRIDGE_MAX_HEAP_MB = 1024;
+
+/*
+ * What the JS/TS analyzer logs when the bridge hits that limit. The analysis
+ * still completes, minus every JS/TS finding, so without this check a cap set
+ * too low would pass as a clean run.
+ */
+const BRIDGE_OUT_OF_MEMORY = /Node\.js process running out of memory/i;
+
+/*
  * Extension → SLOOP Language, for the languages the pinned analyzers cover.
  * Anything else is sent with no language and left to SLOOP's own detection;
  * the secrets analyzer is content-based and still sees it.
@@ -58,10 +82,20 @@ function detectLanguage(file) {
   return LANGUAGE_BY_EXTENSION[path.extname(file).toLowerCase()] || null;
 }
 
-const TEST_PATH =
-  /(^|[\\/])(__tests__|tests?|spec)([\\/])|\.(test|spec)\.[^.]+$|(^|[\\/])test_[^\\/]+\.py$/i;
+const TEST_PATHS = [
+  /(^|[\\/])(__tests__|tests?|spec)[\\/]/i,
+  /\.(test|spec)\.[^.]+$/i,
+  /(^|[\\/])test_[^\\/]+\.py$/i,
+];
+
+function isTestPath(file) {
+  return TEST_PATHS.some((pattern) => pattern.test(file));
+}
 
 class SloopError extends Error {}
+
+// Also leaves the bridge dead: later analyses skip JS/TS without a word.
+class BridgeOutOfMemory extends SloopError {}
 
 class Sloop {
   /**
@@ -71,11 +105,23 @@ class Sloop {
    * @param {string} options.storageDir SLOOP storage/work/home, under the data dir
    * @param {(line: string) => void} [options.onLog]
    * @param {(code: number|null) => void} [options.onExit]
+   * @param {number} [options.maxHeapMb] the JVM's -Xmx, in MB
+   * @param {number} [options.bridgeMaxHeapMb] the JS/TS bridge's old space, in MB
    */
-  constructor({ manifest, root, storageDir, onLog = () => {}, onExit = () => {} }) {
+  constructor({
+    manifest,
+    root,
+    storageDir,
+    onLog = () => {},
+    onExit = () => {},
+    maxHeapMb = DEFAULT_MAX_HEAP_MB,
+    bridgeMaxHeapMb = DEFAULT_BRIDGE_MAX_HEAP_MB,
+  }) {
     this.manifest = manifest;
     this.root = root;
     this.storageDir = storageDir;
+    this.maxHeapMb = maxHeapMb;
+    this.bridgeMaxHeapMb = bridgeMaxHeapMb;
     this.onLog = onLog;
     this.onExit = onExit;
     this.files = new Map();
@@ -84,8 +130,9 @@ class Sloop {
     this.raised = new Map();
     this.child = null;
     this.connection = null;
-    this.exited = Promise.resolve(null);
+    this.exited = null;
     this.stopping = false;
+    this.bridgeOutOfMemory = false;
   }
 
   log(line) {
@@ -161,7 +208,15 @@ class Sloop {
     const classpath = path.join(backendDir, 'lib', '*');
     this.child = spawn(
       javaPath,
-      ['-Xms128m', '-XX:+UseSerialGC', '-Djava.awt.headless=true', '-cp', classpath, mainClass],
+      [
+        '-Xms128m',
+        `-Xmx${this.maxHeapMb}m`,
+        '-XX:+UseSerialGC',
+        '-Djava.awt.headless=true',
+        '-cp',
+        classpath,
+        mainClass,
+      ],
       { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true },
     );
     this.child.stderr.setEncoding('utf8');
@@ -206,7 +261,7 @@ class Sloop {
       this.connection.sendRequest('initialize', this.initializeParams()),
       failOnExit,
     ]);
-    this.connection.sendNotification('configuration/didAddConfigurationScopes', {
+    await this.connection.sendNotification('configuration/didAddConfigurationScopes', {
       addedScopes: [
         {
           id: SCOPE_ID,
@@ -265,9 +320,9 @@ class Sloop {
       this.log(`skipped ${params.language} analyzer: ${params.reason}`);
     });
     c.onNotification('log', (params) => {
-      this.log(
-        `[${params.level}] ${params.message}${params.stackTrace ? `\n${params.stackTrace}` : ''}`,
-      );
+      if (BRIDGE_OUT_OF_MEMORY.test(params.message)) this.bridgeOutOfMemory = true;
+      const stackTrace = params.stackTrace ? `\n${params.stackTrace}` : '';
+      this.log(`[${params.level}] ${params.message}${stackTrace}`);
     });
     c.onNotification('showMessage', (params) => this.log(`[message] ${params.message}`));
     c.onNotification(() => {});
@@ -279,7 +334,7 @@ class Sloop {
       uri: pathToFileURL(abs).href,
       ideRelativePath: rel,
       configScopeId: SCOPE_ID,
-      isTest: TEST_PATH.test(rel),
+      isTest: isTestPath(rel),
       charset: 'UTF-8',
       fsPath: abs,
       content,
@@ -306,12 +361,14 @@ class Sloop {
       (this.files.has(dto.uri) ? changed : added).push(dto);
       this.files.set(dto.uri, dto);
     }
-    this.connection.sendNotification('file/didUpdateFileSystem', {
+    await this.connection.sendNotification('file/didUpdateFileSystem', {
       addedFiles: added,
       changedFiles: changed,
       removedFiles: [],
     });
 
+    // The daemon runs one analysis at a time, so this flag is this one's.
+    this.bridgeOutOfMemory = false;
     const analysisId = crypto.randomUUID();
     const uris = dtos.map((d) => d.uri);
     const cancel = new rpc.CancellationTokenSource();
@@ -324,7 +381,7 @@ class Sloop {
             configurationScopeId: SCOPE_ID,
             analysisId,
             filesToAnalyze: uris,
-            extraProperties: {},
+            extraProperties: { 'sonar.javascript.node.maxspace': String(this.bridgeMaxHeapMb) },
             shouldFetchServerIssues: false,
           },
           cancel.token,
@@ -348,6 +405,13 @@ class Sloop {
         .flatMap(([uri, list]) => list.map((issue) => ({ ...issue, fileUri: uri })));
     }
     this.raised.delete(analysisId);
+    if (this.bridgeOutOfMemory) {
+      throw new BridgeOutOfMemory(
+        `the JS/TS analyzer ran out of memory under its ${this.bridgeMaxHeapMb} MB heap cap, so ` +
+          'this analysis is incomplete; raise bridge_max_heap_mb (or SONARLINT_BRIDGE_MAX_HEAP_MB) ' +
+          'and run `sonarlint daemon stop`',
+      );
+    }
     return { issues, failed: (response?.failedAnalysisFiles || []).map(String) };
   }
 
@@ -360,11 +424,13 @@ class Sloop {
       .map((abs) => pathToFileURL(abs).href)
       .filter((uri) => this.files.delete(uri));
     if (removed.length) {
-      this.connection.sendNotification('file/didUpdateFileSystem', {
-        addedFiles: [],
-        changedFiles: [],
-        removedFiles: removed,
-      });
+      this.connection
+        .sendNotification('file/didUpdateFileSystem', {
+          addedFiles: [],
+          changedFiles: [],
+          removedFiles: removed,
+        })
+        .catch((error) => this.log(`could not tell SLOOP about removed files: ${error.message}`));
     }
   }
 
@@ -378,7 +444,7 @@ class Sloop {
 
   async stop() {
     this.stopping = true;
-    if (!this.child || this.child.exitCode !== null) return;
+    if (this.child?.exitCode !== null) return;
     try {
       await withTimeout(this.connection.sendRequest('shutdown'), 5000, 'shutdown timed out');
     } catch {
@@ -386,7 +452,7 @@ class Sloop {
     }
     this.child.stdin.end();
     const killed = await Promise.race([
-      this.exited.then(() => false),
+      Promise.resolve(this.exited).then(() => false),
       delay(5000).then(() => true),
     ]);
     if (killed) this.child.kill('SIGKILL');
@@ -410,4 +476,14 @@ function withTimeout(promise, ms, message) {
   return Promise.race([promise, expiry]).finally(() => clearTimeout(timer));
 }
 
-module.exports = { Sloop, SloopError, detectLanguage, LANGUAGE_BY_EXTENSION, SCOPE_ID, TEST_PATH };
+module.exports = {
+  Sloop,
+  SloopError,
+  BridgeOutOfMemory,
+  detectLanguage,
+  LANGUAGE_BY_EXTENSION,
+  SCOPE_ID,
+  DEFAULT_MAX_HEAP_MB,
+  DEFAULT_BRIDGE_MAX_HEAP_MB,
+  isTestPath,
+};
