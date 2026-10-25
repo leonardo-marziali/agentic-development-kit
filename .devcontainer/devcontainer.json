@@ -27,6 +27,20 @@
     "COREPACK_ENABLE_DOWNLOAD_PROMPT": "0"
   },
   /*
+    Caps the SonarLint extension's language server, a JVM that otherwise
+    takes a quarter of the container's RAM as its heap ceiling. The setting
+    is machine-scoped, so VS Code ignores it in .vscode/settings.json; set
+    here, it lands in the container's machine settings. Its idle working set
+    is ~400 MB, hence 1 GB rather than the sonarqube plugin's 768 MB.
+  */
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "sonarlint.ls.vmargs": "-Xmx1g"
+      }
+    }
+  },
+  /*
     pnpm comes from Corepack, at the version pinned in package.json's
    `packageManager`. Plugins are not pnpm workspace members, and Claude Code
     runs them in place from this checkout (the repo is a directory
