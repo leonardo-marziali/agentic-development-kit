@@ -26,6 +26,22 @@ function idleMinutes() {
   return Number.isFinite(raw) && raw > 0 ? raw : 30;
 }
 
+// A heap size in MB from the first variable that's set, else the fallback.
+function heapMb(names, fallback) {
+  const raw = Number(names.map((name) => process.env[name]).find(Boolean));
+  return Number.isInteger(raw) && raw > 0 ? raw : fallback;
+}
+
+// The fallbacks mirror DEFAULT_MAX_HEAP_MB and DEFAULT_BRIDGE_MAX_HEAP_MB in
+// sloop.js, which this module doesn't load.
+function maxHeapMb() {
+  return heapMb(['SONARLINT_MAX_HEAP_MB', 'CLAUDE_PLUGIN_OPTION_DAEMON_MAX_HEAP_MB'], 768);
+}
+
+function bridgeMaxHeapMb() {
+  return heapMb(['SONARLINT_BRIDGE_MAX_HEAP_MB', 'CLAUDE_PLUGIN_OPTION_BRIDGE_MAX_HEAP_MB'], 1024);
+}
+
 /*
  * A daemon that gave up after SLOOP crashed twice leaves a marker. For a
  * while afterwards, analysis requests fail fast rather than respawning it;
@@ -63,6 +79,10 @@ function spawnDaemon({ root, dataDir, warm = false }) {
     dataDir,
     '--idle-minutes',
     String(idleMinutes()),
+    '--max-heap-mb',
+    String(maxHeapMb()),
+    '--bridge-max-heap-mb',
+    String(bridgeMaxHeapMb()),
   ];
   if (warm) args.push('--warm');
   const child = spawn(process.execPath, args, {
@@ -171,6 +191,8 @@ module.exports = {
   spawnDaemon,
   readPid,
   idleMinutes,
+  maxHeapMb,
+  bridgeMaxHeapMb,
   DaemonNotRunning,
   NotInstalled,
   DAEMON_SCRIPT,
