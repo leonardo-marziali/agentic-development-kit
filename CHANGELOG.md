@@ -1,3 +1,10 @@
+# [2.2.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.1.0...v2.2.0) (2026-10-25)
+
+
+### Features
+
+* **sonarqube:** cap the analysis daemon's memory ([#28](https://github.com/leonardo-marziali/agentic-development-kit/issues/28)) ([ac8774c](https://github.com/leonardo-marziali/agentic-development-kit/commit/ac8774c3cbfaf0b751b9fda8230f1bdb9b9afe10))
+
 # [2.1.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.0.0...v2.1.0) (2026-10-23)
 
 
