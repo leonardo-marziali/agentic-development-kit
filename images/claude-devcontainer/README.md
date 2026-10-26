@@ -28,8 +28,9 @@ In another project, create `.devcontainer/devcontainer.json`:
   "image": "ghcr.io/leonardo-marziali/claude-devcontainer:latest",
   "remoteEnv": {
     "GITHUB_PERSONAL_ACCESS_TOKEN": "${localEnv:GITHUB_PERSONAL_ACCESS_TOKEN}",
-    "SONARQUBE_TOKEN": "${localEnv:SONARQUBE_TOKEN}",
-    "SONARQUBE_URL": "${localEnv:SONARQUBE_URL}"
+    "SONARQUBE_CLI_TOKEN": "${localEnv:SONARQUBE_CLI_TOKEN}",
+    "SONARQUBE_CLI_SERVER": "${localEnv:SONARQUBE_CLI_SERVER}",
+    "SONARQUBE_CLI_ORG": "${localEnv:SONARQUBE_CLI_ORG}"
   }
 }
 ```
@@ -41,7 +42,10 @@ Code extension) in its metadata label, so nothing else is required. The
 
 - `GITHUB_PERSONAL_ACCESS_TOKEN` — the `github@claude-plugins-official`
   MCP server.
-- `SONARQUBE_TOKEN`, `SONARQUBE_URL` — the `sonarqube` plugin's MCP server.
+- `SONARQUBE_CLI_TOKEN`, `SONARQUBE_CLI_SERVER`, `SONARQUBE_CLI_ORG` — the
+  SonarQube CLI's connection to SonarQube Server or Cloud, which the
+  `sonarqube` plugin reads through `sonar api`. `SONARQUBE_CLI_ORG` is for
+  Cloud only.
 
 ### Keeping the login
 
