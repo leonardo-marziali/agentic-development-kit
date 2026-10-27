@@ -2,7 +2,7 @@
 'use strict';
 
 /*
-PostToolUse hook (Edit|Write matcher): formats the exact Python file just
+PostToolUse hook (Edit|Write|MultiEdit matcher): formats the exact Python file just
 touched with `ruff format`, immediately — the same shape as the prettier
 plugin's hook. Lint findings are left to the Stop-hook loop
 (check-and-loop.js); formatting either applies or it doesn't, so there is
@@ -22,7 +22,7 @@ function main() {
   const input = readHookInput();
   if (!input) return;
 
-  if (!/^(Edit|Write)$/.test(input.tool_name || '')) return;
+  if (!/^(Edit|Write|MultiEdit)$/.test(input.tool_name || '')) return;
 
   const filePath = input.tool_input?.file_path;
   if (!filePath) return;

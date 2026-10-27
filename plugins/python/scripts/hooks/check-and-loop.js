@@ -4,7 +4,7 @@
 /*
  * Stop / SubagentStop hook: checks only the Python files this session
  * touched (per track-touched.js) with ruff and pyright, auto-fixes what ruff
- * can, and if findings remain, blocks the stop with `decision: "continue"`
+ * can, and if findings remain, blocks the stop with `decision: "block"`
  * so Claude keeps fixing them. Both tools share one loop — one attempt
  * counter, one message — so a session isn't bounced between two separate
  * blocking hooks.
@@ -32,6 +32,7 @@ const path = require('node:path');
 const {
   readHookInput,
   stateDir,
+  loopStateDir,
   readTrackedFiles,
   runBin,
   runFixLoop,
@@ -213,8 +214,15 @@ function main() {
   const input = readHookInput();
   if (!input) return;
 
-  // A session that never touched a Python file has no list: no files, no-op.
-  const dir = stateDir({ sessionId: input.session_id, namespace: STATE_NAMESPACE });
+  /*
+   * A session that never touched a Python file has no list: no files, no-op.
+   * A SubagentStop checks only what that subagent touched; the main Stop
+   * checks everything, subagents' files included.
+   */
+  const dir = loopStateDir({
+    dir: stateDir({ sessionId: input.session_id, namespace: STATE_NAMESPACE }),
+    input,
+  });
   const files = readTrackedFiles(path.join(dir, TOUCHED_FILES)).filter(isPythonFile);
   const groups = groupByConfigDir(files);
 

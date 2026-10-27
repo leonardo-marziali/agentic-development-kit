@@ -1,9 +1,33 @@
 {
-  "description": "Runs Prettier on each file immediately after Claude edits or writes it.",
+  "description": "Runs Prettier on each file immediately after Claude writes it — through Edit/Write or through Bash, PowerShell and MCP tools, in the main conversation or a subagent.",
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell|mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/format.js\"",
+            "async": false
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
-        "matcher": "Edit|Write",
+        "matcher": "Edit|Write|MultiEdit|Bash|PowerShell|mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/format.js\"",
+            "async": false
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Bash|PowerShell|mcp__.*",
         "hooks": [
           {
             "type": "command",

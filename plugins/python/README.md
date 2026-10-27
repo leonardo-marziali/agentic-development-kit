@@ -22,8 +22,12 @@ covers.
 - **Session-scoped**: only Python files created or edited _during the
   current session_ are checked. Pre-existing code is left alone unless you
   explicitly ask (see [Skills](#skills)).
-- The same `PostToolUse` hook records every Python file the session
-  touches. `Stop` and `SubagentStop` hooks then run, on just those files:
+- A tracking hook records every Python file the session touches — through
+  `Edit`/`Write`, or through `Bash`, `PowerShell` and MCP tools (a
+  `PreToolUse` snapshot, then whatever changed when the call ends,
+  including on a failed command). `Stop` hooks then run, on just those
+  files; a subagent's `SubagentStop` runs on only the files that subagent
+  touched:
   1. `ruff check --fix` and `ruff format`, which apply ruff's safe fixes;
   2. `ruff check`, to see what is left;
   3. `pyright`, once per project config (see

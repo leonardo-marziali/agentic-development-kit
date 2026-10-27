@@ -57,10 +57,15 @@ SHA-256, and runs `doctor`. Uninstalling the plugin removes it.
 - **`SessionStart`** — starts this project's analysis daemon in the
   background and warms it up, so the ~20s JVM and analyzer start-up isn't
   paid inside an edit.
-- **`PostToolUse`** (`Edit`/`Write`) — records the file as touched, then,
-  if the daemon is warm, analyzes it and gives Claude the MAJOR/MEDIUM+
-  issues and secrets on the lines just changed. Never blocks.
-- **`Stop` / `SubagentStop`** — analyzes every file the session touched,
+- **`PostToolUse`** (`Edit`/`Write`/`MultiEdit`) — if the daemon is warm,
+  analyzes the file and gives Claude the MAJOR/MEDIUM+ issues and secrets
+  on the lines just changed. Never blocks.
+- **`PreToolUse` / `PostToolUse` / `PostToolUseFailure`** — records the
+  files each call touched: the one `Edit`/`Write` names, or, for `Bash`,
+  `PowerShell` and MCP tools, whatever changed between the `PreToolUse`
+  snapshot and the end of the call.
+- **`Stop` / `SubagentStop`** — analyzes every file the session touched (a
+  subagent's `SubagentStop`: only the files that subagent touched),
   and **blocks** the session from ending on secrets and on issues at/above
   `min_blocking_severity` on changed lines, up to 3 attempts.
 

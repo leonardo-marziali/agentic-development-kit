@@ -42,7 +42,7 @@ const MAX_LINES = 15;
 function main() {
   if (!perEditFeedbackEnabled()) return;
   const input = readHookInput();
-  if (!input || !/^(Edit|Write)$/.test(input.tool_name || '')) return;
+  if (!input || !/^(Edit|Write|MultiEdit)$/.test(input.tool_name || '')) return;
 
   const filePath = input.tool_input?.file_path;
   if (!filePath) return;

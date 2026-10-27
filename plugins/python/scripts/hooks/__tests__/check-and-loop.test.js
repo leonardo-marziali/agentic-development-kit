@@ -102,13 +102,13 @@ test('unfixable ruff finding: blocks with the ruff report', SLOW, (t) => {
 
   const res = stop(ctx);
 
-  const out = res.json?.hookSpecificOutput;
-  assert.equal(out?.decision, 'continue', res.stderr);
-  assert.equal(out.hookEventName, 'Stop');
-  assert.match(out.systemMessage, /## ruff/);
-  assert.match(out.systemMessage, /F841/);
-  assert.match(out.systemMessage, /attempt 1\/3/);
-  assert.doesNotMatch(out.systemMessage, /## pyright/);
+  const out = res.json;
+  assert.equal(out?.decision, 'block', res.stderr);
+  assert.equal('hookSpecificOutput' in out, false);
+  assert.match(out.reason, /## ruff/);
+  assert.match(out.reason, /F841/);
+  assert.match(out.reason, /attempt 1\/3/);
+  assert.doesNotMatch(out.reason, /## pyright/);
 });
 
 test('pyright error: blocks with the pyright report', SLOW, (t) => {
@@ -117,12 +117,12 @@ test('pyright error: blocks with the pyright report', SLOW, (t) => {
 
   const res = stop(ctx, { hookEventName: 'SubagentStop' });
 
-  const out = res.json?.hookSpecificOutput;
-  assert.equal(out?.decision, 'continue', res.stderr);
-  assert.equal(out.hookEventName, 'SubagentStop');
-  assert.match(out.systemMessage, /## pyright/);
-  assert.match(out.systemMessage, /mod\.py:1:\d+ - error: [\s\S]*\(reportAssignmentType\)/);
-  assert.doesNotMatch(out.systemMessage, /## ruff/);
+  const out = res.json;
+  assert.equal(out?.decision, 'block', res.stderr);
+  assert.equal('hookSpecificOutput' in out, false);
+  assert.match(out.reason, /## pyright/);
+  assert.match(out.reason, /mod\.py:1:\d+ - error: [\s\S]*\(reportAssignmentType\)/);
+  assert.doesNotMatch(out.reason, /## ruff/);
 });
 
 test("pyright respects the nearest project's config", SLOW, (t) => {
@@ -150,7 +150,7 @@ test('a file fixed between stops is allowed through on the next one', SLOW, (t) 
   const file = writePy(ctx.scratch, 'mod.py', RUFF_UNFIXABLE_PY);
   track(file, ctx);
 
-  assert.equal(stop(ctx).json?.hookSpecificOutput?.decision, 'continue');
+  assert.equal(stop(ctx).json?.decision, 'block');
 
   fs.writeFileSync(file, 'def f() -> None:\n    pass\n');
   const res = stop(ctx);
@@ -168,10 +168,7 @@ test('cap with auto_suppress off: stops blocking, reports, leaves files alone', 
 
   for (let attempt = 1; attempt <= 3; attempt++) {
     const res = stop(ctx);
-    assert.match(
-      res.json?.hookSpecificOutput?.systemMessage ?? '',
-      new RegExp(`attempt ${attempt}/3`),
-    );
+    assert.match(res.json?.reason ?? '', new RegExp(`attempt ${attempt}/3`));
   }
   const res = stop(ctx, { autoSuppress: false });
 
@@ -220,8 +217,45 @@ test('missing ruff fails open: pyright still runs, ruff is skipped with a note',
     .join(path.delimiter);
   const res = stop(ctx, { env: { PATH: pathWithoutRuff } });
 
-  const out = res.json?.hookSpecificOutput;
+  const out = res.json;
   assert.match(res.stderr, /ruff not found/);
-  assert.match(out?.systemMessage ?? '', /## pyright/, res.stderr);
-  assert.doesNotMatch(out.systemMessage, /## ruff/);
+  assert.match(out?.reason ?? '', /## pyright/, res.stderr);
+  assert.doesNotMatch(out.reason, /## ruff/);
+});
+
+test("SubagentStop holds a subagent only to its own files; Stop checks everyone's", SLOW, (t) => {
+  const ctx = setup(t);
+  const mine = writePy(ctx.scratch, 'parent.py', RUFF_UNFIXABLE_PY);
+  const theirs = writePy(ctx.scratch, 'child.py', RUFF_UNFIXABLE_PY);
+  track(mine, ctx);
+  runHook(
+    'track-touched.js',
+    {
+      tool_name: 'Write',
+      tool_input: { file_path: theirs },
+      session_id: ctx.sessionId,
+      cwd: ctx.scratch,
+      agent_id: 'sub1',
+    },
+    { env: { CLAUDE_PLUGIN_DATA: ctx.pluginData } },
+  );
+
+  const sub = runHook(
+    'check-and-loop.js',
+    {
+      hook_event_name: 'SubagentStop',
+      agent_id: 'sub1',
+      session_id: ctx.sessionId,
+      cwd: ctx.scratch,
+    },
+    { env: { CLAUDE_PLUGIN_DATA: ctx.pluginData } },
+  );
+  assert.equal(sub.json?.decision, 'block', sub.stderr);
+  assert.match(sub.json.reason, /child\.py/);
+  assert.doesNotMatch(sub.json.reason, /parent\.py/);
+
+  const main = stop(ctx);
+  assert.equal(main.json?.decision, 'block', main.stderr);
+  assert.match(main.json.reason, /child\.py/);
+  assert.match(main.json.reason, /parent\.py/);
 });
