@@ -5,7 +5,12 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { trackTouchedFile, toolChangedFiles, trackSessionChanges } = require('../track');
+const {
+  BACKGROUND_WINDOW_MS,
+  trackTouchedFile,
+  toolChangedFiles,
+  trackSessionChanges,
+} = require('../track');
 const { readTrackedFiles, agentStateDir } = require('../state');
 const { mkScratchDir, mkScratchRepo, rmScratchDir, writeFile } = require('./helpers');
 
@@ -340,6 +345,186 @@ test('prunes snapshots a PostToolUse never consumed', () => {
     toolChangedFiles({ input: bashEvent(repo, 'PreToolUse'), stateDir: state });
     assert.strictEqual(fs.existsSync(stale), false);
     assert.strictEqual(fs.existsSync(path.join(state, 'pending', 'toolu_01.json')), true);
+  } finally {
+    rmScratchDir(repo);
+    rmScratchDir(state);
+  }
+});
+
+function backgroundEvent(repo, event, extra = {}) {
+  return bashEvent(repo, event, {
+    tool_input: { command: 'python gen.py', run_in_background: true },
+    ...extra,
+  });
+}
+
+// Pre and Post of a background command, as Claude Code fires them: Post right after launch.
+function startBackground(repo, listFile, extra = {}) {
+  trackSessionChanges({ input: backgroundEvent(repo, 'PreToolUse', extra), listFile });
+  return trackSessionChanges({ input: backgroundEvent(repo, 'PostToolUse', extra), listFile });
+}
+
+function stopEvent(repo, extra = {}) {
+  return { hook_event_name: 'Stop', cwd: repo, session_id: 'test-session', ...extra };
+}
+
+test('a foreground command leaves no background window', () => {
+  const repo = mkScratchRepo({ README: 'x\n' });
+  const state = mkScratchDir();
+  try {
+    const listFile = path.join(state, 'touched.txt');
+    trackSessionChanges({ input: bashEvent(repo, 'PreToolUse'), listFile });
+    trackSessionChanges({ input: bashEvent(repo, 'PostToolUse'), listFile });
+    assert.strictEqual(fs.existsSync(path.join(state, 'background')), false);
+  } finally {
+    rmScratchDir(repo);
+    rmScratchDir(state);
+  }
+});
+
+test("tracks a background command's writes made after its PostToolUse, on the next tool call", () => {
+  const repo = mkScratchRepo({ README: 'x\n', 'other.py': 'z = 1\n' });
+  const state = mkScratchDir();
+  try {
+    aged(path.join(repo, 'other.py'));
+    const listFile = path.join(state, 'touched.txt');
+    assert.deepStrictEqual(startBackground(repo, listFile), []);
+    assert.strictEqual(fs.existsSync(path.join(state, 'background', 'toolu_01.json')), true);
+
+    const late = writeFile(repo, 'generated.py', 'x = 1\n');
+    const edited = writeFile(repo, 'other.py', 'z = 2\n');
+    const tracked = trackSessionChanges({
+      input: payload(repo, edited, { hook_event_name: 'PostToolUse' }),
+      listFile,
+    });
+
+    assert.deepStrictEqual(tracked.sort(), [edited, late].sort());
+    assert.strictEqual(
+      fs.existsSync(path.join(state, 'background', 'toolu_01.json')),
+      true,
+      'window stays open while the command may still be writing',
+    );
+  } finally {
+    rmScratchDir(repo);
+    rmScratchDir(state);
+  }
+});
+
+test('collects background writes made after the last tool call at Stop', () => {
+  const repo = mkScratchRepo({ README: 'x\n' });
+  const state = mkScratchDir();
+  try {
+    const listFile = path.join(state, 'touched.txt');
+    const matches = (p) => p.endsWith('.py');
+    startBackground(repo, listFile);
+    const late = writeFile(repo, 'generated.py', 'x = 1\n');
+    writeFile(repo, 'notes.md', '# n\n');
+
+    assert.deepStrictEqual(trackSessionChanges({ input: stopEvent(repo), listFile, matches }), [
+      late,
+    ]);
+    assert.deepStrictEqual(readTrackedFiles(listFile), [late]);
+  } finally {
+    rmScratchDir(repo);
+    rmScratchDir(state);
+  }
+});
+
+test('treats a command the user sent to the background as a background command', () => {
+  const repo = mkScratchRepo({ README: 'x\n' });
+  const state = mkScratchDir();
+  try {
+    const listFile = path.join(state, 'touched.txt');
+    trackSessionChanges({ input: bashEvent(repo, 'PreToolUse'), listFile });
+    trackSessionChanges({
+      input: bashEvent(repo, 'PostToolUse', { tool_response: { backgroundTaskId: 'bash_1' } }),
+      listFile,
+    });
+    const late = writeFile(repo, 'generated.py', 'x = 1\n');
+    assert.deepStrictEqual(trackSessionChanges({ input: stopEvent(repo), listFile }), [late]);
+  } finally {
+    rmScratchDir(repo);
+    rmScratchDir(state);
+  }
+});
+
+test('never sweeps on PreToolUse', () => {
+  const repo = mkScratchRepo({ README: 'x\n' });
+  const state = mkScratchDir();
+  try {
+    const listFile = path.join(state, 'touched.txt');
+    startBackground(repo, listFile);
+    writeFile(repo, 'generated.py', 'x = 1\n');
+    assert.deepStrictEqual(
+      trackSessionChanges({
+        input: bashEvent(repo, 'PreToolUse', { tool_use_id: 'toolu_02' }),
+        listFile,
+      }),
+      [],
+    );
+  } finally {
+    rmScratchDir(repo);
+    rmScratchDir(state);
+  }
+});
+
+test('closes a background window after BACKGROUND_WINDOW_MS, with one last sweep', () => {
+  const repo = mkScratchRepo({ README: 'x\n' });
+  const state = mkScratchDir();
+  try {
+    const listFile = path.join(state, 'touched.txt');
+    startBackground(repo, listFile);
+    const late = writeFile(repo, 'generated.py', 'x = 1\n');
+
+    const later = Date.now() + BACKGROUND_WINDOW_MS;
+    assert.deepStrictEqual(trackSessionChanges({ input: stopEvent(repo), listFile, now: later }), [
+      late,
+    ]);
+    assert.strictEqual(fs.existsSync(path.join(state, 'background')), false);
+
+    writeFile(repo, 'after.py', 'x = 1\n');
+    assert.deepStrictEqual(trackSessionChanges({ input: stopEvent(repo), listFile }), []);
+  } finally {
+    rmScratchDir(repo);
+    rmScratchDir(state);
+  }
+});
+
+test("puts a subagent's background writes in its list only when it is the one sweeping", () => {
+  const repo = mkScratchRepo({ README: 'x\n' });
+  const state = mkScratchDir();
+  try {
+    const listFile = path.join(state, 'touched.txt');
+    const agentList = path.join(agentStateDir(state, 'def456'), 'touched.txt');
+    startBackground(repo, listFile, { agent_id: 'def456' });
+
+    const first = writeFile(repo, 'first.py', 'x = 1\n');
+    trackSessionChanges({
+      input: stopEvent(repo, { hook_event_name: 'SubagentStop', agent_id: 'def456' }),
+      listFile,
+    });
+    assert.deepStrictEqual(readTrackedFiles(agentList), [first]);
+
+    const second = writeFile(repo, 'second.py', 'x = 1\n');
+    trackSessionChanges({ input: stopEvent(repo), listFile });
+    assert.deepStrictEqual(readTrackedFiles(listFile).sort(), [first, second].sort());
+    assert.deepStrictEqual(readTrackedFiles(agentList), [first]);
+  } finally {
+    rmScratchDir(repo);
+    rmScratchDir(state);
+  }
+});
+
+test('toolChangedFiles also returns background writes, once each', () => {
+  const repo = mkScratchRepo({ README: 'x\n' });
+  const state = mkScratchDir();
+  try {
+    toolChangedFiles({ input: backgroundEvent(repo, 'PreToolUse'), stateDir: state });
+    toolChangedFiles({ input: backgroundEvent(repo, 'PostToolUse'), stateDir: state });
+    const late = writeFile(repo, 'generated.py', 'x = 1\n');
+    const written = writeFile(repo, 'written.py', 'x = 1\n');
+    const input = payload(repo, written, { hook_event_name: 'PostToolUse', tool_name: 'Write' });
+    assert.deepStrictEqual(toolChangedFiles({ input, stateDir: state }).sort(), [late, written]);
   } finally {
     rmScratchDir(repo);
     rmScratchDir(state);

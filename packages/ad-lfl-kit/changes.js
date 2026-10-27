@@ -104,6 +104,16 @@ function snapshotWorkspace(cwd, { now = Date.now() } = {}) {
 }
 
 /*
+ * The snapshot that picks up where `snapshot` leaves off: same cwd and repo,
+ * with the clock and HEAD moved to now. Take it *before* reading what
+ * changed since `snapshot`, so a write landing in between falls into both
+ * windows rather than neither.
+ */
+function advanceSnapshot(snapshot, { now = Date.now() } = {}) {
+  return { ...snapshot, startedAt: now, head: snapshot.root ? headOf(snapshot.root) : null };
+}
+
+/*
  * `git status -z` entries are `XY <path>`; a rename or copy is followed by
  * one more NUL-terminated entry holding the original path, which is skipped.
  */
@@ -212,5 +222,6 @@ module.exports = {
   MTIME_SLACK_MS,
   PRUNED_DIR_NAMES,
   snapshotWorkspace,
+  advanceSnapshot,
   filesChangedSince,
 };
