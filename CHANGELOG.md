@@ -1,3 +1,10 @@
+# [2.4.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.3.0...v2.4.0) (2026-10-27)
+
+
+### Features
+
+* **plugins:** run hooks on Bash, PowerShell and MCP writes and in subagents ([#31](https://github.com/leonardo-marziali/agentic-development-kit/issues/31)) ([d49ba54](https://github.com/leonardo-marziali/agentic-development-kit/commit/d49ba54bea9ecbf3cac355e4810edf9aa3624668))
+
 # [2.3.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.2.0...v2.3.0) (2026-10-27)
 
 
