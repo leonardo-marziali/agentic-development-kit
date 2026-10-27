@@ -1,3 +1,10 @@
+# [2.5.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.4.0...v2.5.0) (2026-10-27)
+
+
+### Features
+
+* **ad-lfl-kit:** track writes from background commands after they return ([#32](https://github.com/leonardo-marziali/agentic-development-kit/issues/32)) ([1c06da5](https://github.com/leonardo-marziali/agentic-development-kit/commit/1c06da55c1fc962e61bfdf6ed4da38f92d1abb1d))
+
 # [2.4.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.3.0...v2.4.0) (2026-10-27)
 
 
