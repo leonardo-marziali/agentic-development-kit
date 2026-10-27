@@ -41,7 +41,7 @@ test('no touched hook code: no-op, empty stdout', (t) => {
   assert.equal(res.stdout.trim(), '');
 });
 
-test('failing suite: blocks with decision continue and records the attempt', (t) => {
+test('failing suite: blocks with decision block and records the attempt', (t) => {
   const stateRoot = mkScratchDir();
   t.after(() => rmScratchDir(stateRoot));
   const fixture = makeFixturePlugin(false);
@@ -52,9 +52,9 @@ test('failing suite: blocks with decision continue and records the attempt', (t)
   const res = verify(sessionId, stateRoot);
 
   assert.ok(res.json, `expected JSON stdout, got: ${res.stdout}`);
-  assert.equal(res.json.hookSpecificOutput.decision, 'continue');
-  assert.match(res.json.hookSpecificOutput.systemMessage, /pnpm test/);
-  assert.match(res.json.hookSpecificOutput.systemMessage, /fixture-plugin/);
+  assert.equal(res.json.decision, 'block');
+  assert.match(res.json.reason, /pnpm test/);
+  assert.match(res.json.reason, /fixture-plugin/);
 
   const attempts = JSON.parse(
     fs.readFileSync(path.join(stateDirFor(stateRoot, sessionId), 'test-attempts.json'), 'utf8'),
@@ -88,7 +88,7 @@ test('two touched plugins: both suites run, only the failing one is reported', (
 
   const res = verify(sessionId, stateRoot);
 
-  const message = res.json.hookSpecificOutput.systemMessage;
+  const message = res.json.reason;
   assert.match(message, /1 test suite is failing/);
   assert.ok(message.includes(failing.pluginRoot), 'failing plugin must be named in the report');
   assert.ok(
@@ -107,11 +107,7 @@ test('attempt cap: blocks 3 times then gives up silently, still failing', (t) =>
 
   for (let attempt = 1; attempt <= 3; attempt++) {
     const res = verify(sessionId, stateRoot);
-    assert.equal(
-      res.json?.hookSpecificOutput?.decision,
-      'continue',
-      `attempt ${attempt} should block`,
-    );
+    assert.equal(res.json?.decision, 'block', `attempt ${attempt} should block`);
   }
 
   const finalRes = verify(sessionId, stateRoot);
@@ -129,7 +125,7 @@ test('fixed on a later attempt: passes and clears state', (t) => {
   seedTouched(stateRoot, sessionId, fixture.hookFile);
 
   const first = verify(sessionId, stateRoot);
-  assert.equal(first.json?.hookSpecificOutput?.decision, 'continue');
+  assert.equal(first.json?.decision, 'block');
 
   setFixturePassing(fixture.pluginRoot, true); // simulate Claude fixing the failure
 
@@ -162,7 +158,7 @@ test('cleanup never touches another hook’s pending state in the same directory
   assert.equal(fs.existsSync(path.join(dir, 'test-attempts.json')), false);
 });
 
-test('SubagentStop hook event name passes through into hookSpecificOutput', (t) => {
+test('SubagentStop blocks with the same top-level payload', (t) => {
   const stateRoot = mkScratchDir();
   t.after(() => rmScratchDir(stateRoot));
   const fixture = makeFixturePlugin(false);
@@ -172,6 +168,6 @@ test('SubagentStop hook event name passes through into hookSpecificOutput', (t) 
 
   const res = verify(sessionId, stateRoot, 'SubagentStop');
 
-  assert.equal(res.json.hookSpecificOutput.hookEventName, 'SubagentStop');
-  assert.equal(res.json.hookSpecificOutput.decision, 'continue');
+  assert.equal('hookSpecificOutput' in res.json, false);
+  assert.equal(res.json.decision, 'block');
 });

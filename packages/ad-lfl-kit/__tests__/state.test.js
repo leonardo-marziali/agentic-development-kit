@@ -145,3 +145,29 @@ test('cleanup tolerates a directory that is already gone', () => {
   rmScratchDir(dir);
   assert.doesNotThrow(() => cleanup(dir, ['touched.txt']));
 });
+
+test('loopStateDir gives a SubagentStop its own directory and everything else the session one', () => {
+  const { loopStateDir, agentStateDir } = require('../state');
+  const dir = path.join(os.tmpdir(), 'session');
+  assert.strictEqual(
+    loopStateDir({ dir, input: { hook_event_name: 'SubagentStop', agent_id: 'abc' } }),
+    path.join(dir, 'agents', 'abc'),
+  );
+  assert.strictEqual(loopStateDir({ dir, input: { hook_event_name: 'Stop' } }), dir);
+  assert.strictEqual(loopStateDir({ dir, input: { hook_event_name: 'SubagentStop' } }), dir);
+  assert.strictEqual(agentStateDir(dir, '../../etc'), path.join(dir, 'agents', '______etc'));
+});
+
+test("cleanup of a subagent's directory also drops the then-empty agents directory", () => {
+  const { agentStateDir } = require('../state');
+  const scratch = mkScratchDir();
+  try {
+    const dir = agentStateDir(scratch, 'abc');
+    writeFile(dir, 'touched.txt', 'x');
+    cleanup(dir, ['touched.txt']);
+    assert.strictEqual(fs.existsSync(path.join(scratch, 'agents')), false);
+    assert.strictEqual(fs.existsSync(scratch), true);
+  } finally {
+    rmScratchDir(scratch);
+  }
+});
