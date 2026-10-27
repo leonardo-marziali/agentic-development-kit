@@ -34,6 +34,7 @@ const {
   stateDir,
   loopStateDir,
   readTrackedFiles,
+  trackSessionChanges,
   runBin,
   runFixLoop,
 } = require('@leonardo-marziali/ad-lfl-kit');
@@ -41,6 +42,7 @@ const {
   STATE_NAMESPACE,
   TOUCHED_FILES,
   isPythonFile,
+  isIgnoredPath,
   resolveTool,
   groupByConfigDir,
   pythonPathFor,
@@ -215,14 +217,22 @@ function main() {
   if (!input) return;
 
   /*
+   * A background command can still have written files after the last tool
+   * call; collect them first.
+   */
+  const sessionDir = stateDir({ sessionId: input.session_id, namespace: STATE_NAMESPACE });
+  trackSessionChanges({
+    input,
+    listFile: path.join(sessionDir, TOUCHED_FILES),
+    matches: (absPath) => isPythonFile(absPath) && !isIgnoredPath(absPath),
+  });
+
+  /*
    * A session that never touched a Python file has no list: no files, no-op.
    * A SubagentStop checks only what that subagent touched; the main Stop
    * checks everything, subagents' files included.
    */
-  const dir = loopStateDir({
-    dir: stateDir({ sessionId: input.session_id, namespace: STATE_NAMESPACE }),
-    input,
-  });
+  const dir = loopStateDir({ dir: sessionDir, input });
   const files = readTrackedFiles(path.join(dir, TOUCHED_FILES)).filter(isPythonFile);
   const groups = groupByConfigDir(files);
 
