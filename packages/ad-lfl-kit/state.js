@@ -20,6 +20,32 @@ function stateDir({ sessionId, namespace }) {
 }
 
 /*
+ * Where one subagent's share of a session's state lives, inside the
+ * session's own directory. Subagent tool calls arrive with the parent's
+ * session_id plus their own agent_id, so a file a subagent writes is
+ * tracked twice: in the session's list, which the main Stop checks, and in
+ * this one, which that subagent's SubagentStop checks.
+ */
+function agentStateDir(dir, agentId) {
+  // agent_id is a hex token today; never let it name a path outside `dir`.
+  return path.join(dir, 'agents', String(agentId).replaceAll(/[^\w-]/g, '_'));
+}
+
+/*
+ * The directory a Stop/SubagentStop hook should run its loop in. A
+ * SubagentStop gets the subagent's own directory, so a subagent is only
+ * held to the files it wrote — not to whatever the main conversation or a
+ * sibling subagent left unfinished — and keeps an attempt count of its own.
+ * Every other event gets the session directory unchanged.
+ */
+function loopStateDir({ dir, input }) {
+  if (input?.hook_event_name === 'SubagentStop' && input.agent_id) {
+    return agentStateDir(dir, input.agent_id);
+  }
+  return dir;
+}
+
+/*
  * The tracked-file list is append-only newline-delimited text. Entries can go
  * stale within a session — a file gets tracked, then deleted or renamed — so
  * filter to what still exists on every read rather than trusting the list.
@@ -69,6 +95,8 @@ function cleanup(dir, ownStateFiles) {
   }
   try {
     fs.rmdirSync(dir);
+    // A subagent's dir (see agentStateDir) leaves an empty `agents` behind.
+    if (path.basename(path.dirname(dir)) === 'agents') fs.rmdirSync(path.dirname(dir));
   } catch {
     // not empty (another hook's state still pending) or already gone
   }
@@ -76,6 +104,8 @@ function cleanup(dir, ownStateFiles) {
 
 module.exports = {
   stateDir,
+  agentStateDir,
+  loopStateDir,
   readTrackedFiles,
   appendTrackedFile,
   readAttempts,

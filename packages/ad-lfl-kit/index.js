@@ -10,6 +10,7 @@ module.exports = {
   ...require('./exec'),
   ...require('./hook-input'),
   ...require('./state'),
+  ...require('./changes'),
   ...require('./track'),
   ...require('./scope'),
   ...require('./loop'),

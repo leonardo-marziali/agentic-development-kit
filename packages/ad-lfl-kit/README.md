@@ -15,13 +15,18 @@ plugin can build the same loop without re-implementing it.
 
 ## The pattern
 
-1. A `PostToolUse` hook (matching `Edit`/`Write`) records every file the
-   current session touches that matches some predicate — only `.md` files,
-   say — into a session-scoped list.
-2. A `Stop`/`SubagentStop` hook reads that list, runs a check (optionally
-   preceded by an auto-fix pass), and:
+1. A tracking hook records every file the current session touches that
+   matches some predicate — only `.md` files, say — into a session-scoped
+   list. Edit-family tools name their file; for `Bash`, `PowerShell` and MCP
+   tools, which don't, the hook also runs on `PreToolUse` to snapshot the
+   workspace and tracks whatever changed by the time the call ends. Tool
+   calls made inside a subagent are tracked the same way, and additionally
+   into that subagent's own list.
+2. A `Stop`/`SubagentStop` hook reads that list — a `SubagentStop` reads only
+   its subagent's — runs a check (optionally preceded by an auto-fix pass),
+   and:
    - if it passes, cleans up the session state and lets the session end;
-   - if it fails, blocks the stop with `decision: "continue"` so Claude sees
+   - if it fails, blocks the stop with `decision: "block"` so Claude sees
      the failures and keeps working, up to a capped number of attempts;
    - at the cap, gives up — reporting what's left, optionally applying a
      caller-supplied fallback — rather than blocking forever.
@@ -40,9 +45,20 @@ npm install @leonardo-marziali/ad-lfl-kit
 ## Quick start
 
 Two hook scripts, wired up in the plugin's `hooks/hooks.json` the same way
-as [`plugins/markdown/hooks/hooks.json`](https://github.com/leonardo-marziali/agentic-development-kit/blob/main/plugins/markdown/hooks/hooks.json):
-a `PostToolUse` hook on `Edit|Write`, and `Stop`/`SubagentStop` hooks, both
-pointed at `${CLAUDE_PLUGIN_ROOT}`.
+as [`plugins/markdown/hooks/hooks.json`](https://github.com/leonardo-marziali/agentic-development-kit/blob/main/plugins/markdown/hooks/hooks.json),
+all pointed at `${CLAUDE_PLUGIN_ROOT}`:
+
+- `PreToolUse` and `PostToolUseFailure`, matching `Bash|PowerShell|mcp__.*`
+  → `track-touched.js`
+- `PostToolUse`, matching
+  `Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell|mcp__.*` →
+  `track-touched.js`
+- `Stop` and `SubagentStop` → `check-and-loop.js`
+
+`PostToolUseFailure` matters: a command that edits files and then exits
+non-zero (`./fix.py && pytest`) reports through it, not `PostToolUse`.
+Subagents need nothing extra — Claude Code fires plugin hooks for their tool
+calls too, with the parent's `session_id` and their own `agent_id`.
 
 **`scripts/hooks/track-touched.js`**
 
@@ -51,7 +67,7 @@ pointed at `${CLAUDE_PLUGIN_ROOT}`.
 'use strict';
 
 const path = require('node:path');
-const { readHookInput, stateDir, trackTouchedFile } = require('@leonardo-marziali/ad-lfl-kit');
+const { readHookInput, stateDir, trackSessionChanges } = require('@leonardo-marziali/ad-lfl-kit');
 
 const input = readHookInput();
 if (input) {
@@ -59,7 +75,7 @@ if (input) {
     sessionId: input.session_id,
     namespace: 'my-plugin-session-scope',
   });
-  trackTouchedFile({
+  trackSessionChanges({
     input,
     listFile: path.join(dir, 'touched-files.txt'),
     matches: (absPath) => /\.md$/i.test(absPath),
@@ -77,15 +93,20 @@ const path = require('node:path');
 const {
   readHookInput,
   stateDir,
+  loopStateDir,
   readTrackedFiles,
   runFixLoop,
   runBin,
 } = require('@leonardo-marziali/ad-lfl-kit');
 
 const input = readHookInput();
-const dir = stateDir({
-  sessionId: input?.session_id,
-  namespace: 'my-plugin-session-scope',
+// A SubagentStop gets its subagent's own directory; a Stop the session's.
+const dir = loopStateDir({
+  dir: stateDir({
+    sessionId: input?.session_id,
+    namespace: 'my-plugin-session-scope',
+  }),
+  input,
 });
 const stateFiles = ['touched-files.txt', 'attempts.json'];
 const files = readTrackedFiles(path.join(dir, 'touched-files.txt'));
@@ -182,6 +203,14 @@ excluded rather than drop it silently.
 - **`stateDir({ sessionId, namespace })`** — a directory scoped to one
   session and one namespace, under `${CLAUDE_PLUGIN_DATA}` when set (so it
   survives plugin updates) or the OS temp dir otherwise.
+- **`agentStateDir(dir, agentId)`** — one subagent's share of a session
+  directory, `<dir>/agents/<agentId>`. The tracking functions append a
+  subagent's files here as well as to the session's list.
+- **`loopStateDir({ dir, input })`** — the directory a `Stop`/`SubagentStop`
+  hook should run its loop in: `agentStateDir(dir, input.agent_id)` for a
+  `SubagentStop`, `dir` for anything else. A subagent is then held only to
+  the files it wrote, with its own attempt count, while the main `Stop`
+  still checks everything, subagents' files included.
 - **`readTrackedFiles(listFile)`** — the de-duplicated contents of a tracked
   file list, filtered to files that still exist on disk.
 - **`appendTrackedFile(listFile, absPath)`** — appends a path, skipping it
@@ -196,11 +225,49 @@ excluded rather than drop it silently.
 
 ### Tracking (`track.js`)
 
-- **`trackTouchedFile({ input, listFile, matches })`** — the `PostToolUse`
-  half. No-ops unless `input.tool_name` is `Edit` or `Write`, the tool's
-  `file_path` still exists on disk (resolved against `input.cwd`), and
-  `matches(absPath)` returns true (omit `matches` to track everything).
-  Returns the tracked absolute path, or `null`.
+- **`trackSessionChanges({ input, listFile, matches })`** — the tracking
+  half; wire it to `PreToolUse`, `PostToolUse` and `PostToolUseFailure`.
+  Tracks every file `toolChangedFiles` reports that `matches(absPath)`
+  accepts (omit `matches` to track everything), in `listFile` and — for a
+  subagent's call — in that subagent's list. Snapshots are kept beside
+  `listFile`. Returns the tracked paths.
+- **`toolChangedFiles({ input, stateDir })`** — the files one tool call
+  wrote, for hooks that act on them without tracking (a formatter). For
+  `Edit`, `Write`, `MultiEdit` and `NotebookEdit` that's the file the input
+  names, if it exists. For `Bash`, `PowerShell` and `mcp__*` tools,
+  `PreToolUse` writes a snapshot to `<stateDir>/pending/<tool_use_id>.json`
+  and the `Post*` event returns what changed since and consumes it, so only
+  one script per state dir should call this. Read-only tools return `[]`
+  without scanning anything.
+- **`trackTouchedFile({ input, listFile, matches })`** — the Edit-family
+  subset of `trackSessionChanges`: no-ops unless `input.tool_name` is
+  `Edit`, `Write`, `MultiEdit` or `NotebookEdit` and the file it names still
+  exists. Returns the tracked absolute path, or `null`.
+
+### Change detection (`changes.js`)
+
+How `toolChangedFiles` answers for tools that don't name their files.
+
+- **`snapshotWorkspace(cwd)`** — `{ startedAt, cwd, root, head }`: the time,
+  the cwd, and the git root and `HEAD` it sits in (both `null` outside a
+  repo).
+- **`filesChangedSince(snapshot, { cwd })`** — absolute paths written since
+  the snapshot. In a repo: the dirty and untracked files from `git status`,
+  plus the files of commits made during the call (so `edit && git commit`
+  isn't missed), keeping only those whose mtime falls after the snapshot.
+  Already-dirty files the call didn't touch are older than that, and a
+  `checkout` or `pull` leaves the tree clean and brings commits dated
+  before the call, so neither drags in unrelated files. Outside a repo: a
+  bounded walk of the cwd. Gitignored files and dependency directories
+  (`node_modules`, `.venv`, `__pycache__`…) are never reported. Unlike
+  `scope.js` this fails closed — an error means "nothing changed" — since
+  it decides which files a session becomes answerable for.
+- **`MTIME_SLACK_MS`** / **`PRUNED_DIR_NAMES`** — the mtime tolerance for
+  coarse filesystems, and the directories skipped.
+
+What it can't see: writes made after the call returns, such as by a
+`run_in_background` command, and writes outside both the snapshot's and
+the current cwd's repository.
 
 ### Execution (`exec.js`)
 
@@ -255,14 +322,20 @@ fix, check, onCap, buildMessage, write })`** — the `Stop`/`SubagentStop`
   given; `onCap({ files, outcome, maxAttempts })` is optional and runs
   once instead of blocking when the attempt cap is reached;
   `buildMessage({ attempt, maxAttempts, outcome, files })` returns
-  `{ stopReason?, systemMessage }` for the block payload. `maxAttempts`
+  `{ stopReason?, systemMessage }` for the block payload, which is printed
+  as `{ "decision": "block", "reason": systemMessage, "systemMessage":
+stopReason }`: `reason` is what Claude is told to fix (cut to
+  `MAX_REASON_CHARS`, since Claude Code would otherwise swap a longer one
+  for a short preview), `systemMessage` a notice shown only to the user. `maxAttempts`
   defaults to `DEFAULT_MAX_ATTEMPTS` (3). Returns
   `{ blocked, reason, ... }` so a caller or its tests can assert on which
   path was taken (`'no-input'`, `'no-files'`, `'clean'`, `'cap'`,
   `'blocked'`, or `'error'` if `fix`/`check` threw — in which case the
   session's state is left untouched so the next `Stop` retries, rather than
   either blocking on a broken toolchain or silently discarding progress).
-- **`DEFAULT_MAX_ATTEMPTS`** — `3`.
+- **`blockPayload({ stopReason, systemMessage })`** — that payload, for
+  hooks that block a stop outside `runFixLoop`.
+- **`DEFAULT_MAX_ATTEMPTS`** — `3`. **`MAX_REASON_CHARS`** — `9500`.
 
 ## Design notes
 
@@ -275,6 +348,10 @@ fix, check, onCap, buildMessage, write })`** — the `Stop`/`SubagentStop`
   the file names it's given; two hooks sharing a session's state directory
   (a tracking hook and, say, this repo's own test-verification hook) can't
   clobber each other.
+- **Block with top-level `decision: "block"`.** It is the only shape Claude
+  Code honours for `Stop`/`SubagentStop`. Versions of this kit before it
+  printed `hookSpecificOutput.decision: "continue"`, which Claude Code
+  ignores, so the stop went through and Claude never saw the report.
 - **A failing `check`/`fix` is not the same as a failing check.** If either
   throws, `runFixLoop` neither blocks the session nor discards its state —
   a broken toolchain shouldn't trap a session in a loop, and it shouldn't

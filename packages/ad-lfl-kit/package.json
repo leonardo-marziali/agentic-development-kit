@@ -27,6 +27,7 @@
     "exec.js",
     "hook-input.js",
     "state.js",
+    "changes.js",
     "track.js",
     "scope.js",
     "loop.js"
