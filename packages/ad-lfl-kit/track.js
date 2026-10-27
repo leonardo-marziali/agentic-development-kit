@@ -125,6 +125,16 @@ function openBackgroundWindow(stateDir, input, snapshot, now) {
   });
 }
 
+// A window as openBackgroundWindow wrote it, or null.
+function readWindow(file) {
+  try {
+    const window = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return typeof window?.openedAt === 'number' && window.snapshot ? window : null;
+  } catch {
+    return null;
+  }
+}
+
 /*
  * Everything open background commands wrote since the last sweep, each
  * window then moved up to `now` — or, once BACKGROUND_WINDOW_MS has passed,
@@ -142,16 +152,14 @@ function sweepBackgroundWindows(stateDir, now) {
   const changes = [];
   for (const name of names) {
     const file = path.join(dir, name);
-    let window;
-    try {
-      window = JSON.parse(fs.readFileSync(file, 'utf8'));
-    } catch {
+    const window = readWindow(file);
+    if (!window) {
       // Swept and closed by a concurrent hook, or unreadable: fail closed.
       fs.rmSync(file, { force: true });
       continue;
     }
 
-    const expired = !(now - window.openedAt < BACKGROUND_WINDOW_MS);
+    const expired = now - window.openedAt >= BACKGROUND_WINDOW_MS;
     const next = expired ? null : advanceSnapshot(window.snapshot, { now });
     for (const changed of filesChangedSince(window.snapshot, { cwd: window.cwd })) {
       changes.push({ file: changed, agentId: window.agentId });

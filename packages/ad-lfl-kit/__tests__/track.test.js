@@ -530,3 +530,41 @@ test('toolChangedFiles also returns background writes, once each', () => {
     rmScratchDir(state);
   }
 });
+
+test('drops a background window it cannot read, tracking nothing from it', () => {
+  const repo = mkScratchRepo({ README: 'x\n' });
+  const state = mkScratchDir();
+  try {
+    const listFile = path.join(state, 'touched.txt');
+    const garbled = writeFile(state, 'background/toolu_bad.json', '{"openedAt":');
+    const incomplete = writeFile(state, 'background/toolu_old.json', '{"cwd":"/"}');
+    writeFile(repo, 'new.py', 'x = 1\n');
+
+    assert.deepStrictEqual(trackSessionChanges({ input: stopEvent(repo), listFile }), []);
+    assert.strictEqual(fs.existsSync(garbled), false);
+    assert.strictEqual(fs.existsSync(incomplete), false);
+    assert.strictEqual(fs.existsSync(path.join(state, 'background')), false);
+  } finally {
+    rmScratchDir(repo);
+    rmScratchDir(state);
+  }
+});
+
+test('still returns background writes when moving the window up fails', () => {
+  const repo = mkScratchRepo({ README: 'x\n' });
+  const state = mkScratchDir();
+  try {
+    const listFile = path.join(state, 'touched.txt');
+    startBackground(repo, listFile);
+    // A directory where the atomic rewrite's temp file goes makes it throw.
+    const window = path.join(state, 'background', 'toolu_01.json');
+    fs.mkdirSync(`${window}.${process.pid}.tmp`);
+    const late = writeFile(repo, 'generated.py', 'x = 1\n');
+
+    assert.deepStrictEqual(trackSessionChanges({ input: stopEvent(repo), listFile }), [late]);
+    assert.strictEqual(fs.existsSync(window), true, 'the window stays open as it was');
+  } finally {
+    rmScratchDir(repo);
+    rmScratchDir(state);
+  }
+});
