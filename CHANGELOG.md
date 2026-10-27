@@ -1,3 +1,10 @@
+# [2.3.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.2.0...v2.3.0) (2026-10-27)
+
+
+### Features
+
+* **ad-lfl-kit:** track Bash/MCP writes and make Stop hooks actually block ([#30](https://github.com/leonardo-marziali/agentic-development-kit/issues/30)) ([e959dd2](https://github.com/leonardo-marziali/agentic-development-kit/commit/e959dd2fc816113b8e6b4a919b1834d274be46ca))
+
 # [2.2.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.1.0...v2.2.0) (2026-10-25)
 
 
