@@ -7,7 +7,7 @@ registered from .claude/settings.json — not shipped in any plugin.
 
 If this session edited any plugin's hook source or tests (tracked by
 track-touched-hook-code.js), runs that plugin's test suite and blocks the
-stop with decision:"continue" until it passes — so a change to a plugin's
+stop with decision:"block" until it passes — so a change to a plugin's
 hooks can't ship without the suite actually having been run against it in
 this session.
 
@@ -37,7 +37,6 @@ function main() {
   const input = readHookInput();
   if (!input) return;
 
-  const hookEventName = input.hook_event_name || 'Stop';
   const dir = stateDir(input.session_id);
   const listFile = path.join(dir, 'touched-hook-code.txt');
 
@@ -92,17 +91,15 @@ function main() {
   fs.writeFileSync(attemptsFile, JSON.stringify({ count: attempts + 1 }));
 
   const plural = failures.length === 1 ? 'suite' : 'suites';
+  // A top-level decision:"block" is the only shape that blocks a stop.
   const output = {
-    hookSpecificOutput: {
-      hookEventName,
-      decision: 'continue',
-      systemMessage:
-        `This session edited hook source or tests under ${pluginRoots.join(', ')}, and ` +
-        `${failures.length} test ${plural} ${failures.length === 1 ? 'is' : 'are'} failing ` +
-        `(attempt ${attempts + 1}/${MAX_ATTEMPTS}):\n\n${report}\n\n` +
-        'Fix the failure(s) and make sure `pnpm test` passes in each affected plugin ' +
-        'directory before finishing.',
-    },
+    decision: 'block',
+    reason:
+      `This session edited hook source or tests under ${pluginRoots.join(', ')}, and ` +
+      `${failures.length} test ${plural} ${failures.length === 1 ? 'is' : 'are'} failing ` +
+      `(attempt ${attempts + 1}/${MAX_ATTEMPTS}):\n\n${report}\n\n` +
+      'Fix the failure(s) and make sure `pnpm test` passes in each affected plugin ' +
+      'directory before finishing.',
   };
 
   process.stdout.write(JSON.stringify(output));

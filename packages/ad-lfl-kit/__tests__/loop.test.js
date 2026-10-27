@@ -5,7 +5,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { runFixLoop, DEFAULT_MAX_ATTEMPTS } = require('../loop');
+const { runFixLoop, DEFAULT_MAX_ATTEMPTS, MAX_REASON_CHARS } = require('../loop');
 const { writeAttempts, readAttempts } = require('../state');
 const { mkScratchDir, rmScratchDir, writeFile } = require('./helpers');
 
@@ -45,7 +45,7 @@ test('allows the stop and cleans up when the check passes', () => {
   }
 });
 
-test('blocks with decision continue when the check fails', () => {
+test('blocks with a top-level decision block when the check fails', () => {
   const { scratch, dir, written, base, files } = setup();
   try {
     const result = runFixLoop({
@@ -57,18 +57,23 @@ test('blocks with decision continue when the check fails', () => {
     assert.strictEqual(result.blocked, true);
     assert.strictEqual(result.attempt, 1);
 
-    const payload = JSON.parse(written[0]).hookSpecificOutput;
-    assert.strictEqual(payload.decision, 'continue');
-    assert.strictEqual(payload.hookEventName, 'Stop');
-    assert.strictEqual(payload.stopReason, 'still failing');
-    assert.match(payload.systemMessage, /attempt 1\/3: two issues/);
+    /*
+     * The only shape Claude Code honours for blocking a stop: anything under
+     * hookSpecificOutput (bar additionalContext) is ignored and the stop goes
+     * through.
+     */
+    const payload = JSON.parse(written[0]);
+    assert.deepStrictEqual(Object.keys(payload).sort(), ['decision', 'reason', 'systemMessage']);
+    assert.strictEqual(payload.decision, 'block');
+    assert.match(payload.reason, /attempt 1\/3: two issues/);
+    assert.strictEqual(payload.systemMessage, 'still failing');
     assert.strictEqual(readAttempts(path.join(dir, 'attempts.json')), 1);
   } finally {
     rmScratchDir(scratch);
   }
 });
 
-test('echoes SubagentStop back as the hook event name', () => {
+test('blocks a SubagentStop with the same payload', () => {
   const { scratch, written, base, files } = setup();
   try {
     runFixLoop({
@@ -77,7 +82,9 @@ test('echoes SubagentStop back as the hook event name', () => {
       files,
       check: () => ({ failed: true, report: 'x' }),
     });
-    assert.strictEqual(JSON.parse(written[0]).hookSpecificOutput.hookEventName, 'SubagentStop');
+    const payload = JSON.parse(written[0]);
+    assert.strictEqual(payload.decision, 'block');
+    assert.strictEqual('hookSpecificOutput' in payload, false);
   } finally {
     rmScratchDir(scratch);
   }
@@ -218,9 +225,26 @@ test('omits stopReason when buildMessage does not supply one', () => {
       check: () => ({ failed: true, report: 'x' }),
       buildMessage: () => ({ systemMessage: 'only a message' }),
     });
-    const payload = JSON.parse(written[0]).hookSpecificOutput;
-    assert.strictEqual('stopReason' in payload, false);
-    assert.strictEqual(payload.systemMessage, 'only a message');
+    const payload = JSON.parse(written[0]);
+    assert.strictEqual('systemMessage' in payload, false);
+    assert.strictEqual(payload.reason, 'only a message');
+  } finally {
+    rmScratchDir(scratch);
+  }
+});
+
+test('cuts a reason longer than Claude Code delivers whole, and says so', () => {
+  const { scratch, written, base, files } = setup();
+  try {
+    runFixLoop({
+      ...base,
+      files,
+      check: () => ({ failed: true, report: 'x' }),
+      buildMessage: () => ({ systemMessage: 'y'.repeat(MAX_REASON_CHARS + 500) }),
+    });
+    const { reason } = JSON.parse(written[0]);
+    assert.ok(reason.length < 10000, `reason is ${reason.length} chars`);
+    assert.match(reason, /500 more characters omitted/);
   } finally {
     rmScratchDir(scratch);
   }
