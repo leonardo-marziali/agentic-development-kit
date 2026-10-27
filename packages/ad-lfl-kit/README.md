@@ -19,8 +19,9 @@ plugin can build the same loop without re-implementing it.
    matches some predicate — only `.md` files, say — into a session-scoped
    list. Edit-family tools name their file; for `Bash`, `PowerShell` and MCP
    tools, which don't, the hook also runs on `PreToolUse` to snapshot the
-   workspace and tracks whatever changed by the time the call ends. Tool
-   calls made inside a subagent are tracked the same way, and additionally
+   workspace and tracks whatever changed by the time the call ends — or, for
+   a command run in the background, keeps tracking its writes on later
+   events. Tool calls made inside a subagent are tracked the same way, and additionally
    into that subagent's own list.
 2. A `Stop`/`SubagentStop` hook reads that list — a `SubagentStop` reads only
    its subagent's — runs a check (optionally preceded by an auto-fix pass),
@@ -95,19 +96,24 @@ const {
   stateDir,
   loopStateDir,
   readTrackedFiles,
+  trackSessionChanges,
   runFixLoop,
   runBin,
 } = require('@leonardo-marziali/ad-lfl-kit');
 
 const input = readHookInput();
-// A SubagentStop gets its subagent's own directory; a Stop the session's.
-const dir = loopStateDir({
-  dir: stateDir({
-    sessionId: input?.session_id,
-    namespace: 'my-plugin-session-scope',
-  }),
-  input,
+const sessionDir = stateDir({
+  sessionId: input?.session_id,
+  namespace: 'my-plugin-session-scope',
 });
+// Collect what background commands wrote since the last tool call.
+trackSessionChanges({
+  input,
+  listFile: path.join(sessionDir, 'touched-files.txt'),
+  matches: (absPath) => absPath.endsWith('.md'),
+});
+// A SubagentStop gets its subagent's own directory; a Stop the session's.
+const dir = loopStateDir({ dir: sessionDir, input });
 const stateFiles = ['touched-files.txt', 'attempts.json'];
 const files = readTrackedFiles(path.join(dir, 'touched-files.txt'));
 
@@ -226,11 +232,15 @@ excluded rather than drop it silently.
 ### Tracking (`track.js`)
 
 - **`trackSessionChanges({ input, listFile, matches })`** — the tracking
-  half; wire it to `PreToolUse`, `PostToolUse` and `PostToolUseFailure`.
-  Tracks every file `toolChangedFiles` reports that `matches(absPath)`
-  accepts (omit `matches` to track everything), in `listFile` and — for a
-  subagent's call — in that subagent's list. Snapshots are kept beside
-  `listFile`. Returns the tracked paths.
+  half; wire it to `PreToolUse`, `PostToolUse` and `PostToolUseFailure`,
+  and call it from the `Stop`/`SubagentStop` hook too, before reading
+  `listFile`, so background writes made after the last tool call are
+  collected. Tracks every file `toolChangedFiles` reports that
+  `matches(absPath)` accepts (omit `matches` to track everything), in
+  `listFile` and — for a subagent's call — in that subagent's list. A
+  background command's later writes reach its subagent's list only while
+  that subagent is the one calling; the session's list always gets them.
+  Snapshots are kept beside `listFile`. Returns the tracked paths.
 - **`toolChangedFiles({ input, stateDir })`** — the files one tool call
   wrote, for hooks that act on them without tracking (a formatter). For
   `Edit`, `Write`, `MultiEdit` and `NotebookEdit` that's the file the input
@@ -239,6 +249,18 @@ excluded rather than drop it silently.
   and the `Post*` event returns what changed since and consumes it, so only
   one script per state dir should call this. Read-only tools return `[]`
   without scanning anything.
+
+  A backgrounded command — `run_in_background: true`, or one the user sent
+  to the background, which Claude Code reports with a `backgroundTaskId` —
+  gets its `Post*` event as soon as it's backgrounded, while it keeps
+  writing. Its snapshot then moves to `<stateDir>/background/` instead of
+  being consumed, and every later `Post*`, `Stop` and `SubagentStop` event
+  also returns what it wrote since the previous such sweep. Hooks aren't
+  told when a background command exits, so its window closes
+  `BACKGROUND_WINDOW_MS` (2 hours) after it started, with one last sweep.
+  Within the window, anything written in the scanned repos counts —
+  including edits you make in an editor meanwhile.
+
 - **`trackTouchedFile({ input, listFile, matches })`** — the Edit-family
   subset of `trackSessionChanges`: no-ops unless `input.tool_name` is
   `Edit`, `Write`, `MultiEdit` or `NotebookEdit` and the file it names still
@@ -251,6 +273,8 @@ How `toolChangedFiles` answers for tools that don't name their files.
 - **`snapshotWorkspace(cwd)`** — `{ startedAt, cwd, root, head }`: the time,
   the cwd, and the git root and `HEAD` it sits in (both `null` outside a
   repo).
+- **`advanceSnapshot(snapshot)`** — the same snapshot moved up to now (new
+  time and `HEAD`), for watching a window that stays open.
 - **`filesChangedSince(snapshot, { cwd })`** — absolute paths written since
   the snapshot. In a repo: the dirty and untracked files from `git status`,
   plus the files of commits made during the call (so `edit && git commit`
@@ -265,9 +289,9 @@ How `toolChangedFiles` answers for tools that don't name their files.
 - **`MTIME_SLACK_MS`** / **`PRUNED_DIR_NAMES`** — the mtime tolerance for
   coarse filesystems, and the directories skipped.
 
-What it can't see: writes made after the call returns, such as by a
-`run_in_background` command, and writes outside both the snapshot's and
-the current cwd's repository.
+What it can't see: writes outside both the snapshot's and the current
+cwd's repository, and a background command's writes more than
+`BACKGROUND_WINDOW_MS` after it started.
 
 ### Execution (`exec.js`)
 
