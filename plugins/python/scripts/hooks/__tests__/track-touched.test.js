@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { mkScratchDir, rmScratchDir, uniqueSessionId, track } = require('./helpers');
+const { mkScratchDir, rmScratchDir, uniqueSessionId, track, runHook } = require('./helpers');
 
 function setup(t) {
   const scratch = mkScratchDir();
@@ -81,3 +81,69 @@ for (const [name, created, passed, tool] of [
     assert.deepEqual(touched(ctx), []);
   });
 }
+
+function bash(event, { scratch, pluginData, sessionId }, extra = {}) {
+  return runHook(
+    'track-touched.js',
+    {
+      hook_event_name: event,
+      tool_name: 'Bash',
+      tool_input: { command: 'python gen.py' },
+      tool_use_id: 'toolu_bash',
+      session_id: sessionId,
+      cwd: scratch,
+      ...extra,
+    },
+    { env: { CLAUDE_PLUGIN_DATA: pluginData } },
+  );
+}
+
+test('tracks .py files a Bash command wrote, and nothing else it wrote', (t) => {
+  const ctx = setup(t);
+
+  bash('PreToolUse', ctx);
+  const abs = create(ctx, 'pkg/generated.py');
+  create(ctx, 'notes.txt');
+  create(ctx, '.venv/lib/site.py');
+  bash('PostToolUse', ctx);
+
+  assert.deepEqual(touched(ctx), [abs]);
+});
+
+test('tracks a Bash command that failed after writing, via PostToolUseFailure', (t) => {
+  const ctx = setup(t);
+
+  bash('PreToolUse', ctx);
+  const abs = create(ctx, 'mod.py');
+  bash('PostToolUseFailure', ctx, { error: 'Exit code 1' });
+
+  assert.deepEqual(touched(ctx), [abs]);
+});
+
+test("tracks a subagent's writes in its own list too", (t) => {
+  const ctx = setup(t);
+  const abs = create(ctx, 'mod.py');
+
+  runHook(
+    'track-touched.js',
+    {
+      tool_name: 'Write',
+      tool_input: { file_path: abs },
+      session_id: ctx.sessionId,
+      cwd: ctx.scratch,
+      agent_id: 'sub1',
+    },
+    { env: { CLAUDE_PLUGIN_DATA: ctx.pluginData } },
+  );
+
+  const agentList = path.join(
+    ctx.pluginData,
+    'python-session-scope',
+    ctx.sessionId,
+    'agents',
+    'sub1',
+    'touched-files.txt',
+  );
+  assert.deepEqual(touched(ctx), [abs]);
+  assert.deepEqual(fs.readFileSync(agentList, 'utf8').split('\n').filter(Boolean), [abs]);
+});

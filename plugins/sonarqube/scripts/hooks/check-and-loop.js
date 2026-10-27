@@ -5,7 +5,7 @@
  * Stop / SubagentStop hook: analyzes the files this session touched (per
  * track-touched.js) with the local SonarQube for IDE engine — the plugin's
  * `sonarlint` CLI, backed by a warm SLOOP daemon — and, if anything blocking
- * is found, blocks the stop with `decision: "continue"` so Claude is handed
+ * is found, blocks the stop with `decision: "block"` so Claude is handed
  * the findings and keeps working on them.
  *
  * What blocks:
@@ -39,6 +39,7 @@ const path = require('node:path');
 const {
   readHookInput,
   stateDir,
+  loopStateDir,
   readTrackedFiles,
   runFixLoop,
   scopesFor,
@@ -188,7 +189,11 @@ function main() {
   const input = readHookInput();
   if (!input) return;
 
-  const dir = stateDir({ sessionId: input.session_id, namespace: STATE_NAMESPACE });
+  // A SubagentStop checks only what that subagent touched.
+  const dir = loopStateDir({
+    dir: stateDir({ sessionId: input.session_id, namespace: STATE_NAMESPACE }),
+    input,
+  });
   const listFile = path.join(dir, TOUCHED_FILES);
   if (!fs.existsSync(listFile)) return;
 

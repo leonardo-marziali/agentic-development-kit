@@ -10,9 +10,12 @@ Plugin that formats files with [Prettier][prettier] as Claude edits them.
 
 ### Formatting Hook
 
-- A `PostToolUse` hook (on `Edit`/`Write`) runs `prettier --write
---ignore-unknown` on the exact file Claude just touched, immediately —
-  no session-tracking, no batching. Prettier is fast and deterministic per
+- A `PostToolUse` hook runs `prettier --write --ignore-unknown` on the
+  files a tool call just wrote, immediately — no session-tracking, no
+  batching. For `Edit`/`Write`/`MultiEdit` that's the file they name; for
+  `Bash`, `PowerShell` and MCP tools, a `PreToolUse` snapshot finds
+  whatever the call changed (also on `PostToolUseFailure`, for a command
+  that wrote files and then failed). Prettier is fast and deterministic per
   file, so this keeps diffs clean as you go.
 - `--ignore-unknown` lets Prettier itself decide whether it has a parser
   for the file; files it doesn't recognize are left untouched.

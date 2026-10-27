@@ -4,7 +4,7 @@
 /*
  * Stop / SubagentStop hook: lints only the markdown files this session
  * touched (per track-touched.js), auto-fixes what markdownlint can, and if
- * violations remain, blocks the stop with `decision: "continue"` so Claude
+ * violations remain, blocks the stop with `decision: "block"` so Claude
  * keeps fixing them. Claude is told that a violation which can only be
  * resolved by forcing incorrect content (e.g. inventing a language for a
  * fenced code block that legitimately has none) should instead be
@@ -29,6 +29,7 @@ const path = require('node:path');
 const {
   readHookInput,
   stateDir,
+  loopStateDir,
   readTrackedFiles,
   runBin,
   runFixLoop,
@@ -155,7 +156,11 @@ function main() {
   const input = readHookInput();
   if (!input) return;
 
-  const dir = stateDir({ sessionId: input.session_id, namespace: STATE_NAMESPACE });
+  // A SubagentStop checks only what that subagent touched.
+  const dir = loopStateDir({
+    dir: stateDir({ sessionId: input.session_id, namespace: STATE_NAMESPACE }),
+    input,
+  });
   const listFile = path.join(dir, TOUCHED_FILES);
   if (!fs.existsSync(listFile)) return;
 

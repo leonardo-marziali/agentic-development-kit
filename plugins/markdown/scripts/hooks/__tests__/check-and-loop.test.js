@@ -62,7 +62,7 @@ test('no tracked files: no-op, empty stdout', (t) => {
   assert.equal(res.stdout.trim(), '');
 });
 
-test('genuine violation, nothing fixed: first Stop blocks with decision continue', (t) => {
+test('genuine violation, nothing fixed: first Stop blocks with decision block', (t) => {
   const scratch = mkScratchDir();
   t.after(() => rmScratchDir(scratch));
   const pluginData = path.join(scratch, 'plugin-data');
@@ -74,8 +74,8 @@ test('genuine violation, nothing fixed: first Stop blocks with decision continue
   const res = stop(sessionId, scratch, pluginData);
 
   assert.ok(res.json, `expected JSON stdout, got: ${res.stdout}`);
-  assert.equal(res.json.hookSpecificOutput.decision, 'continue');
-  assert.match(res.json.hookSpecificOutput.systemMessage, /MD025/);
+  assert.equal(res.json.decision, 'block');
+  assert.match(res.json.reason, /MD025/);
 });
 
 test('violation fixed on disk: next Stop is silent and clears session state', (t) => {
@@ -107,11 +107,7 @@ test('attempt cap, auto_suppress off (default): gives up without touching the fi
 
   for (let attempt = 1; attempt <= 3; attempt++) {
     const res = stop(sessionId, scratch, pluginData);
-    assert.equal(
-      res.json?.hookSpecificOutput?.decision,
-      'continue',
-      `attempt ${attempt} should block`,
-    );
+    assert.equal(res.json?.decision, 'block', `attempt ${attempt} should block`);
   }
 
   const finalRes = stop(sessionId, scratch, pluginData);
@@ -146,11 +142,7 @@ test('attempt cap, auto_suppress on: suppresses the remaining violation inline',
 
   for (let attempt = 1; attempt <= 3; attempt++) {
     const res = stop(sessionId, scratch, pluginData, { autoSuppress: true });
-    assert.equal(
-      res.json?.hookSpecificOutput?.decision,
-      'continue',
-      `attempt ${attempt} should block`,
-    );
+    assert.equal(res.json?.decision, 'block', `attempt ${attempt} should block`);
   }
 
   const finalRes = stop(sessionId, scratch, pluginData, { autoSuppress: true });
@@ -230,7 +222,7 @@ for (const [ext, content] of [
   });
 }
 
-test('SubagentStop hook event name passes through into hookSpecificOutput', (t) => {
+test('SubagentStop blocks with the same top-level payload', (t) => {
   const scratch = mkScratchDir();
   t.after(() => rmScratchDir(scratch));
   const pluginData = path.join(scratch, 'plugin-data');
@@ -241,8 +233,8 @@ test('SubagentStop hook event name passes through into hookSpecificOutput', (t) 
 
   const res = stop(sessionId, scratch, pluginData, { hookEventName: 'SubagentStop' });
 
-  assert.equal(res.json.hookSpecificOutput.hookEventName, 'SubagentStop');
-  assert.equal(res.json.hookSpecificOutput.decision, 'continue');
+  assert.equal('hookSpecificOutput' in res.json, false);
+  assert.equal(res.json.decision, 'block');
 });
 
 test('a file with a real violation that was never tracked is never touched or reported', (t) => {

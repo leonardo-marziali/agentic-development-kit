@@ -87,9 +87,9 @@ test('a secret blocks the stop with decision continue', (t) => {
 
   const res = stop({ ...ctx, env: fake.env });
 
-  assert.equal(res.json.hookSpecificOutput.decision, 'continue');
-  assert.equal(res.json.hookSpecificOutput.hookEventName, 'Stop');
-  const message = res.json.hookSpecificOutput.systemMessage;
+  assert.equal(res.json.decision, 'block');
+  assert.equal('hookSpecificOutput' in res.json, false);
+  const message = res.json.reason;
   assert.match(message, /src\/app\.js:3 BLOCKER secrets:S6290/);
   assert.match(message, /rotat/);
   assert.match(message, /NOSONAR/);
@@ -101,9 +101,9 @@ test('HIGH blocks under the default policy; MEDIUM alone does not', (t) => {
   track(writeFile(ctx.scratch, 'src/app.js'), ctx);
 
   const blocked = stop({ ...ctx, env: fake.env });
-  assert.equal(blocked.json.hookSpecificOutput.decision, 'continue');
-  assert.match(blocked.json.hookSpecificOutput.systemMessage, /javascript:S2259/);
-  assert.doesNotMatch(blocked.json.hookSpecificOutput.systemMessage, /javascript:S1854/);
+  assert.equal(blocked.json.decision, 'block');
+  assert.match(blocked.json.reason, /javascript:S2259/);
+  assert.doesNotMatch(blocked.json.reason, /javascript:S1854/);
 
   const ctx2 = setup(t);
   const fake2 = installFakeSonarlint(ctx2.scratch, { files: { issues: [MEDIUM] } });
@@ -120,7 +120,7 @@ test('min_blocking_severity=medium blocks on MEDIUM; secrets-only lets HIGH thro
     ...ctx,
     env: { ...fake.env, CLAUDE_PLUGIN_OPTION_MIN_BLOCKING_SEVERITY: 'medium' },
   });
-  assert.equal(res.json.hookSpecificOutput.decision, 'continue');
+  assert.equal(res.json.decision, 'block');
 
   const ctx2 = setup(t);
   const fake2 = installFakeSonarlint(ctx2.scratch, { files: { issues: [HIGH] } });
@@ -132,7 +132,7 @@ test('min_blocking_severity=medium blocks on MEDIUM; secrets-only lets HIGH thro
   const fake3 = installFakeSonarlint(ctx3.scratch, { files: { issues: [SECRET] } });
   track(writeFile(ctx3.scratch, 'src/app.js'), ctx3);
   const env3 = { ...fake3.env, CLAUDE_PLUGIN_OPTION_MIN_BLOCKING_SEVERITY: 'secrets-only' };
-  assert.equal(stop({ ...ctx3, env: env3 }).json.hookSpecificOutput.decision, 'continue');
+  assert.equal(stop({ ...ctx3, env: env3 }).json.decision, 'block');
 });
 
 test('everything clean: silent, and the session state is cleared', (t) => {
@@ -192,8 +192,8 @@ test('attempt cap: blocks 3 times, then reports and lets the stop through', (t) 
 
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     const res = stop({ ...ctx, env: fake.env });
-    assert.equal(res.json.hookSpecificOutput.decision, 'continue', `attempt ${attempt}`);
-    assert.match(res.json.hookSpecificOutput.systemMessage, new RegExp(`attempt ${attempt}/3`));
+    assert.equal(res.json.decision, 'block', `attempt ${attempt}`);
+    assert.match(res.json.reason, new RegExp(`attempt ${attempt}/3`));
   }
 
   const final = stop({ ...ctx, env: fake.env });
@@ -207,14 +207,14 @@ test('attempt cap: blocks 3 times, then reports and lets the stop through', (t) 
   assert.equal(fs.existsSync(stateDirFor(ctx.pluginData, ctx.sessionId)), false);
 });
 
-test('SubagentStop echoes its own hook event name in the block payload', (t) => {
+test('SubagentStop blocks with the same top-level payload', (t) => {
   const ctx = setup(t);
   const fake = installFakeSonarlint(ctx.scratch, { files: { issues: [SECRET] } });
   track(writeFile(ctx.scratch, 'src/app.js'), ctx);
 
   const res = stop({ ...ctx, env: fake.env, hookEventName: 'SubagentStop' });
 
-  assert.equal(res.json.hookSpecificOutput.hookEventName, 'SubagentStop');
+  assert.equal('hookSpecificOutput' in res.json, false);
 });
 
 test('pre-existing HIGH findings on unchanged lines are reported, not blocked on; secrets still block', (t) => {
@@ -242,7 +242,7 @@ test('pre-existing HIGH findings on unchanged lines are reported, not blocked on
     files: { issues: [old, fresh, issue('src/app.js', 'secrets:S6290', 'BLOCKER', 1)] },
   });
   const blocked = stop({ ...ctx, env: fake.env });
-  const message = blocked.json.hookSpecificOutput.systemMessage;
+  const message = blocked.json.reason;
   assert.match(message, /javascript:S3776/);
   assert.match(message, /secrets:S6290/, 'a secret blocks even on an unchanged line');
   assert.doesNotMatch(message, /javascript:S2259/);
@@ -267,7 +267,7 @@ test('connected mode: findings are grouped under the binding that owns them', (t
     },
   });
 
-  const message = stop({ ...ctx, env: fake.env }).json.hookSpecificOutput.systemMessage;
+  const message = stop({ ...ctx, env: fake.env }).json.reason;
 
   assert.match(message, /## acme_api \(SonarQube Cloud org acme\)[^#]*api\/src\/handler\.ts:1/);
   assert.match(

@@ -1,5 +1,5 @@
 {
-  "description": "Local SonarQube for IDE analysis (SLOOP) for agentic development: warms a per-project daemon at session start, reports issues in each edited file as it is written, tracks the files this session touches, then blocks the session from ending while they still have secrets or high-severity findings.",
+  "description": "Local SonarQube for IDE analysis (SLOOP) for agentic development: warms a per-project daemon at session start, reports issues in each edited file as it is written, tracks the files this session touches (via Edit/Write or Bash, PowerShell and MCP tools, in the main conversation or a subagent), then blocks the session from ending while they still have secrets or high-severity findings.",
   "hooks": {
     "SessionStart": [
       {
@@ -13,20 +13,49 @@
         ]
       }
     ],
-    "PostToolUse": [
+    "PreToolUse": [
       {
-        "matcher": "Edit|Write",
+        "matcher": "Bash|PowerShell|mcp__.*",
         "hooks": [
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/track-touched.js\"",
             "async": false
-          },
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell|mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/track-touched.js\"",
+            "async": false
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/feedback.js\"",
             "async": false,
             "timeout": 20
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Bash|PowerShell|mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/track-touched.js\"",
+            "async": false
           }
         ]
       }

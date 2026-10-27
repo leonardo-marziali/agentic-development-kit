@@ -13,9 +13,11 @@ linting via markdownlint.
   edited _during the current session_ get linted automatically. Pre-existing
   markdown is left untouched unless you explicitly ask for it (see
   [`/markdown:lint`](#linting) below).
-- A `PostToolUse` hook (on `Edit`/`Write`) records every `.md` file the
-  session touches. `Stop` and `SubagentStop` hooks then run
-  `markdownlint-cli --fix` on just that set of files.
+- A tracking hook records every `.md` file the session touches — through
+  `Edit`/`Write`, or through `Bash`, `PowerShell` and MCP tools (a
+  `PreToolUse` snapshot, then whatever changed when the call ends). `Stop`
+  hooks then run `markdownlint-cli --fix` on just that set of files; a
+  subagent's `SubagentStop` on only the files that subagent touched.
 - **Autonomous fix loop**: if violations remain after `--fix`, the `Stop`
   hook blocks the session from ending and hands Claude the remaining
   findings, so it keeps fixing them itself. This repeats up to 3 attempts
