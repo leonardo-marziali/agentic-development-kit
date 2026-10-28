@@ -26,6 +26,10 @@ const REPO_ROOT = path.resolve(__dirname, '..');
 const PLUGINS_DIR_NAME = 'plugins';
 const MANIFEST_RELATIVE_PATH = path.join('.claude-plugin', 'plugin.json');
 const RELEASE_TYPES = ['major', 'minor', 'patch'];
+// git is resolved from fixed system directories rather than $PATH, so a
+// writable directory earlier on PATH can't substitute its own binary
+// (SonarQube S4036). GIT_BIN overrides this for unusual installs.
+const GIT_CANDIDATES = ['/usr/bin/git', '/usr/local/bin/git', '/opt/homebrew/bin/git'];
 const VERSION_FIELD = /("version"\s*:\s*")(\d+\.\d+\.\d+)(")/;
 
 function bumpVersion(version, type) {
@@ -48,10 +52,18 @@ function listPlugins(repoRoot) {
     .sort();
 }
 
+function resolveGit() {
+  const git = process.env.GIT_BIN || GIT_CANDIDATES.find((candidate) => fs.existsSync(candidate));
+  if (!git) {
+    throw new Error(`git not found in ${GIT_CANDIDATES.join(', ')}; set GIT_BIN to its path`);
+  }
+  return git;
+}
+
 function changedPlugins(repoRoot, plugins, sinceRef) {
   if (!sinceRef) return plugins;
   const out = execFileSync(
-    'git',
+    resolveGit(),
     ['diff', '--name-only', `${sinceRef}..HEAD`, '--', `${PLUGINS_DIR_NAME}/`],
     { cwd: repoRoot, encoding: 'utf8' },
   );
@@ -109,4 +121,12 @@ if (require.main === module) {
   }
 }
 
-module.exports = { bumpVersion, listPlugins, changedPlugins, bumpManifest, run, parseArgs };
+module.exports = {
+  bumpVersion,
+  resolveGit,
+  listPlugins,
+  changedPlugins,
+  bumpManifest,
+  run,
+  parseArgs,
+};

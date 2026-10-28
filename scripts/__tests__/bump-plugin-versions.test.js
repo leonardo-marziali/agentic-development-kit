@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { mkScratchDir, rmScratchDir } = require('./helpers');
-const { bumpVersion, run, parseArgs } = require('../bump-plugin-versions');
+const { bumpVersion, resolveGit, run, parseArgs } = require('../bump-plugin-versions');
 
 function git(cwd, ...args) {
   return execFileSync('git', args, { cwd, encoding: 'utf8' });
@@ -117,4 +117,17 @@ test('parseArgs reads type, tag and --root', () => {
     sinceRef: 'v1.0.0',
     repoRoot: path.resolve('/x'),
   });
+});
+
+test('resolveGit honours GIT_BIN and otherwise finds a system git', () => {
+  const saved = process.env.GIT_BIN;
+  try {
+    process.env.GIT_BIN = '/custom/git';
+    assert.equal(resolveGit(), '/custom/git');
+    delete process.env.GIT_BIN;
+    assert.ok(path.isAbsolute(resolveGit()));
+  } finally {
+    if (saved === undefined) delete process.env.GIT_BIN;
+    else process.env.GIT_BIN = saved;
+  }
 });
