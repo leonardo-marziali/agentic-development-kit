@@ -15,9 +15,11 @@ linting via markdownlint.
   [`/markdown:lint`](#linting) below).
 - A tracking hook records every `.md` file the session touches — through
   `Edit`/`Write`, or through `Bash`, `PowerShell` and MCP tools (a
-  `PreToolUse` snapshot, then whatever changed when the call ends). `Stop`
-  hooks then run `markdownlint-cli --fix` on just that set of files; a
-  subagent's `SubagentStop` on only the files that subagent touched.
+  `PreToolUse` snapshot, then whatever changed when the call ends; a
+  `run_in_background` command keeps being tracked for up to 2 hours,
+  through the `Stop` hook). `Stop` hooks then run `markdownlint-cli --fix`
+  on just that set of files; a subagent's `SubagentStop` on only the
+  files that subagent touched.
 - **Autonomous fix loop**: if violations remain after `--fix`, the `Stop`
   hook blocks the session from ending and hands Claude the remaining
   findings, so it keeps fixing them itself. This repeats up to 3 attempts

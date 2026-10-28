@@ -15,7 +15,9 @@ Plugin that formats files with [Prettier][prettier] as Claude edits them.
   batching. For `Edit`/`Write`/`MultiEdit` that's the file they name; for
   `Bash`, `PowerShell` and MCP tools, a `PreToolUse` snapshot finds
   whatever the call changed (also on `PostToolUseFailure`, for a command
-  that wrote files and then failed). Prettier is fast and deterministic per
+  that wrote files and then failed). A `run_in_background` command's files
+  are formatted on later tool calls, for up to 2 hours; what it writes
+  after the last tool call isn't. Prettier is fast and deterministic per
   file, so this keeps diffs clean as you go.
 - `--ignore-unknown` lets Prettier itself decide whether it has a parser
   for the file; files it doesn't recognize are left untouched.

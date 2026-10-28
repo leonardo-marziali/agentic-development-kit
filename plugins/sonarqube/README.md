@@ -63,7 +63,8 @@ SHA-256, and runs `doctor`. Uninstalling the plugin removes it.
 - **`PreToolUse` / `PostToolUse` / `PostToolUseFailure`** — records the
   files each call touched: the one `Edit`/`Write` names, or, for `Bash`,
   `PowerShell` and MCP tools, whatever changed between the `PreToolUse`
-  snapshot and the end of the call.
+  snapshot and the end of the call. A `run_in_background` command keeps
+  being tracked on later calls and at `Stop`, for up to 2 hours.
 - **`Stop` / `SubagentStop`** — analyzes every file the session touched (a
   subagent's `SubagentStop`: only the files that subagent touched),
   and **blocks** the session from ending on secrets and on issues at/above
