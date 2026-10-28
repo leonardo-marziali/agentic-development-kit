@@ -3,7 +3,7 @@
   "private": true,
   "description": "Runtime dependencies and test tooling for the sonarqube plugin's hooks and local SonarLint CLI. Claude Code installs `dependencies` from package-lock.json when it caches the plugin.",
   "dependencies": {
-    "@leonardo-marziali/ad-lfl-kit": "2.3.0",
+    "@leonardo-marziali/ad-lfl-kit": "2.5.0",
     "vscode-jsonrpc": "10.0.0"
   },
   "scripts": {

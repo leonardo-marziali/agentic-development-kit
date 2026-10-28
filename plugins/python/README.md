@@ -25,7 +25,9 @@ covers.
 - A tracking hook records every Python file the session touches — through
   `Edit`/`Write`, or through `Bash`, `PowerShell` and MCP tools (a
   `PreToolUse` snapshot, then whatever changed when the call ends,
-  including on a failed command). `Stop` hooks then run, on just those
+  including on a failed command; a `run_in_background` command keeps
+  being tracked for up to 2 hours, through the `Stop` hook). `Stop` hooks
+  then run, on just those
   files; a subagent's `SubagentStop` runs on only the files that subagent
   touched:
   1. `ruff check --fix` and `ruff format`, which apply ruff's safe fixes;
