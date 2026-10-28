@@ -277,6 +277,13 @@ It also generates a `CHANGELOG.md` at the repo root (via
 `@semantic-release/git`) as part of the same release — so release history
 travels with the source, not just GitHub's Releases page.
 
+Plugin versions are bumped automatically too. During the same release,
+[`scripts/bump-plugin-versions.js`](scripts/bump-plugin-versions.js) bumps the
+`version` in `plugins/<name>/.claude-plugin/plugin.json` for every plugin whose
+files changed since the previous release tag (by the release's major/minor/patch
+type), and those manifests are committed with `CHANGELOG.md`. Unchanged plugins
+keep their version. Don't edit plugin versions by hand.
+
 The marketplace itself isn't published to npm — the root `package.json`'s
 `version` field stays `0.0.0` and the git tag is the source of truth for the
 released version. The one thing that _is_ published is
