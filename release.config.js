@@ -10,12 +10,25 @@
 // "version" field stays "0.0.0-development" in git for the same reason the
 // root's stays "0.0.0". The published version is what plugins pin in their
 // own package-lock.json, so a release must land before a plugin can pin it.
+//
+// Plugin versions are bumped per plugin: scripts/bump-plugin-versions.js runs
+// in the prepare step and bumps plugins/<name>/.claude-plugin/plugin.json for
+// each plugin whose files changed since the last release, by the release
+// type semantic-release computed. @semantic-release/git commits the manifests
+// alongside CHANGELOG.md.
 module.exports = {
   branches: ['main'],
   plugins: [
     '@semantic-release/commit-analyzer',
     '@semantic-release/release-notes-generator',
     '@semantic-release/changelog',
+    [
+      '@semantic-release/exec',
+      {
+        prepareCmd:
+          'node scripts/bump-plugin-versions.js ${nextRelease.type} ${lastRelease.gitTag}',
+      },
+    ],
     [
       '@semantic-release/npm',
       {
@@ -25,7 +38,7 @@ module.exports = {
     [
       '@semantic-release/git',
       {
-        assets: ['CHANGELOG.md'],
+        assets: ['CHANGELOG.md', 'plugins/*/.claude-plugin/plugin.json'],
       },
     ],
     '@semantic-release/github',

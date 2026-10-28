@@ -140,4 +140,5 @@ Once merged:
 - [`release.yml`](.github/workflows/release.yml) runs automatically on the
   resulting push to `main` and, via semantic-release, decides the next
   version from the Conventional Commit history and cuts a release. No
-  manual version bump or tag is needed.
+  manual version bump or tag is needed — this includes the `version` in each
+  changed plugin's `.claude-plugin/plugin.json`, which the release bumps for you.
