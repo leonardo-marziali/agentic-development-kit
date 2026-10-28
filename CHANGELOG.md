@@ -1,3 +1,10 @@
+# [2.6.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.5.0...v2.6.0) (2026-10-28)
+
+
+### Features
+
+* **plugins:** track background command writes by pinning ad-lfl-kit 2.5.0 ([#33](https://github.com/leonardo-marziali/agentic-development-kit/issues/33)) ([5531a2c](https://github.com/leonardo-marziali/agentic-development-kit/commit/5531a2cc0c7243ad3440e1abece37a8b3be36eff)), closes [#32](https://github.com/leonardo-marziali/agentic-development-kit/issues/32)
+
 # [2.5.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.4.0...v2.5.0) (2026-10-27)
 
 
