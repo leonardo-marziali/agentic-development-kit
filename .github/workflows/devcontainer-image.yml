@@ -55,6 +55,10 @@ jobs:
         # the PR adds is installable before it reaches main. Published images
         # leave it empty and track the default branch.
         env:
+          # buildx attaches provenance/SBOM attestation manifests by
+          # default, which GitHub's package page lists as a bogus
+          # `unknown/unknown` OS / Arch entry next to the real platforms.
+          BUILDX_NO_DEFAULT_ATTESTATIONS: '1'
           MARKETPLACE_REF: ${{ github.event_name == 'pull_request' && github.head_ref || '' }}
         with:
           subFolder: images/claude-devcontainer

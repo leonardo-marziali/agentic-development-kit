@@ -17,6 +17,9 @@ permissions:
   # setup, done from the package's Settings > Publishing access) — until
   # then, publishing fails rather than falling back to any stored token.
   id-token: write
+  # Mirrors packages/ad-lfl-kit to GitHub Packages (see the last step), so
+  # it also shows up under the repository's Packages view.
+  packages: write
 
 jobs:
   release:
@@ -54,3 +57,21 @@ jobs:
       - run: pnpm exec semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # npmjs.com packages never appear in a repository's Packages view, so
+      # the release is mirrored to GitHub Packages (npm.pkg.github.com, same
+      # `@leonardo-marziali` scope as the owner). semantic-release has just
+      # stamped the released version into the package's package.json; when no
+      # release happened it still reads `*-development`, so nothing is
+      # published.
+      - name: Mirror ad-lfl-kit to GitHub Packages
+        working-directory: packages/ad-lfl-kit
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          case "$version" in
+            *-development) echo "No release published; nothing to mirror."; exit 0 ;;
+          esac
+          npm config set "//npm.pkg.github.com/:_authToken" "$NODE_AUTH_TOKEN"
+          npm publish --registry https://npm.pkg.github.com --access public
