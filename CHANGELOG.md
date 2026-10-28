@@ -1,3 +1,10 @@
+## [2.6.1](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.6.0...v2.6.1) (2026-10-28)
+
+
+### Bug Fixes
+
+* README, Codecov, and GHCR/GitHub Packages issues ([#34](https://github.com/leonardo-marziali/agentic-development-kit/issues/34)) ([d0fc857](https://github.com/leonardo-marziali/agentic-development-kit/commit/d0fc8577be37a5009b47326a6e343a5deb9db6a7))
+
 # [2.6.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.5.0...v2.6.0) (2026-10-28)
 
 
