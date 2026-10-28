@@ -1,3 +1,10 @@
+# [2.7.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.6.1...v2.7.0) (2026-10-28)
+
+
+### Features
+
+* **release:** bump changed plugins' versions on release ([#35](https://github.com/leonardo-marziali/agentic-development-kit/issues/35)) ([3c7018e](https://github.com/leonardo-marziali/agentic-development-kit/commit/3c7018e78603617026024d0971223423a0670ccb))
+
 ## [2.6.1](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.6.0...v2.6.1) (2026-10-28)
 
 
