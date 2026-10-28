@@ -1,11 +1,15 @@
 name: Plugin Tests
 
 on:
-  # main is a protected branch (see README's "Branch protection" section):
-  # every change lands via a pull request, which already ran this workflow
-  # against the exact same tree. Re-running on the post-merge push would
-  # just repeat that result, so `main` is intentionally not a push trigger.
   pull_request:
+  # Codecov's `main` badges (and the flag badges in each package/plugin
+  # README) read the coverage uploaded for commits on `main` itself. A
+  # squash merge creates a new commit there, so without a run on the push
+  # no upload ever lands on `main` and every badge shows "unknown". Only
+  # the suites the push touched re-upload; `codecov.yml` carries the other
+  # flags forward.
+  push:
+    branches: [main]
 
 jobs:
   detect:

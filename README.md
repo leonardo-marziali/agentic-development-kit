@@ -106,6 +106,11 @@ Additional tooling used but not installed as an npm dependency:
   plugin's test suite locally, e.g. `pipx install ruff` or
   `uv tool install ruff`. Without it, the suite's ruff-dependent tests skip
   (CI installs it and runs them).
+- [`pyright`](https://microsoft.github.io/pyright/) — the type checker the
+  `python` plugin's hooks run. Nothing to install: the hooks fall back to
+  `npx -y pyright`, so (like `markdownlint-cli`) it needs network access
+  or a warm `npx` cache the first time. Install it yourself, e.g.
+  `npm i -g pyright` or `pipx install pyright`, to skip that.
 
 ### Shared packages and plugin dependencies
 
