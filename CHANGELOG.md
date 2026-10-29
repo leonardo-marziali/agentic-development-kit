@@ -1,3 +1,10 @@
+# [2.8.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.7.0...v2.8.0) (2026-10-29)
+
+
+### Features
+
+* **devcontainer:** add CLAUDE_ATTRIBUTION flag to toggle co-authoring ([#36](https://github.com/leonardo-marziali/agentic-development-kit/issues/36)) ([f228945](https://github.com/leonardo-marziali/agentic-development-kit/commit/f228945c0909dfd30508c4d3c4c8c350f250793a))
+
 # [2.7.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.6.1...v2.7.0) (2026-10-28)
 
 
