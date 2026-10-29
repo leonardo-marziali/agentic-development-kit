@@ -19,6 +19,7 @@
     "ghcr.io/devcontainers/features/github-cli:1": {}
   },
   "remoteUser": "node",
+  "postStartCommand": "claude-attribution --from-env",
   "customizations": {
     "vscode": {
       "extensions": [

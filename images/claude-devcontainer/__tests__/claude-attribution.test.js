@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { mkScratchDir, rmScratchDir } = require('./helpers');
+const { mkScratchDir, rmScratchDir } = require('../../../scripts/__tests__/helpers');
 const {
   readSettings,
   isDisabled,
@@ -13,9 +13,9 @@ const {
   enable,
   parseArgs,
   run,
-} = require('../claude-attribution');
+} = require('../.devcontainer/claude-attribution');
 
-const SCRIPT_PATH = path.join(__dirname, '..', 'claude-attribution.js');
+const SCRIPT_PATH = path.join(__dirname, '..', '.devcontainer', 'claude-attribution.js');
 
 function withSettings(initial, fn) {
   const dir = mkScratchDir('adk-claude-attribution-test-');
@@ -99,4 +99,20 @@ test('CLI exits non-zero with a message on bad usage', () => {
   const result = spawnSync(process.execPath, [SCRIPT_PATH], { encoding: 'utf8' });
   assert.equal(result.status, 1);
   assert.match(result.stderr, /Pass one of/);
+});
+
+test('--from-env follows CLAUDE_ATTRIBUTION and ignores an unset value', () => {
+  withSettings(undefined, (file) => {
+    const args = ['--from-env', '--settings', file];
+    assert.match(run(args, {}), /not set/);
+    assert.equal(fs.existsSync(file), false);
+
+    run(args, { CLAUDE_ATTRIBUTION: 'false' });
+    assert.equal(isDisabled(readSettings(file)), true);
+
+    run(args, { CLAUDE_ATTRIBUTION: 'true' });
+    assert.equal(isDisabled(readSettings(file)), false);
+
+    assert.throws(() => run(args, { CLAUDE_ATTRIBUTION: 'maybe' }), /not a boolean/);
+  });
 });

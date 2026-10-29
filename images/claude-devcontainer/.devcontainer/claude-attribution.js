@@ -7,10 +7,15 @@ Turns Claude Code's commit / pull request attribution (the
 footer) off or back on in ~/.claude/settings.json.
 
 Usage:
-  node scripts/claude-attribution.js --disable   # write the empty attribution
-  node scripts/claude-attribution.js --enable    # drop it, restoring defaults
-  node scripts/claude-attribution.js --status    # report the current state
-  node scripts/claude-attribution.js --settings <file>   # override the target
+  claude-attribution --disable   # write the empty attribution
+  claude-attribution --enable    # drop it, restoring defaults
+  claude-attribution --status    # report the current state
+  claude-attribution --from-env  # follow $CLAUDE_ATTRIBUTION; no-op when unset
+  claude-attribution --settings <file>   # override the target
+
+The dev container image runs `--from-env` on every start, so setting
+CLAUDE_ATTRIBUTION=false in a project's devcontainer.json containerEnv
+turns the attribution off.
 */
 
 const fs = require('node:fs');
@@ -18,6 +23,10 @@ const os = require('node:os');
 const path = require('node:path');
 
 const DEFAULT_SETTINGS_PATH = path.join(os.homedir(), '.claude', 'settings.json');
+
+const ENV_VAR = 'CLAUDE_ATTRIBUTION';
+const FALSE_VALUES = new Set(['false', '0', 'off', 'no', 'disabled']);
+const TRUE_VALUES = new Set(['true', '1', 'on', 'yes', 'enabled']);
 
 const DISABLED_ATTRIBUTION = { commit: '', pr: '', sessionUrl: false };
 
@@ -77,9 +86,9 @@ function parseArgs(argv) {
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
-    if (arg === '--enable' || arg === '--disable' || arg === '--status') {
+    if (['--enable', '--disable', '--status', '--from-env'].includes(arg)) {
       if (action && action !== arg.slice(2)) {
-        throw new Error('Pass only one of --enable, --disable, --status');
+        throw new Error('Pass only one of --enable, --disable, --status, --from-env');
       }
       action = arg.slice(2);
     } else if (arg === '--settings') {
@@ -91,12 +100,26 @@ function parseArgs(argv) {
     }
   }
 
-  if (!action) throw new Error('Pass one of --enable, --disable, --status');
+  if (!action) throw new Error('Pass one of --enable, --disable, --status, --from-env');
   return { action, settingsPath };
 }
 
-function run(argv) {
-  const { action, settingsPath } = parseArgs(argv);
+function actionFromEnv(env) {
+  const raw = env[ENV_VAR];
+  if (raw === undefined || raw.trim() === '') return undefined;
+  const value = raw.trim().toLowerCase();
+  if (FALSE_VALUES.has(value)) return 'disable';
+  if (TRUE_VALUES.has(value)) return 'enable';
+  throw new Error(`${ENV_VAR}=${raw} is not a boolean (use true or false)`);
+}
+
+function run(argv, env = process.env) {
+  let { action, settingsPath } = parseArgs(argv);
+
+  if (action === 'from-env') {
+    action = actionFromEnv(env);
+    if (!action) return `${ENV_VAR} is not set; leaving ${settingsPath} alone`;
+  }
 
   if (action === 'disable') {
     disable(settingsPath);

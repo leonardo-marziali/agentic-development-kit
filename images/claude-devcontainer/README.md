@@ -47,6 +47,23 @@ Code extension) in its metadata label, so nothing else is required. The
   `sonarqube` plugin reads through `sonar api`. `SONARQUBE_CLI_ORG` is for
   Cloud only.
 
+### Claude Code attribution
+
+Claude Code adds a `Co-Authored-By: Claude ...` trailer to commits and a
+"Generated with Claude Code" footer to pull request descriptions. To turn
+that off, set `CLAUDE_ATTRIBUTION` to `false` in your `devcontainer.json`:
+
+```json
+"containerEnv": { "CLAUDE_ATTRIBUTION": "false" }
+```
+
+On every start the container writes
+`"attribution": { "commit": "", "pr": "", "sessionUrl": false }` to
+`~/.claude/settings.json`, leaving the rest of the file alone. `true`
+removes that key again, restoring Claude Code's defaults; leaving the
+variable unset never touches the file. `claude-attribution --status` shows
+the current state, and `--enable` / `--disable` toggle it by hand.
+
 ### Keeping the login
 
 Log in once with `claude auth login` in a container terminal. To keep the

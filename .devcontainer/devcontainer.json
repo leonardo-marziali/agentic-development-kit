@@ -24,6 +24,7 @@
   "initializeCommand": "touch .env",
   "runArgs": ["--pull=always", "--env-file", "${localWorkspaceFolder}/.env"],
   "containerEnv": {
+    "CLAUDE_ATTRIBUTION": "false",
     "COREPACK_ENABLE_DOWNLOAD_PROMPT": "0"
   },
   /*

@@ -38,6 +38,11 @@ RUN --mount=type=bind,target=/tmp/devcontainer \
 
 ENV JAVA_HOME=/usr/lib/jvm/default-jdk
 
+# Applies CLAUDE_ATTRIBUTION to ~/.claude/settings.json on every start (see
+# the postStartCommand in devcontainer.json).
+RUN --mount=type=bind,target=/tmp/devcontainer \
+    install -m 0755 /tmp/devcontainer/claude-attribution.js /usr/local/bin/claude-attribution
+
 USER ${USERNAME}
 ENV PATH="/home/${USERNAME}/.local/bin:${PATH}"
 

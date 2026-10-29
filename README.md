@@ -64,22 +64,6 @@ Not yet present, but planned for this repo:
 - **Agent definitions** — reusable Claude Code agent configurations for
   recurring roles/workflows.
 
-## Claude Code attribution
-
-Claude Code appends a `Co-Authored-By: Claude ...` trailer to commits and a
-"Generated with Claude Code" footer to pull request descriptions. Toggle
-that in `~/.claude/settings.json` with
-[`scripts/claude-attribution.js`](scripts/claude-attribution.js):
-
-```sh
-node scripts/claude-attribution.js --disable   # no trailer, footer or session URL
-node scripts/claude-attribution.js --enable    # restore Claude Code's defaults
-node scripts/claude-attribution.js --status
-```
-
-`--disable` writes `"attribution": { "commit": "", "pr": "", "sessionUrl": false }`
-and leaves the rest of the file untouched; `--enable` removes that key.
-
 ## Development
 
 ### Dependencies
