@@ -24,8 +24,8 @@
     "prepare": "husky",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "node --test \".claude/hooks/__tests__/*.test.js\" \"scripts/__tests__/*.test.js\" \"packages/ad-lfl-kit/__tests__/*.test.js\"",
-    "test:coverage": "mkdir -p coverage && node --test --experimental-test-coverage --test-coverage-exclude=\"**/__tests__/**\" --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info \".claude/hooks/__tests__/*.test.js\" \"scripts/__tests__/*.test.js\" \"packages/ad-lfl-kit/__tests__/*.test.js\"",
+    "test": "node --test \".claude/hooks/__tests__/*.test.js\" \"scripts/__tests__/*.test.js\" \"packages/ad-lfl-kit/__tests__/*.test.js\" \"images/claude-devcontainer/__tests__/*.test.js\"",
+    "test:coverage": "mkdir -p coverage && node --test --experimental-test-coverage --test-coverage-exclude=\"**/__tests__/**\" --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info \".claude/hooks/__tests__/*.test.js\" \"scripts/__tests__/*.test.js\" \"packages/ad-lfl-kit/__tests__/*.test.js\" \"images/claude-devcontainer/__tests__/*.test.js\"",
     "export:plugins": "node scripts/export-plugins.js",
     "release": "semantic-release"
   }
