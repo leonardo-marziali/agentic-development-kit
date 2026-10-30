@@ -176,6 +176,27 @@ Put `GITHUB_PERSONAL_ACCESS_TOKEN` and the SonarQube CLI's
 `SONARQUBE_CLI_TOKEN` / `SONARQUBE_CLI_SERVER` / `SONARQUBE_CLI_ORG` in the
 gitignored `.env` (copy `.env.example`) if you use them.
 
+On every start the container also logs the GitHub CLI in from
+`GITHUB_PERSONAL_ACCESS_TOKEN` ([`gh-login.sh`](.devcontainer/gh-login.sh)),
+because `gh` itself only reads `GH_TOKEN` / `GITHUB_TOKEN`. It also runs
+`gh auth setup-git`, so `git push` over HTTPS uses the same token. Check with
+`gh auth status`.
+
+#### GitHub token
+
+Both the GitHub MCP server and `gh` use this one token. Either type works:
+
+- **Classic personal access token** (simplest) with scopes `repo`,
+  `read:org` (needed by `gh auth login`) and `workflow` (to read Actions runs
+  and push workflow files). Add `gist` only if you use `gh gist`.
+- **Fine-grained personal access token**, with the repository access set to
+  this repository (and any others you work on) and these repository
+  permissions: Contents (read/write), Pull requests (read/write), Issues
+  (read/write), Actions (read), Metadata (read, always on), and Workflows
+  (read/write) if you push workflow files. `gh auth login --with-token`
+  accepts it, but `gh auth status` may warn that scopes can't be checked, and
+  commands outside the granted permissions fail with 403.
+
 ### Commits
 
 Commit messages must follow [Conventional Commits](https://www.conventionalcommits.org/),
