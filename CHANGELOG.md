@@ -1,3 +1,10 @@
+## [2.8.1](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.8.0...v2.8.1) (2026-10-30)
+
+
+### Bug Fixes
+
+* **devcontainer:** log gh in from GITHUB_PERSONAL_ACCESS_TOKEN ([#37](https://github.com/leonardo-marziali/agentic-development-kit/issues/37)) ([09794fe](https://github.com/leonardo-marziali/agentic-development-kit/commit/09794fee499d6ace4f9471ffbfb14931fbe33220))
+
 # [2.8.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.7.0...v2.8.0) (2026-10-29)
 
 
