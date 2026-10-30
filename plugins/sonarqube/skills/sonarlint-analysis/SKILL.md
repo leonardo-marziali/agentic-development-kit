@@ -37,6 +37,7 @@ before you hand back, or for files you didn't edit.
 sonarlint files src/app.ts src/util/ --format json   # files or directories
 sonarlint files src/app.ts --min-severity MEDIUM     # change the exit-1 bar
 printf '%s' "$CODE" | sonarlint stdin --path src/new.ts  # content not on disk yet
+sonarlint server src/app.ts .github/ --format json   # what the server recorded
 sonarlint rules --key python:S5754                   # what a rule means
 sonarlint rules --search "unused" --lang JS          # find rule keys
 sonarlint doctor                                     # is it installed and healthy?
@@ -68,6 +69,15 @@ hasQuickFix}`.
 
 Exit 2 is **not** clean. Never report "no issues" for it.
 
+Local clean isn't the same as server clean. The local engine has a
+pinned rule set. It can accept a file it has no rules for, such as a
+GitHub Actions workflow (the server's `githubactions:*` rules aren't in
+it), and report it clean. When the project has a
+`.sonarlint/connectedMode.json`, `sonarlint server <paths>` returns the
+server's open issues for the same files, in the same shape, with the
+revision the server last analyzed. The `analyze` skill describes how to
+merge the two.
+
 Severities: `BLOCKER` > `CRITICAL`/`HIGH` > `MAJOR`/`MEDIUM` >
 `MINOR`/`LOW` > `INFO`.
 
@@ -94,5 +104,6 @@ key and why you left it, rather than rewriting code a third time.
 
 - `fix` (`/sonarqube:fix`) — work through findings on request.
 - `setup` (`/sonarqube:setup`) — install or repair the engine.
-- `sonarqube-web-api` — what the server says about the project, rather
-  than the working tree.
+- `sonarqube-web-api` — anything else the server knows about the
+  project (hotspots, quality gate, measures), and logging the `sonar`
+  CLI in, which `sonarlint server` depends on.
