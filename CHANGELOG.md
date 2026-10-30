@@ -1,3 +1,10 @@
+## [2.8.2](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.8.1...v2.8.2) (2026-10-30)
+
+
+### Bug Fixes
+
+* **devcontainer:** bake gh-login into the claude-devcontainer image ([#38](https://github.com/leonardo-marziali/agentic-development-kit/issues/38)) ([0cd6dd6](https://github.com/leonardo-marziali/agentic-development-kit/commit/0cd6dd60fe30c3551562f9331f801b29ff5efa51)), closes [#login](https://github.com/leonardo-marziali/agentic-development-kit/issues/login) [usr/local/bin/#login](https://github.com/usr/local/bin//issues/login)
+
 ## [2.8.1](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.8.0...v2.8.1) (2026-10-30)
 
 
