@@ -48,5 +48,10 @@
     marketplace), so install each one's dependencies from its own npm
     lockfile, as Claude Code does when it caches a plugin.
   */
+  /*
+    gh only reads GH_TOKEN / GITHUB_TOKEN, so log it in from
+    GITHUB_PERSONAL_ACCESS_TOKEN on every start (a no-op if already logged in).
+  */
+  "postStartCommand": "bash .devcontainer/gh-login.sh",
   "postCreateCommand": "sudo corepack enable && pnpm install && for d in plugins/*/; do [ -f \"$d/package-lock.json\" ] && (cd \"$d\" && npm ci --ignore-scripts); done; true"
 }

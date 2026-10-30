@@ -25,7 +25,7 @@ before use:
 export GITHUB_PERSONAL_ACCESS_TOKEN=<token>
 ```
 
-The token needs `repo` scope (and `workflow` scope to read Actions runs).
+The token needs `repo` scope (and `workflow` scope to read Actions runs); see the root README's "GitHub token" section for fine-grained permissions.
 Without it, the `pr` skill falls back to the [`gh`
 CLI](https://cli.github.com/) when `gh auth status` succeeds, and stops
 with a clear message when neither path is available.
