@@ -4,8 +4,9 @@
   /*
     The image this repository builds and publishes (images/claude-devcontainer).
     Its metadata label already carries remoteUser `node`, the
-    docker-outside-of-docker and GitHub CLI features, and the Claude Code VS
-    Code extension.
+    docker-outside-of-docker and GitHub CLI features, the Claude Code VS
+    Code extension, and the postStartCommand that runs `claude-attribution`
+    and `gh-login`.
   */
   "image": "ghcr.io/leonardo-marziali/claude-devcontainer:latest",
   /*
@@ -49,9 +50,9 @@
     lockfile, as Claude Code does when it caches a plugin.
   */
   /*
-    gh only reads GH_TOKEN / GITHUB_TOKEN, so log it in from
-    GITHUB_PERSONAL_ACCESS_TOKEN on every start (a no-op if already logged in).
+    No postStartCommand of our own: the image's metadata label already runs
+    `gh-login` on every start, which logs gh in from
+    GITHUB_PERSONAL_ACCESS_TOKEN (see images/claude-devcontainer).
   */
-  "postStartCommand": "bash .devcontainer/gh-login.sh",
   "postCreateCommand": "sudo corepack enable && pnpm install && for d in plugins/*/; do [ -f \"$d/package-lock.json\" ] && (cd \"$d\" && npm ci --ignore-scripts); done; true"
 }

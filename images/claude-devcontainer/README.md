@@ -41,11 +41,30 @@ Code extension) in its metadata label, so nothing else is required. The
 `remoteEnv` entries are optional — forward only the ones you use:
 
 - `GITHUB_PERSONAL_ACCESS_TOKEN` — the `github@claude-plugins-official`
-  MCP server.
+  MCP server, and the `gh` CLI login (see
+  [GitHub CLI login](#github-cli-login)).
 - `SONARQUBE_CLI_TOKEN`, `SONARQUBE_CLI_SERVER`, `SONARQUBE_CLI_ORG` — the
   SonarQube CLI's connection to SonarQube Server or Cloud, which the
   `sonarqube` plugin reads through `sonar api`. `SONARQUBE_CLI_ORG` is for
   Cloud only.
+
+### GitHub CLI login
+
+`gh` only reads `GH_TOKEN` / `GITHUB_TOKEN`, so on its own it stays logged
+out even when `GITHUB_PERSONAL_ACCESS_TOKEN` is set. On every start the
+container runs `gh-login`
+([`gh-login.sh`](.devcontainer/gh-login.sh)), which pipes that token into
+`gh auth login --with-token` and runs `gh auth setup-git`, so `git push`
+over HTTPS uses the same token. Check with `gh auth status`.
+
+It needs no configuration beyond the token reaching the container —
+through `remoteEnv` as above, `containerEnv`, or
+`"runArgs": ["--env-file", "${localWorkspaceFolder}/.env"]`. It does
+nothing when the token is unset or `gh` is already logged in, clears
+`GH_TOKEN` / `GITHUB_TOKEN` for the login call (`gh auth login` refuses to
+run while either is set), and never fails the container start. The token
+scopes `gh` needs are listed in the root README's
+[GitHub token](../../README.md#github-token) section.
 
 ### Claude Code attribution
 

@@ -38,10 +38,12 @@ RUN --mount=type=bind,target=/tmp/devcontainer \
 
 ENV JAVA_HOME=/usr/lib/jvm/default-jdk
 
-# Applies CLAUDE_ATTRIBUTION to ~/.claude/settings.json on every start (see
-# the postStartCommand in devcontainer.json).
+# Run on every start (see the postStartCommand in devcontainer.json):
+# claude-attribution applies CLAUDE_ATTRIBUTION to ~/.claude/settings.json,
+# and gh-login logs gh in from GITHUB_PERSONAL_ACCESS_TOKEN.
 RUN --mount=type=bind,target=/tmp/devcontainer \
-    install -m 0755 /tmp/devcontainer/claude-attribution.js /usr/local/bin/claude-attribution
+    install -m 0755 /tmp/devcontainer/claude-attribution.js /usr/local/bin/claude-attribution \
+    && install -m 0755 /tmp/devcontainer/gh-login.sh /usr/local/bin/gh-login
 
 USER ${USERNAME}
 ENV PATH="/home/${USERNAME}/.local/bin:${PATH}"
