@@ -176,11 +176,13 @@ Put `GITHUB_PERSONAL_ACCESS_TOKEN` and the SonarQube CLI's
 `SONARQUBE_CLI_TOKEN` / `SONARQUBE_CLI_SERVER` / `SONARQUBE_CLI_ORG` in the
 gitignored `.env` (copy `.env.example`) if you use them.
 
-On every start the container also logs the GitHub CLI in from
-`GITHUB_PERSONAL_ACCESS_TOKEN` ([`gh-login.sh`](.devcontainer/gh-login.sh)),
+On every start the image logs the GitHub CLI in from
+`GITHUB_PERSONAL_ACCESS_TOKEN` (its baked-in `gh-login`, from
+[`gh-login.sh`](images/claude-devcontainer/.devcontainer/gh-login.sh)),
 because `gh` itself only reads `GH_TOKEN` / `GITHUB_TOKEN`. It also runs
 `gh auth setup-git`, so `git push` over HTTPS uses the same token. Check with
-`gh auth status`.
+`gh auth status`. Every project built on the image gets this; see the
+[image README](images/claude-devcontainer/README.md#github-cli-login).
 
 #### GitHub token
 
