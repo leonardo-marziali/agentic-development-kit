@@ -12,7 +12,7 @@ if ! command -v gh >/dev/null; then
   exit 0
 fi
 
-if [ -z "${GITHUB_PERSONAL_ACCESS_TOKEN:-}" ]; then
+if [[ -z "${GITHUB_PERSONAL_ACCESS_TOKEN:-}" ]]; then
   echo "gh: GITHUB_PERSONAL_ACCESS_TOKEN not set in .env; skipping login"
   exit 0
 fi
