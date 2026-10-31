@@ -114,6 +114,65 @@ test('leaves out files brought in by older commits, as a pull or checkout would'
   }
 });
 
+/*
+ * A commit someone else made *during* the call — a release bot pushing while
+ * the session's `git pull` (or a long background command) runs — carries a
+ * fresh committer date, so only the reflog can tell it apart from one this
+ * checkout made: it is recorded as `pull:` or `merge`, not `commit:`.
+ */
+test('leaves out files of a commit made elsewhere during the call and pulled in', () => {
+  const upstream = mkScratchRepo({ 'a.py': 'x = 1\n' });
+  const clone = mkScratchDir('ad-lfl-clone-');
+  try {
+    execFileSync('git', ['clone', '--quiet', upstream, clone], { stdio: 'pipe' });
+    const snap = snapshotWorkspace(clone);
+
+    writeFile(upstream, 'CHANGELOG.md', '# Changelog\n');
+    gitCommit(upstream, 'chore(release): 1.0.0');
+    execFileSync('git', ['-C', clone, 'pull', '--quiet', '--ff-only'], { stdio: 'pipe' });
+
+    assert.ok(fs.existsSync(path.join(clone, 'CHANGELOG.md')));
+    assert.deepStrictEqual(filesChangedSince(snap), []);
+  } finally {
+    rmScratchDir(upstream);
+    rmScratchDir(clone);
+  }
+});
+
+test('finds files of a commit amended during the call', () => {
+  const repo = mkScratchRepo({ 'a.py': 'x = 1\n' });
+  try {
+    age(path.join(repo, 'a.py'));
+    const snap = snapshotWorkspace(repo);
+
+    fs.writeFileSync(path.join(repo, 'a.py'), 'x = 2\n');
+    execFileSync('git', ['-C', repo, 'add', '--all'], { stdio: 'pipe' });
+    execFileSync(
+      'git',
+      [
+        '-C',
+        repo,
+        '-c',
+        'user.email=test@example.com',
+        '-c',
+        'user.name=Test',
+        '-c',
+        'commit.gpgsign=false',
+        'commit',
+        '--quiet',
+        '--no-verify',
+        '--amend',
+        '--no-edit',
+      ],
+      { stdio: 'pipe' },
+    );
+
+    assert.deepStrictEqual(filesChangedSince(snap), [path.join(repo, 'a.py')]);
+  } finally {
+    rmScratchDir(repo);
+  }
+});
+
 test('skips gitignored files and dependency directories', () => {
   const repo = mkScratchRepo({ '.gitignore': 'build/\n' });
   try {
