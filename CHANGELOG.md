@@ -1,3 +1,10 @@
+## [2.10.3](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.10.2...v2.10.3) (2026-10-31)
+
+
+### Bug Fixes
+
+* **ad-lfl-kit:** attribute only commits this checkout made to the session ([#44](https://github.com/leonardo-marziali/agentic-development-kit/issues/44)) ([dd86f30](https://github.com/leonardo-marziali/agentic-development-kit/commit/dd86f30800c76358470bfd2d096d2355290719eb))
+
 ## [2.10.2](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.10.1...v2.10.2) (2026-10-31)
 
 
