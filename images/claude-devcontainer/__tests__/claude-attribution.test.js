@@ -50,6 +50,35 @@ test('disable preserves unrelated settings and replaces a custom attribution', (
   });
 });
 
+test('disable replaces the file atomically, leaving no temp file behind', () => {
+  withSettings(JSON.stringify({ model: 'opus' }), (file) => {
+    const before = fs.statSync(file).ino;
+    disable(file);
+    assert.notEqual(fs.statSync(file).ino, before, 'expected a rename, not an in-place rewrite');
+    assert.deepEqual(fs.readdirSync(path.dirname(file)), ['settings.json']);
+  });
+});
+
+test('disable keeps the existing file mode', () => {
+  withSettings(JSON.stringify({ model: 'opus' }), (file) => {
+    fs.chmodSync(file, 0o600);
+    disable(file);
+    assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+  });
+});
+
+test('disable writes through a symlinked settings file', () => {
+  withSettings(JSON.stringify({ model: 'opus' }), (file) => {
+    const target = path.join(path.dirname(file), 'real.json');
+    fs.renameSync(file, target);
+    fs.symlinkSync(target, file);
+    disable(file);
+    assert.ok(fs.lstatSync(file).isSymbolicLink());
+    assert.equal(readJson(target).model, 'opus');
+    assert.ok(isDisabled(readJson(target)));
+  });
+});
+
 test('enable removes only the attribution key', () => {
   withSettings(JSON.stringify({ model: 'opus', attribution: { commit: '' } }), (file) => {
     enable(file);

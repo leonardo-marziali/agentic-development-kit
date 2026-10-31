@@ -52,9 +52,36 @@ function readSettings(settingsPath) {
   return settings;
 }
 
+/*
+Writes to a sibling temp file and renames it over the target, so a reader
+never sees a truncated or half-written file. This runs on container start,
+concurrently with Claude Code (the `claude login` task, the VS Code
+extension) reading the same file. A symlinked target is resolved first so
+the rename replaces the real file, not the link; the existing mode is kept.
+*/
 function writeSettings(settingsPath, settings) {
-  fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
-  fs.writeFileSync(settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
+  let target = settingsPath;
+  let mode;
+  try {
+    target = fs.realpathSync(settingsPath);
+    mode = fs.statSync(target).mode & 0o777;
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+
+  const tmp = path.join(
+    path.dirname(target),
+    `.${path.basename(target)}.${process.pid}.${Date.now()}.tmp`,
+  );
+  try {
+    fs.writeFileSync(tmp, `${JSON.stringify(settings, null, 2)}\n`, { flag: 'wx' });
+    if (mode !== undefined) fs.chmodSync(tmp, mode);
+    fs.renameSync(tmp, target);
+  } catch (error) {
+    fs.rmSync(tmp, { force: true });
+    throw error;
+  }
 }
 
 function isDisabled(settings) {
