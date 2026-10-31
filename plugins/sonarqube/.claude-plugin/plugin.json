@@ -1,7 +1,7 @@
 {
   "$schema": "https://www.schemastore.org/claude-code-plugin-manifest.json",
   "name": "sonarqube",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "SonarQube for IDE analysis during agentic development: runs Sonar's own IDE engine (SLOOP) locally on every file Claude edits and blocks the session from ending while touched files still have secrets or high-severity findings; reads SonarQube Server or Cloud through `sonar api`. Requires Node 22.12+; run /sonarqube:setup once to install the engine.",
   "author": {
     "name": "Leonardo Marziali",

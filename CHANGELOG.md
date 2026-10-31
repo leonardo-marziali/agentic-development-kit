@@ -1,3 +1,10 @@
+# [2.9.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.8.2...v2.9.0) (2026-10-31)
+
+
+### Features
+
+* **sonarqube:** merge SonarQube Server/Cloud findings into analysis ([#39](https://github.com/leonardo-marziali/agentic-development-kit/issues/39)) ([69ca62b](https://github.com/leonardo-marziali/agentic-development-kit/commit/69ca62b6ef67d575516092f04d3694165981be7d))
+
 ## [2.8.2](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.8.1...v2.8.2) (2026-10-30)
 
 
