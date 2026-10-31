@@ -172,9 +172,29 @@ Containers: Reopen in Container_ in VS Code, or
   ([`claude-login.sh`](.devcontainer/claude-login.sh)) in a terminal, which
   starts `claude auth login` if you aren't logged in yet.
 
-Put `GITHUB_PERSONAL_ACCESS_TOKEN` and the SonarQube CLI's
-`SONARQUBE_CLI_TOKEN` / `SONARQUBE_CLI_SERVER` / `SONARQUBE_CLI_ORG` in the
-gitignored `.env` (copy `.env.example`) if you use them.
+Put `GITHUB_PERSONAL_ACCESS_TOKEN`, the SonarQube CLI's
+`SONARQUBE_CLI_TOKEN` / `SONARQUBE_CLI_SERVER` / `SONARQUBE_CLI_ORG`, and
+optionally `CLAUDE_CODE_OAUTH_TOKEN` in the gitignored `.env` (copy
+`.env.example`) if you use them.
+
+#### Claude Code login
+
+Two ways to sign in; the second skips the interactive login:
+
+- **Interactive** (default): the `claude login` task above, persisted in the
+  `claude-config` volume.
+- **Long-lived token**: run `claude setup-token` once on any machine, then
+  set `CLAUDE_CODE_OAUTH_TOKEN` in `.env`. The container receives it as an
+  environment variable and Claude Code authenticates from it, so you don't
+  log in inside the container. The token is tied to your Claude
+  subscription; keep it out of version control.
+
+  Claude Code doesn't validate the token at startup: any non-empty value
+  makes `claude auth status` report you as logged in, so the `claude login`
+  task won't prompt. A mistyped, revoked or expired token only shows up as
+  an authentication error on Claude's first request. If that happens,
+  generate a new one with `claude setup-token`, or empty the variable and
+  rebuild the container to fall back to the interactive login.
 
 On every start the image logs the GitHub CLI in from
 `GITHUB_PERSONAL_ACCESS_TOKEN` (its baked-in `gh-login`, from
