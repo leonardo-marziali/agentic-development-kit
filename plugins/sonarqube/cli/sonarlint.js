@@ -17,6 +17,7 @@ const { dataDir: resolveDataDir, projectRoot } = require('./paths');
 const { buildResult, render, exitCodeFor } = require('./format');
 const { request, readPid, DaemonNotRunning, NotInstalled } = require('./client');
 const { runDoctor, renderChecks } = require('./doctor');
+const { serverResult, renderServer, serverExitCode } = require('./server');
 
 const EXIT_CLEAN = 0;
 const EXIT_FINDINGS = 1;
@@ -162,6 +163,23 @@ function finish(merged, parsed, ctx) {
 }
 
 /*
+ * The server's view of the same files. No daemon and no engine involved, so
+ * it works before /sonarqube:setup and for languages the local pin lacks.
+ */
+function serverIssues(parsed, ctx) {
+  const { files, skipped } = collectFiles(parsed.paths, ctx.cwd);
+  const result = serverResult({
+    files,
+    skipped,
+    minSeverity: parsed.options.minSeverity,
+    cwd: ctx.cwd,
+    options: parsed.options,
+  });
+  process.stdout.write(renderServer(result, parsed.options.format));
+  return serverExitCode(result);
+}
+
+/*
  * Rule descriptions arrive as HTML (monolithic, or split into tabs). Claude
  * reads text better than markup, so tags are stripped and the common entities
  * decoded; code blocks keep their line breaks.
@@ -280,6 +298,8 @@ async function main(argv = process.argv.slice(2)) {
     switch (parsed.command) {
       case 'files':
         return await analyzeFiles(parsed, ctx);
+      case 'server':
+        return serverIssues(parsed, ctx);
       case 'stdin':
         return await analyzeStdin(parsed, ctx);
       case 'rules':

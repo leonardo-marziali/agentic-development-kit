@@ -14,7 +14,15 @@ about a project — issues, hotspots, gates, rules, measures.
 
 It is a different question from "is the code I just wrote clean?". The
 server has never seen your working tree; for that, use the local analysis
-(the `sonarlint-analysis` skill).
+(the `sonarlint-analysis` skill). The two complement each other: the
+server can report rules the local engine lacks (newer analyzers, your
+quality profile, `githubactions:*` on workflow files), so check both
+before calling a file clean.
+
+For a file's open issues, `sonarlint server <paths...>` (the plugin's
+CLI) is usually the shortest route. It reads the binding, adds the Cloud
+organization, pages through results, and tells you whether the server's
+last analysis matches `HEAD`. Use the recipes below for anything else.
 
 ## Before the first call
 

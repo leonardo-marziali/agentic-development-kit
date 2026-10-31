@@ -12,6 +12,9 @@ const USAGE = `Usage: sonarlint <command> [options]
 
 Commands:
   files <paths...>              Analyze files on disk
+  server <paths...> [--branch <b> | --pull-request <k>]
+                                Open issues SonarQube Server/Cloud recorded for the
+                                files, via \`sonar api\` and .sonarlint/connectedMode.json
   stdin --path <p> [--lang <l>] Analyze content read from stdin as if it were <p>
   rules [--lang <l>] [--search <text>] [--key <rule>]
                                 Look up rules and their descriptions
@@ -32,7 +35,7 @@ Options:
 
 Exit codes: 0 clean or below threshold, 1 issues at/above threshold, 2 tool error.`;
 
-const COMMANDS = new Set(['files', 'stdin', 'rules', 'daemon', 'doctor', 'help']);
+const COMMANDS = new Set(['files', 'server', 'stdin', 'rules', 'daemon', 'doctor', 'help']);
 const DAEMON_ACTIONS = new Set(['start', 'stop', 'status']);
 const VALUE_OPTIONS = new Set([
   '--format',
@@ -44,6 +47,8 @@ const VALUE_OPTIONS = new Set([
   '--search',
   '--key',
   '--root',
+  '--branch',
+  '--pull-request',
 ]);
 const FLAG_OPTIONS = new Set(['--no-start', '--verbose', '--warm', '--help', '-h']);
 
@@ -63,6 +68,8 @@ function parseArgs(argv) {
     search: null,
     key: null,
     root: null,
+    branch: null,
+    pullRequest: null,
   };
   const positional = [];
   let help = false;
@@ -98,8 +105,10 @@ function parseArgs(argv) {
 
   const parsed = { command, options, paths: [], action: null };
   if (command === 'help') return parsed;
-  if (command === 'files') {
-    if (positional.length === 0) throw new UsageError('files needs at least one path');
+  if (command === 'files' || command === 'server') {
+    if (positional.length === 0) throw new UsageError(`${command} needs at least one path`);
+    if (options.branch && options.pullRequest)
+      throw new UsageError('--branch and --pull-request are mutually exclusive');
     parsed.paths = positional;
   } else if (command === 'stdin') {
     if (!options.path) throw new UsageError('stdin needs --path <virtual-path>');
@@ -138,6 +147,9 @@ function assign(options, name, value) {
       return;
     case '--lang':
       options.lang = value.toUpperCase();
+      return;
+    case '--pull-request':
+      options.pullRequest = value;
       return;
     default:
       options[name.slice(2)] = value;

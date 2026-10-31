@@ -107,6 +107,10 @@ about each. Be explicit about two things people otherwise assume:
   something did not run. "Not checked" is not "clean", and
   saying so is the difference between a useful report and a misleading
   one.
+- **Which source said so.** Say whether each finding came from the local
+  engine, the server, or both. If the server wasn't checked, say so: a
+  locally clean file can still have open server issues under rules the
+  local engine doesn't ship.
 - **What you left alone, and why.** A finding you judged a false positive
   is a claim the user may want to disagree with. Make it visible.
 

@@ -9,7 +9,9 @@ edits, hands Claude the findings as it goes, and keeps the session from
 ending while touched files still have secrets or high-severity issues.
 For what the server knows — open issues, quality gates, rules, measures —
 it teaches Claude to call SonarQube Server or SonarQube Cloud through the
-SonarQube CLI's `sonar api`.
+SonarQube CLI's `sonar api`, and `/sonarqube:analyze` and
+`/sonarqube:fix` merge the server's open issues for a bound project
+with the local findings.
 
 No MCP server, no container runtime.
 
@@ -21,8 +23,8 @@ No MCP server, no container runtime.
   [Installation](#installation)). Until it is, the hooks do nothing
   except say so when a session ends.
 - **The [SonarQube CLI][cli] (`sonar`)** — only for reading the server
-  through `sonar api`. Local analysis doesn't use it. The plugin doesn't
-  install the CLI.
+  through `sonar api` (including `sonarlint server`). Local analysis
+  doesn't use it. The plugin doesn't install the CLI.
 
 [cli]: https://docs.sonarsource.com/sonarqube-cloud/advanced-setup/sonarqube-cli/
 
@@ -99,6 +101,7 @@ The hooks and skills share one CLI, `cli/sonarlint.js`:
 
 ```text
 sonarlint files <paths...>        analyze files or directories
+sonarlint server <paths...>       the server's open issues for them
 sonarlint stdin --path <p>        analyze content not yet on disk
 sonarlint rules --key <rule>      a rule's description
 sonarlint rules --search <text>   find rule keys
@@ -113,6 +116,23 @@ hasQuickFix}], summary, skipped, failed}`. Exit codes: `0` clean or
 below `--min-severity` (default HIGH), `1` issues at/above it, `2` the
 tool couldn't run.
 
+`sonarlint server` doesn't use the engine. For each file it finds the
+nearest `.sonarlint/connectedMode.json`, takes that directory as the
+scanner's base directory, and reads the open issues through
+`sonar api get /api/issues/search`, scoped by `--branch` or
+`--pull-request` if given. It prints them in the same shape as `files`,
+plus each issue's server `key` and `status`. It also prints a `projects`
+list with the revision of the server's last analysis, whether that is
+`HEAD`, and which of the files changed since. It exits `2` when the
+`sonar` CLI is missing or fails, when no file is bound, or when the
+server has no analysis of the project, branch or pull request, so "the
+server wasn't asked" never reads as "the server says clean". The last
+case matters because SonarQube answers an issue search for an unknown
+project key, branch or pull request with an empty list, not an error.
+Pull requests take their analyzed commit from the pull-request list,
+since SonarQube Cloud ignores `pullRequest` when listing analyses. The hooks
+never call it: they stay offline.
+
 Behind it, one **daemon per project** (keyed by a hash of the git root)
 keeps SLOOP warm: the first analysis takes ~20-30s, later ones about a
 second. The daemon listens on a Unix socket (a named pipe on Windows) in a
@@ -124,8 +144,10 @@ SLOOP once if it crashes, and exits after `daemon_idle_minutes`.
 User-invocable:
 
 - **`/sonarqube:analyze [paths]`** — analyze any files, including code the
-  session never touched.
-- **`/sonarqube:fix [rule | paths]`** — work through findings, or one rule.
+  session never touched, and add the server's open issues for them
+  when the project is bound.
+- **`/sonarqube:fix [rule | paths]`** — work through findings, local or
+  server-reported, or one rule.
 - **`/sonarqube:setup`** — install, repair, mirror/offline configuration.
 
 Knowledge (loaded when relevant):
@@ -216,6 +238,14 @@ run the integration test. The script never edits the lock itself.
   your organization disabled (or miss one it added). Connected mode is
   designed in [docs/CONNECTED_MODE.md](docs/CONNECTED_MODE.md) but not
   implemented.
+- **Server-only rules.** The pinned analyzers lag SonarQube Cloud, so
+  some rules exist only on the server. GitHub Actions workflows are the
+  clearest case: the IaC analyzer accepts `.github/workflows/*.yml` but
+  ships none of the `githubactions:*` rules, so local analysis reports
+  them clean whatever they contain. `/sonarqube:analyze` covers this with
+  `sonarlint server` when the project is bound. The Stop gate doesn't
+  (it stays offline), and server results describe the last analyzed
+  revision, not the working tree.
 - **No security hotspots, taint analysis or C#/C/C++.** Hotspots and
   taint vulnerabilities come from a server; C# needs an analyzer not on
   Maven Central; C/C++ needs a compilation database.
@@ -244,6 +274,11 @@ The suites use Node's built-in test runner:
 - **`cli/__tests__/`** — argument parsing, output formatting, severity
   normalisation, path containment, data/runtime paths, and provisioning
   (checksums, offline and mirror installs, fail-closed behaviour).
+- **`cli/__tests__/server.test.js`** — `sonarlint server` against a
+  fake `sonar api` (and, end to end, a stand-in `sonar` binary via
+  `SONARLINT_SONAR_CLI`): binding lookup, component keys and Cloud
+  organization, branch/PR scoping, freshness against `HEAD`, and exit 2
+  for unbound files and failed calls.
 - **`cli/__tests__/integration.test.js`** — starts a real daemon over a
   fixture project and asserts the rule keys SLOOP reports (an unused JS
   variable, a bare Python `except`, a GitHub token). Skipped, with a
