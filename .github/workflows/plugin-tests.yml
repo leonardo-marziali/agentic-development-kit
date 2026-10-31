@@ -29,9 +29,13 @@ jobs:
           filters: |
             workflow:
               - '.github/workflows/plugin-tests.yml'
+            # The root `pnpm test` also runs the devcontainer image's
+            # suite (images/claude-devcontainer/__tests__), so changes
+            # there select repo-root too.
             repo-root:
               - '.claude/hooks/**'
               - 'scripts/**'
+              - 'images/claude-devcontainer/**'
             ad-lfl-kit:
               - 'packages/ad-lfl-kit/**'
             markdown:
