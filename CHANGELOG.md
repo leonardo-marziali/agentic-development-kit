@@ -1,3 +1,10 @@
+# [2.10.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.9.0...v2.10.0) (2026-10-31)
+
+
+### Features
+
+* **devcontainer:** install llm-wiki CLI and mount an optional host wiki ([#40](https://github.com/leonardo-marziali/agentic-development-kit/issues/40)) ([de4c483](https://github.com/leonardo-marziali/agentic-development-kit/commit/de4c483ecb8b4056e5c6b357443c5475392a9a53))
+
 # [2.9.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.8.2...v2.9.0) (2026-10-31)
 
 
