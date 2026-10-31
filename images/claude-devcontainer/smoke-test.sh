@@ -5,7 +5,7 @@
 set -euo pipefail
 
 for bin in claude marksman jdtls java pyright-langserver \
-  typescript-language-server markdownlint prettier ruff pyright sonar docker gh gh-login; do
+  typescript-language-server markdownlint prettier ruff pyright sonar docker gh gh-login wiki; do
   path="$(command -v "${bin}")" || { echo "missing binary: ${bin}" >&2; exit 1; }
   printf '%-28s %s\n' "${bin}" "${path}"
 done
@@ -13,6 +13,13 @@ done
 claude --version
 sonar --version
 python3 -c 'import yaml'
+wiki --help >/dev/null
+
+# llm-wiki: the wiki-lookup skill, and where the CLI looks for a mounted wiki.
+[[ -f "${HOME}/.claude/skills/wiki-lookup/SKILL.md" ]] \
+  || { echo "missing skill: wiki-lookup" >&2; exit 1; }
+[[ "${LLM_WIKI_PATH:-}" == "/home/node/llm-wiki" ]] \
+  || { echo "LLM_WIKI_PATH not set to /home/node/llm-wiki" >&2; exit 1; }
 
 expected=(
   markdown@agentic-development-kit

@@ -15,6 +15,7 @@ ARG JDTLS_VERSION=latest
 ARG MARKSMAN_VERSION=latest
 ARG SONAR_CLI_VERSION=latest
 ARG RUFF_VERSION=latest
+ARG LLM_WIKI_VERSION=latest
 ARG MARKETPLACE_REF=
 ARG USERNAME=node
 
@@ -33,10 +34,16 @@ RUN --mount=type=bind,target=/tmp/devcontainer \
     MARKSMAN_VERSION="${MARKSMAN_VERSION}" \
     SONAR_CLI_VERSION="${SONAR_CLI_VERSION}" \
     RUFF_VERSION="${RUFF_VERSION}" \
+    LLM_WIKI_VERSION="${LLM_WIKI_VERSION}" \
       bash /tmp/devcontainer/install-tools.sh \
     && ln -sfn "$(dirname "$(dirname "$(readlink -f "$(command -v javac)")")")" /usr/lib/jvm/default-jdk
 
 ENV JAVA_HOME=/usr/lib/jvm/default-jdk
+
+# Where an optional host wiki is mounted (see the README). `wiki status
+# --all`, which the wiki-lookup skill runs, lists every LLM_WIKI_PATH entry
+# holding a wiki.toml and skips the rest, so an empty mount point is harmless.
+ENV LLM_WIKI_PATH=/home/node/llm-wiki
 
 # Run on every start (see the postStartCommand in devcontainer.json):
 # claude-attribution applies CLAUDE_ATTRIBUTION to ~/.claude/settings.json,
@@ -52,4 +59,5 @@ RUN --mount=type=bind,target=/tmp/devcontainer \
     CLAUDE_VERSION="${CLAUDE_VERSION}" bash /tmp/devcontainer/install-claude.sh \
     && claude --version \
     && sonar --version \
-    && MARKETPLACE_REF="${MARKETPLACE_REF}" bash /tmp/devcontainer/install-plugins.sh
+    && MARKETPLACE_REF="${MARKETPLACE_REF}" bash /tmp/devcontainer/install-plugins.sh \
+    && wiki skill install

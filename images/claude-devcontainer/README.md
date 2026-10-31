@@ -83,6 +83,51 @@ removes that key again, restoring Claude Code's defaults; leaving the
 variable unset never touches the file. `claude-attribution --status` shows
 the current state, and `--enable` / `--disable` toggle it by hand.
 
+### LLM Wiki
+
+The image ships the [`llm-wiki`](https://github.com/leonardo-marziali/llm-wiki)
+`wiki` CLI and its read-only `wiki-lookup` skill, which Claude Code uses to
+answer from a wiki's cited pages. To make one of your wikis available in
+the container, add this to your `devcontainer.json`:
+
+```json
+"runArgs": ["-v", "${localEnv:LLM_WIKI_HOST_PATH:llm-wiki-none}:/home/node/llm-wiki"]
+```
+
+and set `LLM_WIKI_HOST_PATH` on the host to the wiki's root (the directory
+holding `wiki.toml`, created with `wiki init`):
+
+```sh
+export LLM_WIKI_HOST_PATH="$HOME/wikis/payments"
+```
+
+- **It is optional.** When the variable is unset, the fallback name
+  `llm-wiki-none` makes Docker mount an empty named volume instead of
+  failing to start. The CLI skips it because it holds no `wiki.toml`.
+  Leave it unset rather than empty: `LLM_WIKI_HOST_PATH=` skips the
+  fallback and Docker rejects the resulting `-v :/home/node/llm-wiki`.
+- **It is read on the host.** `${localEnv:...}` comes from the environment
+  VS Code or the dev container CLI was started from, so put it in your shell
+  profile. An `--env-file` such as `.env` only sets variables inside the
+  container and does not work here. Rebuild the container after changing
+  it.
+- **How the CLI finds it.** The image sets
+  `LLM_WIKI_PATH=/home/node/llm-wiki`, so `wiki status --all` (the skill's
+  first step) lists the mounted wiki without any registration. Check with
+  `wiki status --all` in a container terminal.
+- **It is writable,** so `wiki ingest` works in the container. Ingest runs
+  headless Claude Code, which needs `claude auth login`, and commits to the
+  wiki, which needs git `user.name` and `user.email`. The image marks the
+  mount point as a git `safe.directory`, so a wiki owned by a different host
+  UID is accepted. For lookups only, append `:ro` to the mount.
+- **Mount the wiki's own repository.** git cannot see a parent repository
+  outside the mount, so a wiki kept as a folder inside a bigger repository
+  can be read and searched, but `wiki ingest` will not work on it.
+
+`wiki skill install` runs at build time and on every start, so the skill
+stays in step with the image's CLI even when `~/.claude` is a persisted
+volume. It never fails the start.
+
 ### Keeping the login
 
 Log in once with `claude auth login` in a container terminal. To keep the
@@ -116,6 +161,9 @@ uses it:
 - `obra/superpowers-marketplace`: `superpowers`
 - `upstash/context7`: `context7`
 
+Plus the user-level `wiki-lookup` skill from `llm-wiki` (see
+[LLM Wiki](#llm-wiki)).
+
 The marketplaces are registered from GitHub, so `claude plugin update`
 works inside the container. The list lives in
 [`install-plugins.sh`](.devcontainer/install-plugins.sh).
@@ -134,6 +182,7 @@ works inside the container. The list lives in
 | `pyright`                                  | `pyright-lsp`           |
 | `typescript`, `typescript-language-server` | `typescript-lsp`        |
 | Python 3 + PyYAML                          | `skill-creator` scripts |
+| `wiki` (`llm-wiki-tool`)                   | `wiki-lookup` skill     |
 
 The `docker` CLI talks to the host's Docker daemon (docker-outside-of-docker),
 which is what the SonarQube MCP server container runs on.
@@ -154,14 +203,16 @@ each downloaded tool (all default to the newest release):
 - `MARKSMAN_VERSION` — a marksman release tag
 - `SONAR_CLI_VERSION` — a SonarQube CLI version such as `1.10.0.16040`
 - `RUFF_VERSION` — a ruff release on PyPI such as `0.17.1`
+- `LLM_WIKI_VERSION` — an `llm-wiki-tool` release on PyPI such as `0.1.1`
 - `MARKETPLACE_REF` — the git ref of this repository's marketplace to
   install plugins from (empty: the default branch). Pull request builds
   set it to the PR's branch, so a newly added plugin can be installed
   before it is merged.
 
 Every download is HTTPS-only and verified before it is installed or run:
-Claude Code against the sha256 in its release manifest, ruff against the
-sha256 PyPI's index publishes for each wheel, the SonarQube CLI
+Claude Code against the sha256 in its release manifest, ruff and
+`llm-wiki-tool` (with its dependencies) against the sha256 PyPI's index
+publishes for each wheel, the SonarQube CLI
 against SonarSource's OpenPGP signature (key in
 [`sonarsource.asc`](.devcontainer/sonarsource.asc), fingerprint pinned in
 `install-tools.sh`), and jdtls against the sha256 Eclipse publishes. While

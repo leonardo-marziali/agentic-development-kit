@@ -14,6 +14,9 @@
 #   typescript-lsp              typescript-language-server + typescript
 #   skill-creator               python3 + PyYAML
 #   all plugins with hooks      node (base image)
+#
+# Plus the llm-wiki `wiki` CLI, whose wiki-lookup skill is installed for the
+# non-root user by the Dockerfile.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -23,6 +26,10 @@ JDTLS_VERSION="${JDTLS_VERSION:-${LATEST}}"
 MARKSMAN_VERSION="${MARKSMAN_VERSION:-${LATEST}}"
 SONAR_CLI_VERSION="${SONAR_CLI_VERSION:-${LATEST}}"
 RUFF_VERSION="${RUFF_VERSION:-${LATEST}}"
+LLM_WIKI_VERSION="${LLM_WIKI_VERSION:-${LATEST}}"
+# Where a host wiki is mounted (see the README); the Dockerfile points
+# LLM_WIKI_PATH here.
+readonly LLM_WIKI_MOUNT="/home/node/llm-wiki"
 
 # Every download is HTTPS-only, redirects included.
 fetch() {
@@ -65,6 +72,22 @@ python3 -m venv /opt/ruff
 /opt/ruff/bin/pip install --no-cache-dir --only-binary=:all: "${ruff_spec}"
 ln -sf /opt/ruff/bin/ruff /usr/local/bin/ruff
 ruff --version
+
+# llm-wiki (`wiki` CLI, PyPI package llm-wiki-tool), the same way as ruff:
+# its own venv, wheels only, each checked against PyPI's sha256. The
+# optional docling extra is left out (it pulls in torch).
+llm_wiki_spec="llm-wiki-tool"
+if [[ "${LLM_WIKI_VERSION}" != "${LATEST}" ]]; then
+  llm_wiki_spec="llm-wiki-tool==${LLM_WIKI_VERSION}"
+fi
+python3 -m venv /opt/llm-wiki
+/opt/llm-wiki/bin/pip install --no-cache-dir --only-binary=:all: "${llm_wiki_spec}"
+ln -sf /opt/llm-wiki/bin/wiki /usr/local/bin/wiki
+wiki --help >/dev/null
+# A bind-mounted host wiki is a git repo owned by the host user's UID, which
+# need not match the container user's; without this git refuses to touch it
+# ("dubious ownership") and `wiki ingest` fails.
+git config --system --add safe.directory "${LLM_WIKI_MOUNT}"
 
 # marksman (markdown LSP)
 if [[ "${MARKSMAN_VERSION}" == "${LATEST}" ]]; then
