@@ -23,7 +23,22 @@
     created empty if missing so the container still starts without it.
   */
   "initializeCommand": "touch .env",
-  "runArgs": ["--pull=always", "--env-file", "${localWorkspaceFolder}/.env"],
+  /*
+    Optional LLM Wiki: set LLM_WIKI_HOST_PATH in the host environment (not
+    .env, which only reaches the container) to a wiki's root directory and it
+    is bind-mounted where the image's `wiki` CLI looks for it. Unset, the
+    fallback name makes Docker mount an empty named volume instead, which the
+    CLI ignores. Unset it rather than leaving it empty: an empty value skips
+    the fallback and Docker rejects the mount (see
+    images/claude-devcontainer/README.md#llm-wiki).
+  */
+  "runArgs": [
+    "--pull=always",
+    "--env-file",
+    "${localWorkspaceFolder}/.env",
+    "-v",
+    "${localEnv:LLM_WIKI_HOST_PATH:llm-wiki-none}:/home/node/llm-wiki"
+  ],
   "containerEnv": {
     "CLAUDE_ATTRIBUTION": "false",
     "COREPACK_ENABLE_DOWNLOAD_PROMPT": "0"
