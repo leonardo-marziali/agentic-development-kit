@@ -117,8 +117,8 @@ cares about something other than the main branch.
   logged in (see `sonarqube-web-api`), the call failed, no file is
   bound, or the server has no analysis of that project key, branch or
   pull request (it answers those with an empty issue list, so an empty
-  list alone proves nothing). Say the server was **not checked** and why. Local results still
-  stand.
+  list alone proves nothing). Say the server was **not checked** and
+  why. Local results still stand.
 
 With no binding at all, skip this step and say only local analysis ran.
 Don't create a binding unprompted (see `sonarqube-connected-mode`).
