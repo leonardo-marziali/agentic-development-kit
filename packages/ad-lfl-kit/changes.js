@@ -10,14 +10,15 @@
  * PostToolUse hook asks what changed since:
  *
  *   - in a git repo, the dirty and untracked files (`git status`), plus the
- *     files of any commit made during the call, so `edit && git commit` in one
- *     command isn't missed;
+ *     files of any commit this checkout made during the call (per the HEAD
+ *     reflog), so `edit && git commit` in one command isn't missed;
  *   - outside a repo, a bounded walk of the cwd;
  *
  * and in both cases keeps only files whose mtime falls inside the call's
  * window. Pre-existing dirty files the call didn't touch are older than the
- * snapshot, and a `git checkout` / `git pull` leaves the tree clean and brings
- * in commits made before the call, so neither drags unrelated files in.
+ * snapshot, and a `git checkout` / `git pull` leaves the tree clean and its
+ * commits are logged as arriving, not as made here — even one pushed by
+ * someone else while the call ran — so neither drags unrelated files in.
  *
  * Everything here fails CLOSED, unlike scope.js: a snapshot or a git call
  * that fails resolves to "nothing changed". This module decides which files
@@ -135,22 +136,62 @@ function dirtyFiles(root) {
 }
 
 /*
- * Files touched by commits the call itself made. `--since` drops commits
- * that merely arrived during the call (a pull, a checkout of another
- * branch), which carry their original, older committer dates.
+ * HEAD reflog subjects of commits this checkout created: `commit:`,
+ * `commit (initial):`, `commit (amend):`, `commit (merge):`, plus
+ * `cherry-pick:` and `revert:`. A commit that only arrived — `pull:`,
+ * `merge <branch>: Fast-forward`, `checkout:`, `reset:`, `rebase …` — was
+ * made somewhere else, even when its committer date falls inside the call.
+ */
+const OWN_COMMIT_SUBJECT = /^(commit( \([^)]*\))?|cherry-pick|revert):/;
+
+/*
+ * Commits this checkout made since `startedAt`, newest first, read from the
+ * HEAD reflog: `<sha> NUL <unix seconds> NUL <subject>` per entry.
+ */
+function ownCommitsSince(root, startedAt) {
+  const out = git(['log', '-g', '--date=unix', '--format=%H%x00%gd%x00%gs', 'HEAD'], root);
+  if (out === null) return [];
+
+  const since = startedAt - MTIME_SLACK_MS;
+  const commits = [];
+  for (const line of out.split('\n')) {
+    const [sha, selector, subject] = line.split('\0');
+    const seconds = Number(/@\{(\d+)\}$/.exec(selector || '')?.[1]);
+    // Entries are newest first, so the first one before the call ends the walk.
+    if (!sha || !Number.isFinite(seconds) || seconds * 1000 < since) break;
+    if (OWN_COMMIT_SUBJECT.test(subject || '')) commits.push(sha);
+  }
+  return commits;
+}
+
+/*
+ * Files touched by commits the call itself made. Neither the commit range
+ * nor committer dates can tell those apart from commits that arrived during
+ * the call — a release bot that pushes while the session's `git pull` runs
+ * makes a commit just as fresh — so the HEAD reflog decides instead (see
+ * OWN_COMMIT_SUBJECT). No reflog (`core.logAllRefUpdates` off) means no
+ * files, failing closed like the rest of this module.
  */
 function committedFiles(root, fromHead, startedAt) {
   const head = headOf(root);
   if (!head || head === fromHead) return [];
 
-  const range = fromHead ? [`${fromHead}..${head}`] : [head];
-  const since = new Date(startedAt - MTIME_SLACK_MS).toISOString();
-  const out = git(['log', '--format=', '--name-only', '-z', `--since=${since}`, ...range], root);
-  if (out === null) return [];
-  return out
-    .split(/[\0\n]/)
-    .filter(Boolean)
-    .map((rel) => path.resolve(root, rel));
+  const files = [];
+  for (const sha of ownCommitsSince(root, startedAt)) {
+    // A merge commit lists nothing here, as `git log --name-only` didn't.
+    const out = git(
+      ['diff-tree', '--no-commit-id', '--name-only', '-r', '-z', '--root', sha],
+      root,
+    );
+    if (out === null) continue;
+    files.push(
+      ...out
+        .split('\0')
+        .filter(Boolean)
+        .map((rel) => path.resolve(root, rel)),
+    );
+  }
+  return files;
 }
 
 function walkFiles(dir) {

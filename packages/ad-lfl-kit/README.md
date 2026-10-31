@@ -277,11 +277,14 @@ How `toolChangedFiles` answers for tools that don't name their files.
   time and `HEAD`), for watching a window that stays open.
 - **`filesChangedSince(snapshot, { cwd })`** — absolute paths written since
   the snapshot. In a repo: the dirty and untracked files from `git status`,
-  plus the files of commits made during the call (so `edit && git commit`
-  isn't missed), keeping only those whose mtime falls after the snapshot.
-  Already-dirty files the call didn't touch are older than that, and a
-  `checkout` or `pull` leaves the tree clean and brings commits dated
-  before the call, so neither drags in unrelated files. Outside a repo: a
+  plus the files of commits this checkout made during the call (so
+  `edit && git commit` isn't missed), keeping only those whose mtime falls
+  after the snapshot. Already-dirty files the call didn't touch are older
+  than that. A `checkout` or `pull` leaves the tree clean, and the HEAD
+  reflog records its commits as arriving (`pull:`, `merge … Fast-forward`)
+  rather than as made here (`commit:`, `cherry-pick:`, `revert:`), so a
+  commit someone else pushed while the call ran — a release bot's
+  `CHANGELOG.md` — isn't attributed to the session. Outside a repo: a
   bounded walk of the cwd. Gitignored files and dependency directories
   (`node_modules`, `.venv`, `__pycache__`…) are never reported. Unlike
   `scope.js` this fails closed — an error means "nothing changed" — since
