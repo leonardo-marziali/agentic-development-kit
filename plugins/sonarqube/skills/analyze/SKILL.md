@@ -114,8 +114,10 @@ cares about something other than the main branch.
 
 - **0 / 1**: same meaning as for `files`.
 - **2**: the server couldn't be read: the `sonar` CLI is missing or not
-  logged in (see `sonarqube-web-api`), the call failed, or no file is
-  bound. Say the server was **not checked** and why. Local results still
+  logged in (see `sonarqube-web-api`), the call failed, no file is
+  bound, or the server has no analysis of that project key, branch or
+  pull request (it answers those with an empty issue list, so an empty
+  list alone proves nothing). Say the server was **not checked** and why. Local results still
   stand.
 
 With no binding at all, skip this step and say only local analysis ran.

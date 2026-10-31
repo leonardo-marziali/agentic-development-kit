@@ -68,17 +68,26 @@ function serverIssue(rel, rule, line, extra = {}) {
   };
 }
 
+const SOME_ANALYSIS = { date: '2026-10-29T10:00:00+0000', revision: 'a'.repeat(40) };
+
 /*
- * A stand-in for `sonar api get`: records each endpoint and answers issues
- * and analyses from the given lists.
+ * A stand-in for `sonar api get`: records each endpoint and answers issues,
+ * analyses and pull requests from the given lists. Like SonarQube Cloud, it
+ * answers any issue search with a 200, whatever the key or branch.
  */
-function fakeServer({ issues = [], analyses = [], fail = false } = {}) {
+function fakeServer({
+  issues = [],
+  analyses = [SOME_ANALYSIS],
+  pullRequests = [],
+  fail = false,
+} = {}) {
   const calls = [];
   const get = (endpoint) => {
     calls.push(endpoint);
     if (fail) throw new ServerError('sonar api get /api/issues/search exited 1: HTTP 401');
     const url = new URL(endpoint, 'https://sonar.invalid');
     if (url.pathname === '/api/project_analyses/search') return { analyses };
+    if (url.pathname === '/api/project_pull_requests/list') return { pullRequests };
     const keys = url.searchParams.get('componentKeys').split(',');
     const hits = issues.filter((i) => keys.includes(i.component) || keys.includes(KEY));
     return { paging: { total: hits.length }, issues: hits };
@@ -156,20 +165,47 @@ test('an analyzed revision missing from the clone reads as unknown, not unchange
   assert.match(renderServer(result, 'text'), /changes unknown/);
 });
 
-test('branch and pull request scope every call', (t) => {
+test('a pull request scopes the issue search and takes its revision from the PR list', (t) => {
   const repo = boundRepo(t);
-  const { get, calls } = fakeServer();
-  serverResult({
+  const { get, calls } = fakeServer({
+    // Cloud ignores pullRequest here and answers with the main branch's.
+    analyses: [{ date: 'main', revision: 'f'.repeat(40) }],
+    pullRequests: [{ key: '42', analysisDate: 'pr', commit: { sha: repo.revision } }],
+  });
+  const result = serverResult({
     files: [repo.source],
     minSeverity: 'HIGH',
     cwd: repo.dir,
     options: { pullRequest: '42' },
     get,
   });
-  for (const call of calls) {
-    const search = new URL(call, 'https://sonar.invalid').searchParams;
-    assert.equal(search.get('pullRequest'), '42');
-    assert.equal(search.has('branch'), false);
+  const search = new URL(calls[0], 'https://sonar.invalid').searchParams;
+  assert.equal(search.get('pullRequest'), '42');
+  assert.equal(search.has('branch'), false);
+  assert.ok(calls.every((c) => !c.startsWith('/api/project_analyses/')));
+  assert.deepEqual(result.projects[0].analysis, { date: 'pr', revision: repo.revision });
+  assert.equal(result.projects[0].upToDate, true);
+  assert.equal(serverExitCode(result), 0);
+});
+
+test('no analysis of the branch or PR is exit 2: an empty issue list proves nothing', (t) => {
+  const repo = boundRepo(t);
+  for (const [options, server] of [
+    [{ branch: 'never-analyzed' }, fakeServer({ analyses: [] })],
+    [{ pullRequest: '99999' }, fakeServer({ pullRequests: [{ key: '42' }] })],
+    [{}, fakeServer({ analyses: [] })],
+  ]) {
+    const result = serverResult({
+      files: [repo.source],
+      minSeverity: 'HIGH',
+      cwd: repo.dir,
+      options,
+      get: server.get,
+    });
+    assert.equal(result.issues.length, 0);
+    assert.equal(result.summary.queried, 0);
+    assert.match(result.failed[0].error, /no analysis of .* proves nothing/);
+    assert.equal(serverExitCode(result), 2);
   }
 });
 
@@ -234,7 +270,7 @@ test('end to end through a stand-in `sonar` binary', (t) => {
     `#!/usr/bin/env node
 const endpoint = process.argv[4];
 if (endpoint.startsWith('/api/project_analyses/'))
-  console.log(JSON.stringify({ analyses: [] }));
+  console.log(JSON.stringify({ analyses: [{ date: 'd', revision: '${'f'.repeat(40)}' }] }));
 else
   console.log(JSON.stringify({ paging: { total: 1 }, issues: [${JSON.stringify(
     serverIssue('.github/workflows/publish.yml', 'githubactions:S8541', 44),
@@ -250,7 +286,7 @@ else
   assert.equal(run.status, 1, run.stderr);
   const out = JSON.parse(run.stdout);
   assert.equal(out.issues[0].rule, 'githubactions:S8541');
-  assert.equal(out.projects[0].analysis, null);
+  assert.equal(out.projects[0].analysis.date, 'd');
 
   const missing = spawnSync(process.execPath, [CLI, 'server', 'src'], {
     cwd: repo.dir,

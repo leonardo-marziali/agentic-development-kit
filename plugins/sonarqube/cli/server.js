@@ -104,25 +104,39 @@ function searchIssues(componentKeys, scope, get) {
 }
 
 /*
- * The revision the server's latest analysis was of, or null when the server
- * won't say (no analysis yet, or no permission to list them).
+ * The server's latest analysis of the scope: { date, revision }, or null with
+ * the reason when there is none. It doubles as the existence check: the
+ * issues endpoint answers an unknown project key, branch or pull request
+ * with an empty 200, so only this lookup can tell "no issues" from "never
+ * analyzed".
+ *
+ * Pull requests read the pull-request list: SonarQube Cloud ignores
+ * `pullRequest` on project_analyses/search and returns the main branch's.
  */
 function latestAnalysis(scope, get) {
   try {
+    if (scope.pullRequest) {
+      const reply = get(`/api/project_pull_requests/list?${query({ project: scope.projectKey })}`);
+      const pr = (reply.pullRequests || []).find((p) => p.key === String(scope.pullRequest));
+      return pr
+        ? { analysis: { date: pr.analysisDate || null, revision: pr.commit?.sha || null } }
+        : { analysis: null, reason: 'no such pull request on the server' };
+    }
     const reply = get(
       `/api/project_analyses/search?${query({
         project: scope.projectKey,
         organization: scope.organization,
         branch: scope.branch,
-        pullRequest: scope.pullRequest,
         ps: 1,
       })}`,
     );
     const latest = reply.analyses?.[0];
-    return latest ? { date: latest.date || null, revision: latest.revision || null } : null;
+    return latest
+      ? { analysis: { date: latest.date || null, revision: latest.revision || null } }
+      : { analysis: null, reason: 'the server has no analysis yet' };
   } catch (error) {
-    if (error instanceof ServerError) return null;
-    throw error;
+    if (!(error instanceof ServerError)) throw error;
+    return { analysis: null, reason: error.message };
   }
 }
 
@@ -216,9 +230,10 @@ function queryGroup(group, options, get) {
     if (rel !== null && wanted.has(rel)) issues.push({ issue, key: raw.key, status: raw.status });
   }
 
-  const analysis = latestAnalysis(scope, get);
+  const { analysis, reason } = latestAnalysis(scope, get);
   return {
     issues,
+    noAnalysis: analysis ? null : reason,
     project: {
       projectKey: scope.projectKey,
       binding: describeGroup(group),
@@ -251,8 +266,13 @@ function serverResult({ files, skipped = [], minSeverity, cwd, options = {}, get
       continue;
     }
     try {
-      const { issues, project } = queryGroup(group, options, run);
-      queried += group.files.length;
+      const { issues, project, noAnalysis } = queryGroup(group, options, run);
+      if (noAnalysis)
+        failed.push({
+          project: group.binding.projectKey,
+          error: `no analysis of ${target(options)} found (${noAnalysis}); the project key, branch or pull request may not exist, so an empty issue list proves nothing`,
+        });
+      else queried += group.files.length;
       for (const { issue, key, status } of issues)
         records.push({ ...toRecord(issue, displayPath), key, status });
       projects.push({
@@ -285,16 +305,16 @@ function serverResult({ files, skipped = [], minSeverity, cwd, options = {}, get
   };
 }
 
+function target({ pullRequest, branch }) {
+  if (pullRequest) return `pull request ${pullRequest}`;
+  return branch ? `branch ${branch}` : 'the main branch';
+}
+
 function describeAnalysis(project) {
-  const target = project.pullRequest
-    ? `pull request ${project.pullRequest}`
-    : project.branch
-      ? `branch ${project.branch}`
-      : 'main branch';
-  if (!project.analysis) return `${project.binding}, ${target}: no analysis found`;
+  if (!project.analysis) return `${project.binding}, ${target(project)}: no analysis found`;
   const { date, revision } = project.analysis;
   const short = (sha) => (sha ? sha.slice(0, 7) : 'unknown revision');
-  let line = `${project.binding}, ${target}: last analysis ${date || 'undated'} of ${short(revision)}`;
+  let line = `${project.binding}, ${target(project)}: last analysis ${date || 'undated'} of ${short(revision)}`;
   if (project.upToDate === true) line += ' (= HEAD)';
   else if (project.head) line += `; HEAD is ${short(project.head)}`;
   if (project.changedSinceAnalysis?.length)

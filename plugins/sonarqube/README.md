@@ -124,8 +124,13 @@ scanner's base directory, and reads the open issues through
 plus each issue's server `key` and `status`. It also prints a `projects`
 list with the revision of the server's last analysis, whether that is
 `HEAD`, and which of the files changed since. It exits `2` when the
-`sonar` CLI is missing or fails, or when no file is bound, so "the
-server wasn't asked" never reads as "the server says clean". The hooks
+`sonar` CLI is missing or fails, when no file is bound, or when the
+server has no analysis of the project, branch or pull request, so "the
+server wasn't asked" never reads as "the server says clean". The last
+case matters because SonarQube answers an issue search for an unknown
+project key, branch or pull request with an empty list, not an error.
+Pull requests take their analyzed commit from the pull-request list,
+since SonarQube Cloud ignores `pullRequest` when listing analyses. The hooks
 never call it: they stay offline.
 
 Behind it, one **daemon per project** (keyed by a hash of the git root)
