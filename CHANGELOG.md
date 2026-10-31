@@ -1,3 +1,10 @@
+## [2.10.1](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.10.0...v2.10.1) (2026-10-31)
+
+
+### Bug Fixes
+
+* **markdown:** track only files Claude writes with Edit/Write ([#41](https://github.com/leonardo-marziali/agentic-development-kit/issues/41)) ([2930494](https://github.com/leonardo-marziali/agentic-development-kit/commit/29304945a615472e764ee7d02b06c553d20f1f0b))
+
 # [2.10.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.9.0...v2.10.0) (2026-10-31)
 
 
