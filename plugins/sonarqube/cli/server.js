@@ -247,45 +247,56 @@ function queryGroup(group, options, get) {
 }
 
 /*
+ * One bound group's issues, project entry and failure (if any), merged into
+ * the result being built.
+ */
+function addGroup(acc, group, options, run, displayPath) {
+  const projectKey = group.binding.projectKey;
+  let reply;
+  try {
+    reply = queryGroup(group, options, run);
+  } catch (error) {
+    if (!(error instanceof ServerError)) throw error;
+    acc.failed.push({ project: projectKey, error: error.message });
+    return;
+  }
+  const { issues, project, noAnalysis } = reply;
+  if (noAnalysis)
+    acc.failed.push({
+      project: projectKey,
+      error: `no analysis of ${target(options)} found (${noAnalysis}); the project key, branch or pull request may not exist, so an empty issue list proves nothing`,
+    });
+  else acc.queried += group.files.length;
+  for (const { issue, key, status } of issues) {
+    // Quick fixes are an IDE-engine notion the server never reports.
+    const record = { ...toRecord(issue, displayPath), key, status };
+    delete record.hasQuickFix;
+    acc.records.push(record);
+  }
+  acc.projects.push({
+    ...project,
+    changedSinceAnalysis: project.changedSinceAnalysis?.map(displayPath) ?? null,
+  });
+}
+
+/*
  * Queries the server for `files` (absolute paths) and builds the result both
  * formats render from. `get` defaults to `sonar api get`; tests replace it.
  */
 function serverResult({ files, skipped = [], minSeverity, cwd, options = {}, get }) {
   const run = get || ((endpoint) => sonarGet(endpoint, { cwd, timeoutMs: options.timeoutMs }));
   const displayPath = displayPathFrom(cwd);
-  const records = [];
-  const projects = [];
-  const failed = [];
+  const acc = { records: [], projects: [], failed: [], queried: 0 };
   const notBound = [];
-  let queried = 0;
 
   for (const group of groupByBinding(files, { fallbackDir: cwd })) {
-    if (!group.binding?.projectKey) {
+    if (group.binding?.projectKey) addGroup(acc, group, options, run, displayPath);
+    else
       for (const file of group.files)
         notBound.push({ file, reason: 'no .sonarlint/connectedMode.json binding' });
-      continue;
-    }
-    try {
-      const { issues, project, noAnalysis } = queryGroup(group, options, run);
-      if (noAnalysis)
-        failed.push({
-          project: group.binding.projectKey,
-          error: `no analysis of ${target(options)} found (${noAnalysis}); the project key, branch or pull request may not exist, so an empty issue list proves nothing`,
-        });
-      else queried += group.files.length;
-      for (const { issue, key, status } of issues)
-        records.push({ ...toRecord(issue, displayPath), key, status });
-      projects.push({
-        ...project,
-        changedSinceAnalysis: project.changedSinceAnalysis?.map(displayPath) ?? null,
-      });
-    } catch (error) {
-      if (!(error instanceof ServerError)) throw error;
-      failed.push({ project: group.binding.projectKey, error: error.message });
-    }
   }
 
-  for (const record of records) delete record.hasQuickFix;
+  const { records, projects, failed, queried } = acc;
   records.sort(compareRecords);
   const threshold = rank(minSeverity);
   return {
@@ -332,9 +343,11 @@ function renderServerText(result) {
   });
   for (const project of result.projects) lines.push(describeAnalysis(project));
   const s = result.summary;
-  const parts = [`${s.queried} file(s) queried on the server`];
-  parts.push(`${result.issues.length} open issue(s) in ${s.withIssues} file(s)`);
-  parts.push(`${s.atOrAboveThreshold} at/above ${s.minSeverity}`);
+  const parts = [
+    `${s.queried} file(s) queried on the server`,
+    `${result.issues.length} open issue(s) in ${s.withIssues} file(s)`,
+    `${s.atOrAboveThreshold} at/above ${s.minSeverity}`,
+  ];
   lines.push(parts.join(', '));
   for (const skip of result.skipped) lines.push(`skipped ${skip.file}: ${skip.reason}`);
   for (const f of result.failed) lines.push(`server query failed for ${f.project}: ${f.error}`);
