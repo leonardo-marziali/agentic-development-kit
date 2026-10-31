@@ -1,3 +1,10 @@
+# [2.11.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.10.3...v2.11.0) (2026-10-31)
+
+
+### Features
+
+* **devcontainer:** support CLAUDE_CODE_OAUTH_TOKEN login ([#43](https://github.com/leonardo-marziali/agentic-development-kit/issues/43)) ([8a386d6](https://github.com/leonardo-marziali/agentic-development-kit/commit/8a386d62c6286c181b9d060d7a13357f336305a8))
+
 ## [2.10.3](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.10.2...v2.10.3) (2026-10-31)
 
 
