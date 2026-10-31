@@ -1,3 +1,10 @@
+## [2.10.2](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.10.1...v2.10.2) (2026-10-31)
+
+
+### Reverts
+
+* fix(markdown): track only files Claude writes with Edit/Write ([#42](https://github.com/leonardo-marziali/agentic-development-kit/issues/42)) ([fdf8289](https://github.com/leonardo-marziali/agentic-development-kit/commit/fdf82895a35c4a858f3ba8c58571e962f71a2f13)), closes [#41](https://github.com/leonardo-marziali/agentic-development-kit/issues/41) [#31](https://github.com/leonardo-marziali/agentic-development-kit/issues/31) [#41](https://github.com/leonardo-marziali/agentic-development-kit/issues/41)
+
 ## [2.10.1](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.10.0...v2.10.1) (2026-10-31)
 
 
