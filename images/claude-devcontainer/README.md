@@ -27,6 +27,7 @@ In another project, create `.devcontainer/devcontainer.json`:
   "name": "my-project",
   "image": "ghcr.io/leonardo-marziali/claude-devcontainer:latest",
   "remoteEnv": {
+    "CLAUDE_CODE_OAUTH_TOKEN": "${localEnv:CLAUDE_CODE_OAUTH_TOKEN}",
     "GITHUB_PERSONAL_ACCESS_TOKEN": "${localEnv:GITHUB_PERSONAL_ACCESS_TOKEN}",
     "SONARQUBE_CLI_TOKEN": "${localEnv:SONARQUBE_CLI_TOKEN}",
     "SONARQUBE_CLI_SERVER": "${localEnv:SONARQUBE_CLI_SERVER}",
@@ -40,6 +41,11 @@ the docker-outside-of-docker and GitHub CLI features, the Claude Code VS
 Code extension) in its metadata label, so nothing else is required. The
 `remoteEnv` entries are optional — forward only the ones you use:
 
+- `CLAUDE_CODE_OAUTH_TOKEN` — a long-lived Claude Code token (from
+  `claude setup-token`) so you don't have to log in inside the container.
+  Without it, run `claude auth login` interactively. It isn't validated
+  until Claude's first request: a wrong or expired token still counts as
+  logged in for `claude auth status`.
 - `GITHUB_PERSONAL_ACCESS_TOKEN` — the `github@claude-plugins-official`
   MCP server, and the `gh` CLI login (see
   [GitHub CLI login](#github-cli-login)).

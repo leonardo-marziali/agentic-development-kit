@@ -16,7 +16,8 @@
   */
   "mounts": ["source=claude-config,target=/home/node/.claude,type=volume"],
   /*
-    Repository-scoped secrets: GITHUB_PERSONAL_ACCESS_TOKEN and the
+    Repository-scoped secrets: CLAUDE_CODE_OAUTH_TOKEN (optional, skips the
+    interactive Claude login), GITHUB_PERSONAL_ACCESS_TOKEN and the
     SonarQube CLI's SONARQUBE_CLI_* variables come from
     the gitignored `.env` at the repo root (copy `.env.example`), not from the
     host environment, so they cannot clash with other projects. The file is
