@@ -31,7 +31,6 @@ const {
   stateDir,
   loopStateDir,
   readTrackedFiles,
-  trackSessionChanges,
   runBin,
   runFixLoop,
 } = require('@leonardo-marziali/ad-lfl-kit');
@@ -158,17 +157,7 @@ function main() {
   if (!input) return;
 
   // A SubagentStop checks only what that subagent touched.
-  /*
-   * A background command can still have written files after the last tool
-   * call; collect them first.
-   */
   const sessionDir = stateDir({ sessionId: input.session_id, namespace: STATE_NAMESPACE });
-  trackSessionChanges({
-    input,
-    listFile: path.join(sessionDir, TOUCHED_FILES),
-    matches: isMarkdownFile,
-  });
-
   const dir = loopStateDir({ dir: sessionDir, input });
   const listFile = path.join(dir, TOUCHED_FILES);
   if (!fs.existsSync(listFile)) return;

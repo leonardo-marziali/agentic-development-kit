@@ -79,6 +79,37 @@ test('ignores tool names other than Edit/Write', (t) => {
   assert.deepEqual(readTouched(pluginData, sessionId), []);
 });
 
+/*
+Only Edit/Write-family calls are tracked. A shell or MCP call that writes
+markdown — including a `git pull` that brings in someone else's
+CHANGELOG.md — must not make the session answerable for that file, even
+when the hook sees the full Pre/Post pair.
+*/
+for (const toolName of ['Bash', 'PowerShell', 'mcp__github__push_files']) {
+  test(`ignores markdown written through ${toolName}`, (t) => {
+    const scratch = mkScratchDir();
+    t.after(() => rmScratchDir(scratch));
+    const pluginData = path.join(scratch, 'plugin-data');
+    const sessionId = uniqueSessionId();
+    const file = path.join(scratch, 'CHANGELOG.md');
+    const base = {
+      tool_name: toolName,
+      tool_use_id: `toolu_${sessionId}`,
+      tool_input: { command: 'git pull' },
+      session_id: sessionId,
+      cwd: scratch,
+    };
+    const env = { env: { CLAUDE_PLUGIN_DATA: pluginData } };
+
+    runHook('track-touched.js', { ...base, hook_event_name: 'PreToolUse' }, env);
+    fs.writeFileSync(file, '# Changelog\n');
+    const res = runHook('track-touched.js', { ...base, hook_event_name: 'PostToolUse' }, env);
+
+    assert.equal(res.status, 0);
+    assert.deepEqual(readTouched(pluginData, sessionId), []);
+  });
+}
+
 test("ignores a file_path that doesn't exist on disk", (t) => {
   const scratch = mkScratchDir();
   t.after(() => rmScratchDir(scratch));
