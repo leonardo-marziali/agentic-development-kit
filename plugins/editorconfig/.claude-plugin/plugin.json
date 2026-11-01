@@ -1,0 +1,14 @@
+{
+  "$schema": "https://www.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "editorconfig",
+  "version": "0.1.0",
+  "description": "Enforce a project's .editorconfig on the files Claude edits, with editorconfig-checker or the ec4j Gradle and Maven plugins.",
+  "author": {
+    "name": "Leonardo Marziali",
+    "url": "https://github.com/leonardo-marziali"
+  },
+  "homepage": "https://github.com/leonardo-marziali/agentic-development-kit",
+  "repository": "https://github.com/leonardo-marziali/agentic-development-kit.git",
+  "license": "Apache-2.0",
+  "keywords": ["editorconfig", "formatting", "linting", "gradle", "maven", "hooks"]
+}

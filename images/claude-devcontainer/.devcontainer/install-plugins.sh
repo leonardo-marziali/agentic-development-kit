@@ -30,6 +30,7 @@ PLUGINS=(
   # dependencies)
   "markdown@agentic-development-kit"
   "prettier@agentic-development-kit"
+  "editorconfig@agentic-development-kit"
   "python@agentic-development-kit"
   "sonarqube@agentic-development-kit"
   "git@agentic-development-kit"

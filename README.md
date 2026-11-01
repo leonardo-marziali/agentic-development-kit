@@ -41,6 +41,7 @@ packages/                         Shared npm packages the plugins depend on
 plugins/                          Individual plugins hosted by this marketplace
   markdown/                       Authoring/linting skills, LSP config, and hooks
   prettier/                       Format-on-edit hook and a manual formatting skill
+  editorconfig/                   .editorconfig enforcement hooks and skills
   python/                         ruff + pyright hooks and skills, pyright LSP
   sonarqube/                      Local SonarLint analysis hooks, `sonar api` skills
   git/                            Safety-checked branching and Conventional Commits
@@ -234,6 +235,7 @@ pnpm test
 cd packages/ad-lfl-kit && pnpm test
 cd plugins/markdown && pnpm test
 cd plugins/prettier && pnpm test
+cd plugins/editorconfig && pnpm test
 cd plugins/python && pnpm test
 cd plugins/sonarqube && pnpm test
 ```
@@ -241,7 +243,9 @@ cd plugins/sonarqube && pnpm test
 The root `pnpm test` covers this repo's own hooks in `.claude/hooks/`, the
 scripts in `scripts/`, and the shared packages in `packages/`. See a plugin's
 own README ([markdown](plugins/markdown/README.md),
-[prettier](plugins/prettier/README.md), [python](plugins/python/README.md),
+[prettier](plugins/prettier/README.md),
+[editorconfig](plugins/editorconfig/README.md),
+[python](plugins/python/README.md),
 [sonarqube](plugins/sonarqube/README.md))
 for what its suite covers.
 
@@ -256,7 +260,7 @@ runs whichever suites are affected by a given pull request (via
 change) and uploads each one's coverage to
 [Codecov](https://codecov.io/gh/leonardo-marziali/agentic-development-kit)
 under its own flag (`repo-root`, `ad-lfl-kit`, `markdown-plugin`,
-`prettier-plugin`, `python-plugin`, `sonarqube-plugin`).
+`prettier-plugin`, `editorconfig-plugin`, `python-plugin`, `sonarqube-plugin`).
 [`codecov.yml`](codecov.yml) carries each flag's last-known coverage forward
 on commits that don't re-upload it, so the badge above — the combined
 coverage across every flag — stays accurate even though the suites upload
