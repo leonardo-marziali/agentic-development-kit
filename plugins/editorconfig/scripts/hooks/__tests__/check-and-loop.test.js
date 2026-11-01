@@ -13,7 +13,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { mkScratchDir, rmScratchDir, uniqueSessionId, runHook } = require('./helpers');
+const { newSession, runHook, touch: track } = require('./helpers');
 
 const EDITORCONFIG = [
   'root = true',
@@ -29,12 +29,9 @@ const POM = '<project><artifactId>editorconfig-maven-plugin</artifactId></projec
 const GRADLE = "plugins { id 'org.ec4j.editorconfig' version '0.1.0' }\n";
 
 function setup(t, { editorconfig = true } = {}) {
-  const dir = fs.realpathSync(mkScratchDir());
-  t.after(() => rmScratchDir(dir));
-  const project = path.join(dir, 'project');
-  fs.mkdirSync(project);
-  if (editorconfig) fs.writeFileSync(path.join(project, '.editorconfig'), EDITORCONFIG);
-  return { project, pluginData: path.join(dir, 'plugin-data'), sessionId: uniqueSessionId() };
+  const session = newSession(t);
+  if (editorconfig) fs.writeFileSync(path.join(session.project, '.editorconfig'), EDITORCONFIG);
+  return session;
 }
 
 function git(cwd, ...args) {
@@ -49,25 +46,12 @@ function commitAll(project) {
 }
 
 function touch(ctx, file) {
-  const res = runHook(
-    'track-touched.js',
-    {
-      tool_name: 'Write',
-      tool_input: { file_path: file },
-      session_id: ctx.sessionId,
-      cwd: ctx.project,
-    },
-    { env: { CLAUDE_PLUGIN_DATA: ctx.pluginData } },
-  );
+  const res = track(ctx, file);
   assert.equal(res.status, 0, res.stderr);
 }
 
 function stop(ctx, env = {}) {
-  return runHook(
-    'check-and-loop.js',
-    { hook_event_name: 'Stop', session_id: ctx.sessionId, cwd: ctx.project },
-    { env: { CLAUDE_PLUGIN_DATA: ctx.pluginData, ...env } },
-  );
+  return runHook('check-and-loop.js', ctx, { hook_event_name: 'Stop' }, env);
 }
 
 /*

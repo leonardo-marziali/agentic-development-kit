@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { mkScratchDir, rmScratchDir } = require('./helpers');
+const { scratchDir } = require('./helpers');
 const {
   isEnforceable,
   hasEditorconfig,
@@ -17,12 +17,6 @@ const {
 
 const GRADLE_BUILD = "plugins { id 'org.ec4j.editorconfig' version '0.1.0' }\n";
 const POM = '<project><artifactId>editorconfig-maven-plugin</artifactId></project>\n';
-
-function scratch(t) {
-  const dir = fs.realpathSync(mkScratchDir());
-  t.after(() => rmScratchDir(dir));
-  return dir;
-}
 
 function write(file, content = '') {
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -38,13 +32,13 @@ test('isEnforceable skips node_modules and .git paths only', () => {
 });
 
 test('hasEditorconfig finds a config in an ancestor directory', (t) => {
-  const dir = scratch(t);
+  const dir = scratchDir(t);
   write(path.join(dir, '.editorconfig'));
   assert.equal(hasEditorconfig(write(path.join(dir, 'a/b/c.txt'))), true);
 });
 
 test('hasEditorconfig is false without a config above the file', (t) => {
-  const dir = scratch(t);
+  const dir = scratchDir(t);
   assert.equal(hasEditorconfig(write(path.join(dir, 'c.txt'))), false);
 });
 
@@ -80,7 +74,7 @@ test('parseEc4jFindings reads Maven and Gradle violation lines', () => {
 });
 
 test('findingLine maps a file-level finding to the last line', (t) => {
-  const dir = scratch(t);
+  const dir = scratchDir(t);
   const file = write(path.join(dir, 'a.txt'), 'one\ntwo\nthree');
   assert.equal(findingLine({ file, line: 2 }), 2);
   assert.equal(findingLine({ file, line: 0 }), 3);
@@ -89,7 +83,7 @@ test('findingLine maps a file-level finding to the last line', (t) => {
 });
 
 test('detectBackend defaults to the checker', (t) => {
-  const dir = scratch(t);
+  const dir = scratchDir(t);
   fs.mkdirSync(path.join(dir, '.git'));
   write(path.join(dir, 'build.gradle'), "plugins { id 'java' }\n");
   write(path.join(dir, 'pom.xml'), '<project/>\n');
@@ -97,7 +91,7 @@ test('detectBackend defaults to the checker', (t) => {
 });
 
 test('detectBackend finds Maven in an ancestor pom', (t) => {
-  const dir = scratch(t);
+  const dir = scratchDir(t);
   write(path.join(dir, 'pom.xml'), POM);
   write(path.join(dir, 'mod/pom.xml'), '<project/>\n');
   assert.deepEqual(detectBackend(write(path.join(dir, 'mod/src/a.txt'))), {
@@ -108,21 +102,21 @@ test('detectBackend finds Maven in an ancestor pom', (t) => {
 
 test('detectBackend finds Gradle in build and settings scripts', (t) => {
   for (const name of ['build.gradle', 'build.gradle.kts', 'settings.gradle.kts']) {
-    const dir = scratch(t);
+    const dir = scratchDir(t);
     write(path.join(dir, name), GRADLE_BUILD);
     assert.deepEqual(detectBackend(write(path.join(dir, 'a.txt'))), { kind: 'gradle', root: dir });
   }
 });
 
 test('detectBackend does not look past the repository root', (t) => {
-  const dir = scratch(t);
+  const dir = scratchDir(t);
   write(path.join(dir, 'pom.xml'), POM);
   fs.mkdirSync(path.join(dir, 'repo/.git'), { recursive: true });
   assert.equal(detectBackend(write(path.join(dir, 'repo/a.txt'))).kind, 'checker');
 });
 
 test('groupByBackend groups per root with paths the JVM tools can express', (t) => {
-  const dir = scratch(t);
+  const dir = scratchDir(t);
   write(path.join(dir, 'pom.xml'), POM);
   const plain = write(path.join(dir, 'a.txt'));
   const comma = write(path.join(dir, 'a,b.txt'));
