@@ -1,3 +1,10 @@
+# [2.12.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.11.0...v2.12.0) (2026-11-01)
+
+
+### Features
+
+* **editorconfig:** enforce .editorconfig on files Claude edits ([#47](https://github.com/leonardo-marziali/agentic-development-kit/issues/47)) ([7a90bd7](https://github.com/leonardo-marziali/agentic-development-kit/commit/7a90bd7b33ce62f9026b5097d72ee9626e2cef16))
+
 # [2.11.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.10.3...v2.11.0) (2026-10-31)
 
 

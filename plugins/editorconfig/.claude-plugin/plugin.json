@@ -1,7 +1,7 @@
 {
   "$schema": "https://www.schemastore.org/claude-code-plugin-manifest.json",
   "name": "editorconfig",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Enforce a project's .editorconfig on the files Claude edits, with editorconfig-checker or the ec4j Gradle and Maven plugins.",
   "author": {
     "name": "Leonardo Marziali",
