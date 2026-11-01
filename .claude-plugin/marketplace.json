@@ -23,6 +23,13 @@
       "keywords": ["prettier", "formatting", "hooks"]
     },
     {
+      "name": "editorconfig",
+      "source": "./plugins/editorconfig",
+      "description": "Blocks a session from ending while lines it changed break the project's .editorconfig, using editorconfig-checker or the ec4j Gradle and Maven plugins, and auto-fixes what it safely can.",
+      "category": "quality",
+      "keywords": ["editorconfig", "formatting", "linting", "gradle", "maven"]
+    },
+    {
       "name": "python",
       "source": "./plugins/python",
       "description": "Formats Python with ruff as Claude edits it, then lints with ruff and type-checks with pyright in a session-scoped fix loop; pulls in pyright-lsp for the language server.",

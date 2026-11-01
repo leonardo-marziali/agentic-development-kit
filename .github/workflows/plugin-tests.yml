@@ -42,6 +42,8 @@ jobs:
               - 'plugins/markdown/**'
             prettier:
               - 'plugins/prettier/**'
+            editorconfig:
+              - 'plugins/editorconfig/**'
             python:
               - 'plugins/python/**'
             sonarqube:
@@ -55,6 +57,7 @@ jobs:
           AD_LFL_KIT_CHANGED: ${{ steps.filter.outputs.ad-lfl-kit }}
           MARKDOWN_CHANGED: ${{ steps.filter.outputs.markdown }}
           PRETTIER_CHANGED: ${{ steps.filter.outputs.prettier }}
+          EDITORCONFIG_CHANGED: ${{ steps.filter.outputs.editorconfig }}
           PYTHON_CHANGED: ${{ steps.filter.outputs.python }}
           SONARQUBE_CHANGED: ${{ steps.filter.outputs.sonarqube }}
         run: |
@@ -76,6 +79,9 @@ jobs:
           fi
           if [ "$WORKFLOW_CHANGED" = "true" ] || [ "$PRETTIER_CHANGED" = "true" ]; then
             add "prettier" "plugins/prettier" "prettier-plugin"
+          fi
+          if [ "$WORKFLOW_CHANGED" = "true" ] || [ "$EDITORCONFIG_CHANGED" = "true" ]; then
+            add "editorconfig" "plugins/editorconfig" "editorconfig-plugin"
           fi
           if [ "$WORKFLOW_CHANGED" = "true" ] || [ "$PYTHON_CHANGED" = "true" ]; then
             add "python" "plugins/python" "python-plugin"
@@ -143,8 +149,13 @@ jobs:
         working-directory: plugins/sonarqube
         run: node scripts/install-sloop.js
 
+      # The editorconfig plugin's suite runs the real editorconfig-checker,
+      # whose npm wrapper fetches its binary through the GitHub API, and
+      # unauthenticated calls from shared runners get rate limited.
       - name: Run tests with coverage
         working-directory: ${{ matrix.suite.dir }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: pnpm test:coverage
 
       - name: Upload coverage to Codecov

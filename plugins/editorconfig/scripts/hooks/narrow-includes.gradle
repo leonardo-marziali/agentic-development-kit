@@ -1,0 +1,18 @@
+// Limits ec4j's tasks to the files named in -Padk.editorconfig.includes, so a
+// format can't rewrite files outside the session. The extension has no
+// command-line property for this, which is why it takes an init script.
+def includes = (gradle.startParameter.projectProperties['adk.editorconfig.includes'] ?: '').tokenize(',')
+def targetDir = gradle.startParameter.projectDir ?: gradle.startParameter.currentDir
+
+allprojects { project ->
+    project.afterEvaluate {
+        def extension = project.extensions.findByName('editorconfig')
+        if (extension == null) return
+        extension.failOnNoMatchingProperties = false
+        if (project.projectDir.canonicalFile == targetDir.canonicalFile) {
+            extension.includes = includes
+        } else {
+            extension.excludes = ['**']
+        }
+    }
+}
