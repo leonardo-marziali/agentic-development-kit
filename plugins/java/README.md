@@ -159,6 +159,11 @@ compiler, is replaced by the plugin's pinned Lombok for NullAway.
 
 ## Requirements and installation
 
+```text
+/plugin marketplace add leonardo-marziali/agentic-development-kit
+/plugin install java@agentic-development-kit
+```
+
 - **JDK 21 or newer** on `JAVA_HOME` or `PATH` (Error Prone 2.52 needs it).
 - The engine: about 40 MB of jars pinned in [engine.lock.json](engine.lock.json)
   with SHA-256 checksums, downloaded once into the plugin's data directory
@@ -176,6 +181,12 @@ compiler, is replaced by the plugin's pinned Lombok for NullAway.
 
 ## Notes
 
+- **The Stop hook runs the project's own build.** Reading the classpath and
+  compiling for ArchUnit run the project's `mvnw` / `gradlew` (or `mvn` /
+  `gradle`), and `.claude/archunit/` rules are compiled and executed: build
+  plugins, Gradle scripts and those rules run with your permissions, as
+  they would on any build. Only opt in a project whose build you trust, or
+  set `nullaway.enabled` and `archunit.enabled` to `false`.
 - Stop hooks of different plugins run in parallel: the
   [editorconfig plugin](../editorconfig/README.md) may check a file while
   this one formats it. The next stop re-checks.
