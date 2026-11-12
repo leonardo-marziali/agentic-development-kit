@@ -8,7 +8,9 @@
  * a legacy project without a profile is never restyled.
  */
 
+const crypto = require('node:crypto');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
@@ -31,12 +33,15 @@ function isFormatterProfile(file) {
  * only counts when it is tracked and actually holds formatter settings;
  * otherwise a legacy project would be restyled with Eclipse's defaults.
  */
-function isFormatterPrefs(repoRoot, file) {
-  if (!fs.existsSync(file)) return false;
+function isPrefsTracked(repoRoot) {
   const tracked = spawnSync('git', ['ls-files', '--cached', '--error-unmatch', '--', PREFS], {
     cwd: repoRoot,
   });
-  if (tracked.error || tracked.status !== 0) return false;
+  return !tracked.error && tracked.status === 0;
+}
+
+function isFormatterPrefs(repoRoot, file) {
+  if (!fs.existsSync(file) || !isPrefsTracked(repoRoot)) return false;
   return /^org\.eclipse\.jdt\.core\.formatter\./m.test(fs.readFileSync(file, 'utf8'));
 }
 
@@ -60,13 +65,59 @@ function resolveProfile({ repoRoot, config }) {
     if (fs.existsSync(file)) return file;
     process.stderr.write(`java plugin: formatter profile ${configured} not found; ignoring it.\n`);
   }
-  for (const rel of trackedXmlFiles(repoRoot)) {
+  return discoveredProfile(repoRoot) ?? (config ? DEFAULT_PROFILE : null);
+}
+
+function scanForProfile(repoRoot, xmlFiles) {
+  for (const rel of xmlFiles) {
     const file = path.join(repoRoot, rel);
     if (isFormatterProfile(file)) return file;
   }
   const prefs = path.join(repoRoot, PREFS);
-  if (isFormatterPrefs(repoRoot, prefs)) return prefs;
-  return config ? DEFAULT_PROFILE : null;
+  return isFormatterPrefs(repoRoot, prefs) ? prefs : null;
+}
+
+function cacheFile(repoRoot) {
+  const base =
+    process.env.CLAUDE_PLUGIN_DATA || path.join(os.homedir(), '.cache', 'claude-java-plugin');
+  const key = crypto.createHash('sha256').update(path.resolve(repoRoot)).digest('hex');
+  return path.join(base, 'profile-cache', `${key.slice(0, 16)}.json`);
+}
+
+/*
+ * A committed profile or prefs file, remembered between stops: the files are
+ * only read again when a tracked XML file (or the prefs) appears, disappears
+ * or changes size or modification time.
+ */
+function discoveredProfile(repoRoot) {
+  const xmlFiles = trackedXmlFiles(repoRoot);
+  const stamp = crypto.createHash('sha256');
+  const prefsPath = path.join(repoRoot, PREFS);
+  stamp.update(`prefs tracked: ${fs.existsSync(prefsPath) && isPrefsTracked(repoRoot)}\n`);
+  for (const rel of [...xmlFiles, PREFS]) {
+    try {
+      const stat = fs.statSync(path.join(repoRoot, rel));
+      stamp.update(`${rel}\0${stat.size}\0${stat.mtimeMs}\n`);
+    } catch {
+      stamp.update(`${rel}\0-\n`);
+    }
+  }
+  const key = stamp.digest('hex');
+  const cache = cacheFile(repoRoot);
+  try {
+    const cached = JSON.parse(fs.readFileSync(cache, 'utf8'));
+    if (cached.key === key) return cached.profile;
+  } catch {
+    // No cache yet, or an unreadable one: scan.
+  }
+  const profile = scanForProfile(repoRoot, xmlFiles);
+  try {
+    fs.mkdirSync(path.dirname(cache), { recursive: true });
+    fs.writeFileSync(cache, JSON.stringify({ key, profile }));
+  } catch {
+    // A cache that can't be written only costs a rescan.
+  }
+  return profile;
 }
 
 module.exports = { resolveProfile, DEFAULT_PROFILE };

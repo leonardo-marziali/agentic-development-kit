@@ -90,3 +90,34 @@ test('ignores untracked Eclipse preferences', (t) => {
   });
   assert.equal(resolveProfile({ repoRoot: root, config: null }), null);
 });
+
+test("doesn't reread the project's XML files until one of them changes", (t) => {
+  const fs = require('node:fs');
+  const root = repo(t, { 'pom.xml': '<project/>', 'src/main/resources/beans.xml': '<beans/>' });
+  const saved = process.env.CLAUDE_PLUGIN_DATA;
+  process.env.CLAUDE_PLUGIN_DATA = path.join(root, '.plugin-data');
+  const original = fs.readFileSync;
+  let xmlReads = 0;
+  fs.readFileSync = (file, ...rest) => {
+    if (String(file).endsWith('.xml') && String(file).startsWith(root)) xmlReads += 1;
+    return original(file, ...rest);
+  };
+  t.after(() => {
+    fs.readFileSync = original;
+    if (saved === undefined) delete process.env.CLAUDE_PLUGIN_DATA;
+    else process.env.CLAUDE_PLUGIN_DATA = saved;
+  });
+
+  assert.equal(resolveProfile({ repoRoot: root, config: null }), null);
+  assert.ok(xmlReads > 0);
+  xmlReads = 0;
+
+  assert.equal(resolveProfile({ repoRoot: root, config: null }), null);
+  assert.equal(xmlReads, 0);
+
+  fs.writeFileSync(path.join(root, 'src/main/resources/beans.xml'), ECLIPSE_PROFILE);
+  assert.equal(
+    resolveProfile({ repoRoot: root, config: null }),
+    path.join(root, 'src/main/resources/beans.xml'),
+  );
+});
