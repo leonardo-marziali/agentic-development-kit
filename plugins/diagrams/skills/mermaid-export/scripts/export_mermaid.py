@@ -332,17 +332,20 @@ def print_urls(a, diagrams):
 
 
 def output_paths(a, count, stem):
+    # Confine here, at the point of use, so the checked value is what is used.
+    output = confine(a.output) if a.output else None
     if count == 1:
-        o = a.output or f"{stem}.{a.format}"
+        o = output or f"{stem}.{a.format}"
         if os.path.isdir(o):
             o = os.path.join(o, f"{stem}.{a.format}")
         return [o]
-    is_dir = a.output and (os.path.isdir(a.output) or a.output.endswith("/"))
-    d = a.output if is_dir else "."
-    if not a.output or d != ".":
-        base = stem
-    else:
-        base = os.path.splitext(os.path.basename(a.output))[0]
+    d = "."
+    base = stem
+    if output:
+        if os.path.isdir(output) or output.endswith("/"):
+            d = output
+        else:  # a name stem, e.g. -o figs/arch -> arch-1.png, arch-2.png
+            base = os.path.splitext(os.path.basename(output))[0]
     os.makedirs(d, exist_ok=True)
     return [os.path.join(d, f"{base}-{i}.{a.format}") for i in range(1, count + 1)]
 
@@ -381,8 +384,6 @@ def main():
         a.size = "auto"
     if a.scale is not None and not (1 <= a.scale <= 3):
         sys.exit("error: --scale must be between 1 and 3")
-    if a.output:
-        a.output = confine(a.output)
 
     diagrams = read_diagrams(a.input)
     stem = (
