@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { mkScratchDir, rmScratchDir, writeTree } = require('./helpers');
-const { resolveClasspath } = require('../classpath');
+const { resolveClasspath, cacheKey } = require('../classpath');
 
 function scratch(t) {
   const dir = mkScratchDir();
@@ -79,6 +79,31 @@ test('reads a Gradle module classpath and processor path through an init script'
   assert.match(calls(root)[0], /--no-configuration-cache/);
 });
 
+test('merges the main and test Gradle configurations, each jar once', (t) => {
+  const root = scratch(t);
+  writeTree(root, { 'build.gradle': "apply plugin: 'java'" });
+  // compileClasspath, then testCompileClasspath: main's compileOnly Lombok is only in the first.
+  fakeWrapper(
+    root,
+    'gradlew',
+    `echo "CP /g/lombok-1.18.36.jar"\necho "CP /g/a.jar"\necho "CP /g/a.jar"\necho "CP /g/junit.jar"\necho "AP /g/lombok-1.18.36.jar"\necho "AP /g/lombok-1.18.36.jar"`,
+  );
+
+  const result = resolveClasspath({ moduleRoot: root, cacheDir: path.join(root, 'cache') });
+
+  assert.deepEqual(result.classpath, ['/g/lombok-1.18.36.jar', '/g/a.jar', '/g/junit.jar']);
+  assert.deepEqual(result.processorPath, ['/g/lombok-1.18.36.jar']);
+  const script = fs.readFileSync(path.join(__dirname, '..', 'print-classpath.gradle'), 'utf8');
+  for (const name of [
+    'compileClasspath',
+    'testCompileClasspath',
+    'annotationProcessor',
+    'testAnnotationProcessor',
+  ]) {
+    assert.match(script, new RegExp(`\\b${name}: '(CP|AP)'`), name);
+  }
+});
+
 test('serves the second call from the cache and re-resolves after the build file changes', (t) => {
   const root = scratch(t);
   writeTree(root, { 'pom.xml': '<project/>' });
@@ -142,4 +167,12 @@ test('remembers a failed resolution instead of re-running the build tool every s
   writeTree(root, { 'pom.xml': '<project><!-- fixed --></project>' });
   resolveClasspath({ moduleRoot: root, cacheDir, warn: () => {} });
   assert.equal(calls(root).length, 2);
+});
+
+test('the cache key changes with the resolver, so a plugin update re-reads the classpath', (t) => {
+  const root = scratch(t);
+  writeTree(root, { 'build.gradle': "apply plugin: 'java'" });
+
+  assert.notEqual(cacheKey(root, null, 'old init script'), cacheKey(root, null, 'new init script'));
+  assert.equal(cacheKey(root, null, 'same'), cacheKey(root, null, 'same'));
 });

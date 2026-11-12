@@ -1,13 +1,21 @@
 // Prints one module's compile classpath ("CP <path>") and annotation processor
 // path ("AP <path>") for the java plugin's NullAway run, without the project's
 // build having to declare anything. -PjavaPluginModule names the module dir.
+// Main and test configurations both: testCompileClasspath doesn't extend
+// compileOnly, so main's compileOnly jars (Lombok, provided APIs) are only in
+// compileClasspath.
 def target = new File(gradle.startParameter.projectProperties['javaPluginModule'] ?: '.').canonicalFile
 
 allprojects { project ->
     project.tasks.register('printJavaPluginClasspath') {
         doLast {
             if (project.projectDir.canonicalFile != target) return
-            ['testCompileClasspath': 'CP', 'annotationProcessor': 'AP'].each { name, prefix ->
+            [
+                compileClasspath: 'CP',
+                testCompileClasspath: 'CP',
+                annotationProcessor: 'AP',
+                testAnnotationProcessor: 'AP',
+            ].each { name, prefix ->
                 def configuration = project.configurations.findByName(name)
                 if (configuration != null && configuration.canBeResolved) {
                     configuration.resolve().each { println "${prefix} ${it.absolutePath}" }
