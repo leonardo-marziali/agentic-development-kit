@@ -21,7 +21,8 @@ const { installedEngine, SKIP_WITHOUT_JDK } = require('./helpers');
 const { runEngine } = require('../engine');
 
 const ROOT = path.join(__dirname, 'fixtures', 'rules');
-const DEFAULTS = { source: 21, boot: '3.4', nullness: 'off' };
+// J25 (empty bodies explained) is on only in its own fixtures: the others use empty bodies freely.
+const DEFAULTS = { source: 21, boot: '3.4', nullness: 'off', disabled: ['J25'] };
 
 function readJson(file) {
   return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
@@ -91,6 +92,7 @@ async function findingsFor(file) {
           source: options.source,
           boot: toBoot(options.boot),
           nullness: options.nullness,
+          disabled: options.disabled,
         }),
       ),
     );

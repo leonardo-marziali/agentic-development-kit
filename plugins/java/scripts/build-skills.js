@@ -27,7 +27,7 @@ const SKILLS = [
     title: 'Java language standards',
     parts: ['## 1. Java'],
     description:
-      'Use when writing or reviewing Java code in a project that follows the java-standards opt-in. Covers Javadoc and comments, naming, member, field and argument order, var, text blocks, records and sealed types, imports, visibility, overloads for optional arguments, null-safety with JSpecify and NullAway, Optional, reuse and utility classes (rules J1 to J24).',
+      'Use when writing or reviewing Java code in a project that follows the java-standards opt-in. Covers Javadoc and comments, naming, member, field and argument order, var, text blocks, records and sealed types, imports, visibility, overloads for optional arguments, null-safety with JSpecify and NullAway, Optional, reuse, utility classes and explained empty bodies (rules J1 to J25).',
   },
   {
     name: 'java-build-standards',

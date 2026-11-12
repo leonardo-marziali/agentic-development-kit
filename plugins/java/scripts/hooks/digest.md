@@ -43,6 +43,7 @@ justified exception with `// java-rules:allow <ID> <reason>`.
 - J21–J22 Don't repeat yourself; use the library already on the classpath.
 - J23 Static-only classes are `@UtilityClass`.
 - J24 Same concept, same type and format across DTOs, domain and entities.
+- J25 An empty method or constructor body holds a comment saying why.
 
 ## Build
 

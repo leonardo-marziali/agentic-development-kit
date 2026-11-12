@@ -167,6 +167,12 @@ Lombok's `@UtilityClass` does exactly this, so prefer it.
 objects, entities) use the same type and format for the same concept. All
 identifiers share one format, all dates share one format, and so on.
 
+**J25. Explain empty bodies.** An empty method or constructor body holds a
+comment saying why it does nothing, for example a no-op hook, a framework
+constructor or a deliberately ignored callback. A Javadoc above the method
+doesn't count: the explanation goes inside the braces, where the reader sees
+them empty.
+
 ## 2. Build (Maven and Gradle)
 
 **B1. Choose versions deliberately.** Before adding a library, check which

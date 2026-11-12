@@ -1,6 +1,6 @@
 ---
 name: java-language-standards
-description: 'Use when writing or reviewing Java code in a project that follows the java-standards opt-in. Covers Javadoc and comments, naming, member, field and argument order, var, text blocks, records and sealed types, imports, visibility, overloads for optional arguments, null-safety with JSpecify and NullAway, Optional, reuse and utility classes (rules J1 to J24).'
+description: 'Use when writing or reviewing Java code in a project that follows the java-standards opt-in. Covers Javadoc and comments, naming, member, field and argument order, var, text blocks, records and sealed types, imports, visibility, overloads for optional arguments, null-safety with JSpecify and NullAway, Optional, reuse, utility classes and explained empty bodies (rules J1 to J25).'
 paths: '**/*.java, **/pom.xml, **/build.gradle*'
 ---
 
@@ -161,3 +161,9 @@ Lombok's `@UtilityClass` does exactly this, so prefer it.
 **J24. Consistent types across models.** POJOs of the same kind (DTOs, domain
 objects, entities) use the same type and format for the same concept. All
 identifiers share one format, all dates share one format, and so on.
+
+**J25. Explain empty bodies.** An empty method or constructor body holds a
+comment saying why it does nothing, for example a no-op hook, a framework
+constructor or a deliberately ignored callback. A Javadoc above the method
+doesn't count: the explanation goes inside the braces, where the reader sees
+them empty.

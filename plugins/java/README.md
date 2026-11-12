@@ -10,7 +10,7 @@ runs **outside the project's build**, and every opinion is **opt-in per
 project**.
 
 The standard itself is [standards/java-standards.md](standards/java-standards.md)
-(rules J1–J24, B1–B10, S1–S58, D1–D11, T1–T7).
+(rules J1–J25, B1–B10, S1–S58, D1–D11, T1–T7).
 
 ## What This Plugin Provides
 
@@ -41,9 +41,10 @@ blocks the stop while findings remain **on lines the session changed**
 report with these sections, capped at 3 attempts per session:
 
 - **Source rules**: about 40 checks on JDT's syntax tree (no compilation),
-  each named by its rule ID. Examples: wildcard imports (J16), `@Autowired`
-  (S3), `@Value("${…}")` (S4), `@Data` on entities (S15), `expression =
-"java(…)"` in mappers (S21), verbs in paths (S28), and the JSpecify
+  each named by its rule ID. Examples: wildcard imports (J16), empty
+  bodies without a comment (J25), `@Autowired` (S3), `@Value("${…}")` (S4),
+  `@Data` on entities (S15), `expression = "java(…)"` in mappers (S21),
+  verbs in paths (S28), and the JSpecify
   annotation rules for J20 (`@NullMarked` packages, one nullness library,
   `return null` only from `@Nullable` methods). REST path rules skip
   `@Hidden` internal endpoints (S37), and the test rules (T2, T7) check

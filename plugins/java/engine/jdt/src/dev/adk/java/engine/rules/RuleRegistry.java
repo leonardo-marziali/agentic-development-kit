@@ -19,6 +19,7 @@ public final class RuleRegistry {
         new TestStyle(),
         new TestShortcuts(),
         new MemberOrder(),
+        new EmptyBodies(),
         new VarUsage(),
         new TextBlocks(),
         new OptionalReturnOnly(),
