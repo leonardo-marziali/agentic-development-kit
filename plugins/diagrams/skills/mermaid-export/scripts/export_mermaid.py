@@ -54,7 +54,7 @@ def confine(path):
     """
     root = os.path.realpath(os.getcwd())
     real = os.path.realpath(path)
-    if os.path.commonpath([root, real]) != root:
+    if real != root and not real.startswith(root + os.sep):
         sys.exit(
             f"error: {path!r} is outside the working directory ({root}); "
             "run from the target project and use a path inside it"
