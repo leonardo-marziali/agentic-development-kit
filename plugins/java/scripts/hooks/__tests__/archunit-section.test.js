@@ -318,3 +318,17 @@ test('the block message gives ArchUnit-specific guidance, not the source-rule co
   assert.match(res.json.reason, /archunit\.disabledRules/);
   assert.doesNotMatch(res.json.reason, /java-rules:allow/);
 });
+
+test('skips the slow sections with a warning once the stop has used its time budget', (t) => {
+  const ctx = setup(t);
+  touch(ctx, SOURCE);
+
+  const res = stop(ctx, {
+    JAVA_PLUGIN_STOP_BUDGET_MS: '1',
+    FAKE_ARCHUNIT_OUTPUT: 'FINDING\tcom/acme/project/service/ProjectService.java\t0\tS7\tx\n',
+  });
+
+  assert.deepEqual(runnerCalls(ctx), []);
+  assert.match(res.stderr, /java plugin: .*time budget.*ArchUnit/);
+  assert.equal(res.stdout.trim(), '');
+});

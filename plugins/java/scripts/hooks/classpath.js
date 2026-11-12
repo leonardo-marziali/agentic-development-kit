@@ -13,6 +13,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { timeoutFor } = require('./budget');
 
 const BUILD_TIMEOUT_MS = 120 * 1000;
 const FAILURE_TTL_MS = 30 * 60 * 1000;
@@ -85,7 +86,7 @@ function run(bin, args, { cwd, javaHome }) {
     cwd,
     env,
     encoding: 'utf8',
-    timeout: BUILD_TIMEOUT_MS,
+    timeout: timeoutFor(BUILD_TIMEOUT_MS),
     maxBuffer: 32 * 1024 * 1024,
   });
 }

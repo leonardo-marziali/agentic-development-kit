@@ -16,6 +16,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { timeoutFor } = require('./budget');
 const { buildTool, cacheKey, recentFailure } = require('./classpath');
 const { buildJavaHome } = require('./module');
 const { registerSection } = require('./sections');
@@ -81,7 +82,7 @@ function compileModule(moduleRoot, javaHome) {
     cwd: moduleRoot,
     env,
     encoding: 'utf8',
-    timeout: COMPILE_TIMEOUT_MS,
+    timeout: timeoutFor(COMPILE_TIMEOUT_MS),
     maxBuffer: 32 * 1024 * 1024,
   });
 }
@@ -158,7 +159,7 @@ function compileProjectRules(repoRoot, manifest, warn) {
   const result = spawnSync(
     manifest.javac,
     ['-nowarn', '-d', outDir, '-cp', manifest.jars.archunit.join(path.delimiter), ...sources],
-    { encoding: 'utf8' },
+    { encoding: 'utf8', timeout: timeoutFor(COMPILE_TIMEOUT_MS) },
   );
   if (result.error || result.status !== 0) {
     fs.rmSync(outDir, { recursive: true, force: true });
@@ -236,7 +237,7 @@ function runModule({ moduleRoot, module, command, archunit, store, extra, create
     [...command.prefix, ...runnerArgs({ outputDirs, archunit, store, extra, createStore })],
     {
       encoding: 'utf8',
-      timeout: RUNNER_TIMEOUT_MS,
+      timeout: timeoutFor(RUNNER_TIMEOUT_MS),
       maxBuffer: 32 * 1024 * 1024,
     },
   );

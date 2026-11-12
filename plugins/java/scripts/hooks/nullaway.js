@@ -15,6 +15,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { timeoutFor } = require('./budget');
 const { resolveClasspath } = require('./classpath');
 const { buildJavaHome } = require('./module');
 const { registerSection } = require('./sections');
@@ -176,7 +177,7 @@ function runNullAway({
     });
     const result = spawnSync(manifest.javac, args, {
       encoding: 'utf8',
-      timeout: JAVAC_TIMEOUT_MS,
+      timeout: timeoutFor(JAVAC_TIMEOUT_MS),
       maxBuffer: 32 * 1024 * 1024,
     });
     if (result.error)

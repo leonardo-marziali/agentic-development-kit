@@ -22,6 +22,10 @@ const { runEngine } = require('./engine');
 const { checkBuildFile } = require('./build-rules');
 const { registeredSections } = require('./sections');
 const { readInstall } = require('../provision');
+const { timeLeft } = require('./budget');
+
+// Below this much time left, the optional sections (NullAway, ArchUnit) are skipped.
+const SECTION_MIN_MS = 20 * 1000;
 // Each of these registers its report section on load.
 require('./nullaway');
 require('./archunit');
@@ -174,6 +178,12 @@ function check(repos, manifest, { changedLinesOnly = true } = {}) {
       : [];
     sections.push(section('Build files', repo.repoRoot, buildFindings));
     for (const extra of registeredSections()) {
+      if (timeLeft() < SECTION_MIN_MS) {
+        warnOnce(
+          `the time budget for this stop is used up; skipping ${extra.name} (it runs again on the next stop).`,
+        );
+        continue;
+      }
       const { findings } = extra.run({ ...repo, manifest, warn: warnOnce });
       sections.push(
         section(extra.name, repo.repoRoot, findings, {

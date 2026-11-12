@@ -18,6 +18,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { timeoutFor } = require('./budget');
 
 const MAIN_CLASS = 'dev.adk.java.engine.Main';
 const ENGINE_TIMEOUT_MS = 120 * 1000;
@@ -95,7 +96,7 @@ function runEngine({
       [...prefix, ...engineArgs({ requestFile, profile, rules, disabled, source, boot, nullness })],
       {
         encoding: 'utf8',
-        timeout: ENGINE_TIMEOUT_MS,
+        timeout: timeoutFor(ENGINE_TIMEOUT_MS),
         maxBuffer: 64 * 1024 * 1024,
         env: { ...process.env, ...env },
       },
