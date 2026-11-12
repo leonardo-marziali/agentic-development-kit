@@ -98,8 +98,8 @@ test('--create-archunit-store creates the freeze baseline', (t) => {
     'target/classes/demo/A.class': 'cafebabe',
     [A]: 'class A {}\n',
   });
-  const past = new Date(Date.now() - 60_000);
-  fs.utimesSync(path.join(ctx.root, A), past, past);
+  fs.writeFileSync(path.join(ctx.root, 'mvnw'), '#!/bin/sh\nexit 0\n');
+  fs.chmodSync(path.join(ctx.root, 'mvnw'), 0o755);
 
   const res = cli('check.js', ['--create-archunit-store'], ctx);
 
@@ -122,4 +122,21 @@ test('--create-archunit-store fails when no module could be analysed', (t) => {
   assert.equal(res.status, 2);
   assert.doesNotMatch(res.stdout, /baseline written/);
   assert.match(res.stderr, /no module could be analysed/);
+});
+
+test('--create-archunit-store compiles first, so the baseline matches the current code', (t) => {
+  const ctx = project(t, {
+    '.claude/java-standards.json': JSON.stringify({ archunit: { basePackage: 'demo' } }),
+    'target/classes/demo/A.class': 'cafebabe',
+    [A]: 'class A {}\n',
+  });
+  fs.writeFileSync(path.join(ctx.root, 'mvnw'), `#!/bin/sh\necho "$@" >> "${ctx.root}/mvnw.log"\n`);
+  fs.chmodSync(path.join(ctx.root, 'mvnw'), 0o755);
+  const past = new Date(Date.now() - 60_000);
+  fs.utimesSync(path.join(ctx.root, A), past, past);
+
+  const res = cli('check.js', ['--create-archunit-store'], ctx);
+
+  assert.equal(res.status, 0, res.stderr);
+  assert.match(fs.readFileSync(path.join(ctx.root, 'mvnw.log'), 'utf8'), /compile test-compile/);
 });

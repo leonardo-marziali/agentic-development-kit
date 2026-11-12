@@ -77,7 +77,9 @@ function createStore() {
     process.stderr.write('java plugin: not inside a git repository.\n');
     process.exit(2);
   }
-  const config = configFor(repoRoot);
+  const base = configFor(repoRoot);
+  // A baseline must record the code as it is now, so it always compiles first.
+  const config = { ...base, archunit: { ...base.archunit, compile: 'always' } };
   const manifest = engineManifest();
   const { analysed } = runSection({
     repoRoot,
