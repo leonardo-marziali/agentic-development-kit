@@ -195,6 +195,50 @@ function compileEngine({ name, sources, classpath, outDir, java }) {
   }
 }
 
+function requireJava(java, minJava) {
+  if (!java || java.major < minJava) {
+    const found = java ? `; found JDK ${java.major} at ${java.bin}` : '; none found';
+    throw new ProvisionError(
+      `JDK ${minJava} or newer is required to run the java plugin's tools${found}. Set JAVA_HOME.`,
+    );
+  }
+}
+
+// Every pinned jar, by group, fetched concurrently: each one has its own destination.
+async function obtainJars(lock, dataDir, options) {
+  const groups = await Promise.all(
+    Object.entries(lock.groups).map(async ([group, entries]) => [
+      group,
+      await Promise.all(
+        entries.map((coords) =>
+          obtain(coords, path.join(dataDir, 'jars', group, artifactFileName(coords)), options),
+        ),
+      ),
+    ]),
+  );
+  return Object.fromEntries(groups);
+}
+
+/*
+ * Classes go in a directory named after the sources' hash, compiled aside
+ * and renamed into place: a session still running the previous engine
+ * keeps its classes while another session installs a new one.
+ */
+function compileInto(outDir, compileArgs, compile) {
+  const partial = `${outDir}.partial-${process.pid}`;
+  try {
+    compile({ ...compileArgs, outDir: partial });
+    try {
+      fs.renameSync(partial, outDir);
+    } catch (err) {
+      // Another install finished the same classes first: theirs are identical.
+      if (!fs.existsSync(outDir)) throw err;
+    }
+  } finally {
+    fs.rmSync(partial, { recursive: true, force: true });
+  }
+}
+
 async function install({
   dataDir = engineDataDir(),
   lock = loadLock(),
@@ -205,27 +249,9 @@ async function install({
   compile = compileEngine,
   log = () => {},
 } = {}) {
-  if (!java || java.major < lock.minJava) {
-    const found = java ? `; found JDK ${java.major} at ${java.bin}` : '; none found';
-    throw new ProvisionError(
-      `JDK ${lock.minJava} or newer is required to run the java plugin's tools${found}. Set JAVA_HOME.`,
-    );
-  }
+  requireJava(java, lock.minJava);
+  const jars = await obtainJars(lock, dataDir, { baseUrl, fromDir, log });
 
-  const jars = {};
-  for (const [group, entries] of Object.entries(lock.groups)) {
-    jars[group] = [];
-    for (const coords of entries) {
-      const dest = path.join(dataDir, 'jars', group, artifactFileName(coords));
-      jars[group].push(await obtain(coords, dest, { baseUrl, fromDir, log }));
-    }
-  }
-
-  /*
-   * Classes go in a directory named after the sources' hash, compiled aside
-   * and renamed into place: a session still running the previous engine
-   * keeps its classes while another session installs a new one.
-   */
   const hash = sourceHash(engineSrc);
   const classes = {};
   for (const [name, groups] of Object.entries(ENGINE_CLASSPATH)) {
@@ -233,24 +259,8 @@ async function install({
     if (sources.length === 0) continue;
     const outDir = path.join(dataDir, 'classes', `${name}-${hash.slice(0, 16)}`);
     if (!fs.existsSync(outDir)) {
-      const partial = `${outDir}.partial-${process.pid}`;
-      try {
-        compile({
-          name,
-          sources,
-          classpath: groups.flatMap((g) => jars[g] || []),
-          outDir: partial,
-          java,
-        });
-        try {
-          fs.renameSync(partial, outDir);
-        } catch (err) {
-          // Another install finished the same classes first: theirs are identical.
-          if (!fs.existsSync(outDir)) throw err;
-        }
-      } finally {
-        fs.rmSync(partial, { recursive: true, force: true });
-      }
+      const classpath = groups.flatMap((g) => jars[g] || []);
+      compileInto(outDir, { name, sources, classpath, java }, compile);
       log(`compiled ${name} engine`);
     }
     classes[name] = outDir;

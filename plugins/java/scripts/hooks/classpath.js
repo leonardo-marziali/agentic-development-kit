@@ -4,8 +4,8 @@
  * A module's dependency classpath, for compiling changed files with NullAway.
  * It comes from the project's own build tool — Maven's
  * dependency:build-classpath, or a Gradle init script — so nothing is added
- * to the build files. The result is cached per hash of the build files, so
- * the build tool runs again only when they change.
+ * to the build files. The result is cached per hash of the build files (and
+ * of the init script), so the build tool runs again only when they change.
  */
 
 const crypto = require('node:crypto');
@@ -18,6 +18,8 @@ const { timeoutFor } = require('./budget');
 const BUILD_TIMEOUT_MS = 120 * 1000;
 const FAILURE_TTL_MS = 30 * 60 * 1000;
 const INIT_SCRIPT = path.join(__dirname, 'print-classpath.gradle');
+// Part of every cache key: a changed init script must not be served the old one's classpath.
+const RESOLVER = fs.readFileSync(INIT_SCRIPT, 'utf8');
 const OUTPUT_DIRS = [
   'target/classes',
   'target/test-classes',
@@ -52,9 +54,13 @@ function wrapper(moduleRoot, name, fallback) {
   }
 }
 
-// Everything that can change the classpath: the module's and the root's build files, the catalog.
-function cacheKey(moduleRoot, javaHome) {
-  const hash = crypto.createHash('sha256').update(String(javaHome || ''));
+// Everything that can change the classpath: the module's and the root's build files, the catalog,
+// the JDK and the plugin's own resolver.
+function cacheKey(moduleRoot, javaHome, resolver = RESOLVER) {
+  const hash = crypto
+    .createHash('sha256')
+    .update(String(javaHome || ''))
+    .update(resolver);
   const candidates = [];
   for (let dir = moduleRoot; ; dir = path.dirname(dir)) {
     for (const name of [
@@ -137,8 +143,11 @@ function gradle(moduleRoot, javaHome) {
   );
   if (result.error || result.status !== 0) return { error: failure(result) };
   const lines = result.stdout.split('\n');
-  const pick = (prefix) =>
-    lines.filter((l) => l.startsWith(`${prefix} `)).map((l) => l.slice(prefix.length + 1).trim());
+  const pick = (prefix) => [
+    ...new Set(
+      lines.filter((l) => l.startsWith(`${prefix} `)).map((l) => l.slice(prefix.length + 1).trim()),
+    ),
+  ];
   return { classpath: pick('CP'), processorPath: pick('AP') };
 }
 
