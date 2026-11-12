@@ -6,9 +6,11 @@ import dev.adk.java.engine.SourceFile;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
+import org.eclipse.jdt.core.dom.ASTNode;
 import org.eclipse.jdt.core.dom.ASTVisitor;
 import org.eclipse.jdt.core.dom.Annotation;
 import org.eclipse.jdt.core.dom.ArrayInitializer;
+import org.eclipse.jdt.core.dom.BodyDeclaration;
 import org.eclipse.jdt.core.dom.Expression;
 import org.eclipse.jdt.core.dom.MemberValuePair;
 import org.eclipse.jdt.core.dom.NormalAnnotation;
@@ -18,6 +20,10 @@ import org.eclipse.jdt.core.dom.StringLiteral;
 /*
  * S28: paths name resources, never actions (no `/getProjects`).
  * S30: path variables are named after their resource (`{projectId}`, not `{id}`).
+ *
+ * Both skip internal endpoints: per S37 an event callback or HTTP RPC is marked
+ * `@Hidden` (on the method or its controller), isn't part of the public
+ * contract, and may use a verb.
  */
 final class RestPaths {
 
@@ -56,6 +62,16 @@ final class RestPaths {
         }
     }
 
+    // The annotated declaration, or any type enclosing it, carries @Hidden.
+    private static boolean isHidden(Annotation annotation) {
+        for (ASTNode node = annotation.getParent(); node != null; node = node.getParent()) {
+            if (node instanceof BodyDeclaration declaration && Ast.hasAnnotation(declaration, "Hidden")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private abstract static class PathRule implements Rule {
 
         @Override
@@ -75,7 +91,7 @@ final class RestPaths {
                 }
 
                 private void inspect(Annotation annotation) {
-                    if (MAPPINGS.stream().noneMatch(m -> Ast.isAnnotation(annotation, m))) {
+                    if (MAPPINGS.stream().noneMatch(m -> Ast.isAnnotation(annotation, m)) || isHidden(annotation)) {
                         return;
                     }
                     for (String path : paths(annotation)) {

@@ -9,11 +9,11 @@ import org.eclipse.jdt.core.dom.CompilationUnit;
  * A parsed file as the rules see it: no bindings, so rules reason about names
  * and syntax only.
  */
-public record SourceFile(Path path, String source, CompilationUnit ast, boolean isTest, int javaLevel,
+public record SourceFile(Path path, String source, CompilationUnit ast, boolean inTestSources, int javaLevel,
     String nullness, List<String> lines) {
 
     public static SourceFile of(Path path, String source, CompilationUnit ast, int javaLevel, String nullness) {
-        return new SourceFile(path, source, ast, isTestPath(path), javaLevel, nullness, List.of(source.split("\r?\n", -1)));
+        return new SourceFile(path, source, ast, isTestSourcePath(path), javaLevel, nullness, List.of(source.split("\r?\n", -1)));
     }
 
     public int line(ASTNode node) {
@@ -28,10 +28,13 @@ public record SourceFile(Path path, String source, CompilationUnit ast, boolean 
         return new Finding(line(node), rule, message);
     }
 
-    private static boolean isTestPath(Path path) {
-        String normalised = path.toString().replace('\\', '/');
-        String name = path.getFileName().toString();
-        return normalised.contains("/src/test/") || name.matches(".*(Test|Tests|IT)\\.java");
+    /** A test class: a `*Test.java` file under `src/test/` (helpers and `*IT` are not). */
+    public boolean isTestClass() {
+        return inTestSources && path.getFileName().toString().endsWith("Test.java");
+    }
+
+    private static boolean isTestSourcePath(Path path) {
+        return ("/" + path.toString().replace('\\', '/')).contains("/src/test/");
     }
 
 }

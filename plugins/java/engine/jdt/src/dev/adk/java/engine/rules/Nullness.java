@@ -63,7 +63,7 @@ final class Nullness implements Rule {
         List<Finding> findings = new ArrayList<>();
         String library = library(file, mode);
         checkImports(file, mode, findings);
-        if (!file.isTest()) {
+        if (!file.inTestSources()) {
             checkPackageDefault(file, library, findings);
         }
         checkReturnNull(file, findings);

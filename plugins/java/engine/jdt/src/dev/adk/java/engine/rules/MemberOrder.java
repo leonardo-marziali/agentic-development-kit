@@ -17,7 +17,8 @@ import org.eclipse.jdt.core.dom.TypeDeclaration;
 
 /*
  * J9: constants, fields, constructors, public methods, other methods, nested
- * types — in that order, in every type. Initializers and annotation members
+ * types — in that order, in every type. Initializers, annotation members and
+ * `protected abstract` methods (a mapper's proxies, a template method's hooks)
  * have no slot and are skipped. The finding goes on each member that comes
  * after one of a later kind.
  */
@@ -80,6 +81,9 @@ final class MemberOrder implements Rule {
         if (member instanceof MethodDeclaration method) {
             if (method.isConstructor()) {
                 return 2;
+            }
+            if (Modifier.isProtected(modifiers) && Modifier.isAbstract(modifiers)) {
+                return -1;
             }
             boolean interfaceMember = owner instanceof TypeDeclaration t && t.isInterface();
             return Modifier.isPublic(modifiers) || (interfaceMember && !Modifier.isPrivate(modifiers)) ? 3 : 4;

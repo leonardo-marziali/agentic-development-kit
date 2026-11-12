@@ -19,7 +19,7 @@ final class TestShortcuts implements Rule {
 
     @Override
     public List<Finding> check(SourceFile file) {
-        if (!file.isTest()) {
+        if (!file.isTestClass()) {
             return List.of();
         }
         List<Finding> findings = new ArrayList<>();
