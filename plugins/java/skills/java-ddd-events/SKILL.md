@@ -1,6 +1,6 @@
 ---
 name: java-ddd-events
-description: 'Use when modelling domain objects, state machines, events, messaging or scheduled jobs in a project that follows the java-standards opt-in. Covers plain-Java domain classes, construction and invariants, step builders, rehydration, explicit state machines, optimistic locking, the transactional outbox, idempotent consumers, versioned schemas and safe scheduled jobs (rules D1 to D11).'
+description: 'Use when modelling domain objects, state machines, events, messaging or scheduled jobs in a project that follows the java-standards opt-in. Covers plain-Java domain classes, construction and invariants, step builders, rehydration, explicit state machines, optimistic locking, the transactional outbox, idempotent consumers, versioned schemas, safe scheduled jobs and grouping related values (rules D1 to D12).'
 paths: '**/*.java, **/pom.xml, **/build.gradle*'
 ---
 
@@ -132,3 +132,41 @@ repository.
 
 **D11. Safe scheduled jobs.** Scheduled jobs in a cluster use a distributed
 lock, and each job has its own on/off switch.
+
+### Value grouping
+
+**D12. Group what belongs together.** Values that form one concept in the
+domain are one type wherever they're modelled: a value object in the domain, a
+nested DTO in the API, an `@Embeddable` in a JPA entity and an embedded
+document in MongoDB. An address is an `Address`, never `addressStreet`,
+`addressCity` and `addressZipCode` side by side. The group carries its own
+validation and behavior, and each layer maps it with one mapper method.
+`AuditEmbeddable` (see S47) is one such group.
+
+The grouping lives in the object model only. In the database the group stays
+columns of the owning table, which is how `@Embeddable` maps it, and raw SQL
+persistence (Spring Data JDBC, jOOQ, hand-written SQL) isn't modelled this
+way, because a table per group costs a join on every read.
+
+```java
+@Entity
+class CustomerEntity {
+
+    @Embedded
+    private AddressEmbeddable address;
+
+}
+
+@Embeddable
+@Getter
+@Setter
+class AddressEmbeddable {
+
+    private String street;
+
+    private String city;
+
+    private String zipCode;
+
+}
+```

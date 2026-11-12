@@ -1,6 +1,6 @@
 ---
 name: spring-boot-architecture
-description: 'Use when designing or changing Spring Boot services, controllers, configuration or package layout in a project that follows the java-standards opt-in. Covers Lombok, logging, constructor injection, typed configuration, visibility of managed classes, how domain objects cross the layers, the update flow with ETag and If-Match, entity versus use case services, and package by feature (rules S1 to S12 and S25).'
+description: 'Use when designing or changing Spring Boot services, controllers, configuration or package layout in a project that follows the java-standards opt-in. Covers Lombok, logging, constructor injection, typed configuration, visibility of managed classes, how domain objects cross the layers, the update flow with ETag and If-Match, entity versus use case services, use cases taking one builder-built *Command, package by feature, hierarchical property keys and controller paths in api-paths.properties (rules S1 to S12, S25, S61 and S62).'
 paths: '**/*.java, **/pom.xml, **/build.gradle*'
 ---
 
@@ -146,8 +146,25 @@ own class, following the Use Case or Interactor pattern from Robert Martin's
 _Clean Architecture_: one class per use case, orchestrating entities and
 gateways. Name it `<DomainEntity><Process>UseCase`, for example
 `OrderPreparationUseCase`. It exposes a single public method, always named
-`handle`, so every use case is invoked the same way:
-`orderPreparationUseCase.handle(order)`.
+`handle`, so every use case is invoked the same way.
+
+`handle` never takes separate arguments. Its input is one command,
+`<DomainEntity><Process>Command`: a record next to the use case that carries
+everything the process needs, built with a fluent builder (Lombok's
+`@Builder`, or a step builder when the values are mandatory, see D4). The use
+case may also offer the `Consumer` overload of J26. A use case without input,
+such as a scheduled one, has `handle()`. ArchUnit checks both the signature
+and the command's static `builder()`.
+
+```java
+orderPreparationUseCase.handle(OrderPreparationCommand.builder()
+    .orderId(orderId)
+    .warehouseId(warehouseId)
+    .build());
+
+orderPreparationUseCase.handle(command -> command.orderId(orderId)
+    .warehouseId(warehouseId));
+```
 
 **S12. Services work on the domain.** Entity and use case services alike
 handle only domain objects. They pass those objects to the repository layer,
@@ -188,3 +205,41 @@ com.company.app
 Controllers that only read and controllers that also write are separate classes
 in the same package, so they can share the package-private DTOs and mapper (see
 S17).
+
+## Configuration files
+
+**S61. Hierarchical property keys.** A property key is a dot-separated path
+from the most general segment to the most specific one: the owner (one of our
+features, or a remote system), then the area, then the detail, such as
+`paypal.api.payments.path` or `scheduler.order.cleanup.lock-at-most`. Each
+segment is lower-case kebab-case. A value used by several keys is defined once
+and referenced with `${…}`, so a base path or a host changes in one place, and
+keys under one prefix bind to one `@ConfigurationProperties` record (see S4).
+Related keys sit together under a comment heading, such as `### PAYPAL ###`.
+
+**S62. Endpoint paths live in `api-paths.properties`.** Every controller path
+is a key in `src/main/resources/api-paths.properties`, loaded by one
+`@PropertySource` configuration class, and each mapping annotation references
+its key as a single placeholder: no literal paths and no class-level prefix.
+The file lists the whole API surface in one place, the version prefix composes
+from one base path, and S28 to S30 apply to the resolved paths.
+
+```properties
+api.v1.version=v1
+api.v1.base-path=/api/${api.v1.version}
+### PROJECTS ###
+api.v1.projects.path=${api.v1.base-path}/projects
+api.v1.projects.id.path=${api.v1.projects.path}/{projectId}
+api.v1.projects.id.tasks.path=${api.v1.projects.id.path}/tasks
+```
+
+```java
+@Configuration
+@PropertySource("classpath:api-paths.properties")
+class ApiPathsConfig {
+    // Loads the controller paths that the mappings reference as ${…} placeholders.
+}
+
+@GetMapping("${api.v1.projects.id.path}")
+ResponseEntity<ProjectReadDto> findById(@PathVariable UUID projectId);
+```

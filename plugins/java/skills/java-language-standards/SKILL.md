@@ -1,6 +1,6 @@
 ---
 name: java-language-standards
-description: 'Use when writing or reviewing Java code in a project that follows the java-standards opt-in. Covers Javadoc and comments, naming, member, field and argument order, var, text blocks, records and sealed types, imports, visibility, overloads for optional arguments, null-safety with JSpecify and NullAway, Optional, reuse, utility classes and explained empty bodies (rules J1 to J25).'
+description: 'Use when writing or reviewing Java code in a project that follows the java-standards opt-in. Covers Javadoc and comments, naming, member, field and argument order, var, text blocks, records and sealed types, imports, visibility, overloads for optional arguments, null-safety with JSpecify and NullAway, Optional, reuse, utility classes, explained empty bodies and builders for long argument lists (rules J1 to J26).'
 paths: '**/*.java, **/pom.xml, **/build.gradle*'
 ---
 
@@ -167,3 +167,35 @@ comment saying why it does nothing, for example a no-op hook, a framework
 constructor or a deliberately ignored callback. A Javadoc above the method
 doesn't count: the explanation goes inside the braces, where the reader sees
 them empty.
+
+**J26. Builders for long argument lists.** A method with more than seven
+parameters takes one parameter object instead, built with a fluent builder, so
+every value is named at the call site. Better still, also accept a `Consumer`
+of that builder, the way the AWS SDK v2 configures its requests: the caller
+fills in only what it needs inside a lambda, and the method builds the object.
+A constructor with that many parameters needs a builder too (a step builder
+for mandatory values, see D4), or, when they're injected dependencies, a
+split class. An `@Override` keeps the signature it inherits, and a record's
+canonical constructor mirrors its components.
+
+```java
+public interface ReportGenerator {
+
+    Report generate(ReportRequest request);
+
+    default Report generate(Consumer<ReportRequest.Builder> request) {
+
+        ReportRequest.Builder builder = ReportRequest.builder();
+        request.accept(builder);
+        return generate(builder.build());
+    }
+
+}
+
+reportGenerator.generate(request -> request.projectId(projectId)
+    .period(period)
+    .format(ReportFormat.PDF));
+```
+
+With Lombok, `@Builder(builderClassName = "Builder")` on the record names the
+builder `ReportRequest.Builder`.

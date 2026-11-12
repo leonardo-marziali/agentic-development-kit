@@ -173,6 +173,38 @@ constructor or a deliberately ignored callback. A Javadoc above the method
 doesn't count: the explanation goes inside the braces, where the reader sees
 them empty.
 
+**J26. Builders for long argument lists.** A method with more than seven
+parameters takes one parameter object instead, built with a fluent builder, so
+every value is named at the call site. Better still, also accept a `Consumer`
+of that builder, the way the AWS SDK v2 configures its requests: the caller
+fills in only what it needs inside a lambda, and the method builds the object.
+A constructor with that many parameters needs a builder too (a step builder
+for mandatory values, see D4), or, when they're injected dependencies, a
+split class. An `@Override` keeps the signature it inherits, and a record's
+canonical constructor mirrors its components.
+
+```java
+public interface ReportGenerator {
+
+    Report generate(ReportRequest request);
+
+    default Report generate(Consumer<ReportRequest.Builder> request) {
+
+        ReportRequest.Builder builder = ReportRequest.builder();
+        request.accept(builder);
+        return generate(builder.build());
+    }
+
+}
+
+reportGenerator.generate(request -> request.projectId(projectId)
+    .period(period)
+    .format(ReportFormat.PDF));
+```
+
+With Lombok, `@Builder(builderClassName = "Builder")` on the record names the
+builder `ReportRequest.Builder`.
+
 ## 2. Build (Maven and Gradle)
 
 **B1. Choose versions deliberately.** Before adding a library, check which
@@ -414,8 +446,25 @@ own class, following the Use Case or Interactor pattern from Robert Martin's
 _Clean Architecture_: one class per use case, orchestrating entities and
 gateways. Name it `<DomainEntity><Process>UseCase`, for example
 `OrderPreparationUseCase`. It exposes a single public method, always named
-`handle`, so every use case is invoked the same way:
-`orderPreparationUseCase.handle(order)`.
+`handle`, so every use case is invoked the same way.
+
+`handle` never takes separate arguments. Its input is one command,
+`<DomainEntity><Process>Command`: a record next to the use case that carries
+everything the process needs, built with a fluent builder (Lombok's
+`@Builder`, or a step builder when the values are mandatory, see D4). The use
+case may also offer the `Consumer` overload of J26. A use case without input,
+such as a scheduled one, has `handle()`. ArchUnit checks both the signature
+and the command's static `builder()`.
+
+```java
+orderPreparationUseCase.handle(OrderPreparationCommand.builder()
+    .orderId(orderId)
+    .warehouseId(warehouseId)
+    .build());
+
+orderPreparationUseCase.handle(command -> command.orderId(orderId)
+    .warehouseId(warehouseId));
+```
 
 **S12. Services work on the domain.** Entity and use case services alike
 handle only domain objects. They pass those objects to the repository layer,
@@ -1353,7 +1402,8 @@ the feature that uses it, for example `payment.client.http.PayPalHttpClient`.
   or an `@HttpExchange` interface backed by it, and configure it through
   properties and Spring Boot's builder customizers rather than by hand (see S5).
   The base URL, timeouts and credentials come from `@ConfigurationProperties`
-  (see S4).
+  (see S4 and S60). With more than two operations, the interface is generated
+  from the remote's OpenAPI specification (see S59).
 - **Always set timeouts.** Connect and read timeouts are explicit for every
   client. A default of "wait forever" isn't acceptable.
 - **Authentication through Spring.** OAuth2 client credentials go through
@@ -1377,6 +1427,125 @@ alone, Spring Framework 7 and later has `@Retryable` built in.
   doesn't trip the others.
 - A fallback returns something meaningful or fails with a clear error. It never
   hides the failure behind an empty result.
+
+**S59. Generated clients from OpenAPI.** When we call more than two operations
+of a remote API that has an OpenAPI specification, the client is generated
+with OpenAPI Generator rather than written by hand. For a public product, look
+for its specification online first: the vendor's developer portal, its GitHub
+organization, or the APIs.guru directory. For an internal service, use the
+specification its build generates (see B8). With one or two operations, a
+hand-written `@HttpExchange` interface is simpler than a generator setup.
+
+- **The specification is committed** under `src/main/resources/openapi/`, so a
+  vendor change arrives as a reviewed diff. The generated code isn't
+  committed: the build generates it.
+- **Spring HTTP interfaces.** Use the `spring` generator with the
+  `spring-http-interface` library and
+  `useHttpServiceProxyFactoryInterfacesConfigurator`, so the generated
+  interfaces run on our configured `RestClient` (see S57).
+- **Behind the client.** The generated API and models are used only by the
+  `<Target>HttpClient` implementation, which maps them to domain objects with a
+  MapStruct mapper, so nothing generated leaks into the services.
+
+```xml
+<plugin>
+  <groupId>org.openapitools</groupId>
+  <artifactId>openapi-generator-maven-plugin</artifactId>
+  <version>${openapi-generator-maven-plugin.version}</version>
+  <executions>
+    <execution>
+      <id>paypal-payments</id>
+      <goals>
+        <goal>generate</goal>
+      </goals>
+      <configuration>
+        <inputSpec>${project.basedir}/src/main/resources/openapi/paypal-payments.yaml</inputSpec>
+        <generatorName>spring</generatorName>
+        <library>spring-http-interface</library>
+        <apiPackage>com.company.app.payment.client.http.paypal.api</apiPackage>
+        <modelPackage>com.company.app.payment.client.http.paypal.model</modelPackage>
+        <configOptions>
+          <useSpringBoot3>true</useSpringBoot3>
+          <useHttpServiceProxyFactoryInterfacesConfigurator>true</useHttpServiceProxyFactoryInterfacesConfigurator>
+          <openApiNullable>false</openApiNullable>
+        </configOptions>
+      </configuration>
+    </execution>
+  </executions>
+</plugin>
+```
+
+On Spring Boot 4, set `useSpringBoot4` instead of `useSpringBoot3`.
+
+**S60. Outbound URLs live in properties.** No URL is written in code. Each
+remote system's protocol, host, version and endpoint paths are properties named
+as S61 describes, composed with placeholders and bound with
+`@ConfigurationProperties` (see S4). A remote with many endpoints gets its own
+file, such as `paypal-api.properties`, loaded with `@PropertySource` the way
+`api-paths.properties` is (see S62), so `application.properties` stays
+readable. Values that change per environment come from environment variables.
+
+```properties
+### PAYPAL ###
+paypal.api.protocol=https
+paypal.api.host=${PAYPAL_API_HOST:api-m.sandbox.paypal.com}
+paypal.api.version=v2
+paypal.api.base-url=${paypal.api.protocol}://${paypal.api.host}/${paypal.api.version}
+paypal.api.payments.path=/payments
+paypal.api.payments.id.path=${paypal.api.payments.path}/{paymentId}
+paypal.api.connect-timeout=2s
+paypal.api.read-timeout=5s
+```
+
+```java
+@Configuration
+@PropertySource("classpath:paypal-api.properties")
+@EnableConfigurationProperties(PayPalApiProperties.class)
+class PayPalHttpClientConfig {
+    // Loads PayPal's endpoints and binds them to PayPalApiProperties.
+}
+
+@ConfigurationProperties("paypal.api")
+record PayPalApiProperties(String baseUrl, Duration connectTimeout, Duration readTimeout) {}
+```
+
+### Configuration files
+
+**S61. Hierarchical property keys.** A property key is a dot-separated path
+from the most general segment to the most specific one: the owner (one of our
+features, or a remote system), then the area, then the detail, such as
+`paypal.api.payments.path` or `scheduler.order.cleanup.lock-at-most`. Each
+segment is lower-case kebab-case. A value used by several keys is defined once
+and referenced with `${…}`, so a base path or a host changes in one place, and
+keys under one prefix bind to one `@ConfigurationProperties` record (see S4).
+Related keys sit together under a comment heading, such as `### PAYPAL ###`.
+
+**S62. Endpoint paths live in `api-paths.properties`.** Every controller path
+is a key in `src/main/resources/api-paths.properties`, loaded by one
+`@PropertySource` configuration class, and each mapping annotation references
+its key as a single placeholder: no literal paths and no class-level prefix.
+The file lists the whole API surface in one place, the version prefix composes
+from one base path, and S28 to S30 apply to the resolved paths.
+
+```properties
+api.v1.version=v1
+api.v1.base-path=/api/${api.v1.version}
+### PROJECTS ###
+api.v1.projects.path=${api.v1.base-path}/projects
+api.v1.projects.id.path=${api.v1.projects.path}/{projectId}
+api.v1.projects.id.tasks.path=${api.v1.projects.id.path}/tasks
+```
+
+```java
+@Configuration
+@PropertySource("classpath:api-paths.properties")
+class ApiPathsConfig {
+    // Loads the controller paths that the mappings reference as ${…} placeholders.
+}
+
+@GetMapping("${api.v1.projects.id.path}")
+ResponseEntity<ProjectReadDto> findById(@PathVariable UUID projectId);
+```
 
 ## 4. Domain-Driven and Event-Driven Design
 
@@ -1492,6 +1661,44 @@ repository.
 
 **D11. Safe scheduled jobs.** Scheduled jobs in a cluster use a distributed
 lock, and each job has its own on/off switch.
+
+### Value grouping
+
+**D12. Group what belongs together.** Values that form one concept in the
+domain are one type wherever they're modelled: a value object in the domain, a
+nested DTO in the API, an `@Embeddable` in a JPA entity and an embedded
+document in MongoDB. An address is an `Address`, never `addressStreet`,
+`addressCity` and `addressZipCode` side by side. The group carries its own
+validation and behavior, and each layer maps it with one mapper method.
+`AuditEmbeddable` (see S47) is one such group.
+
+The grouping lives in the object model only. In the database the group stays
+columns of the owning table, which is how `@Embeddable` maps it, and raw SQL
+persistence (Spring Data JDBC, jOOQ, hand-written SQL) isn't modelled this
+way, because a table per group costs a join on every read.
+
+```java
+@Entity
+class CustomerEntity {
+
+    @Embedded
+    private AddressEmbeddable address;
+
+}
+
+@Embeddable
+@Getter
+@Setter
+class AddressEmbeddable {
+
+    private String street;
+
+    private String city;
+
+    private String zipCode;
+
+}
+```
 
 ## 5. Testing
 

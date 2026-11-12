@@ -44,6 +44,8 @@ justified exception with `// java-rules:allow <ID> <reason>`.
 - J23 Static-only classes are `@UtilityClass`.
 - J24 Same concept, same type and format across DTOs, domain and entities.
 - J25 An empty method or constructor body holds a comment saying why.
+- J26 More than 7 parameters: one parameter object with a fluent builder,
+  plus a `Consumer<X.Builder>` overload (AWS SDK v2 style).
 
 ## Build
 
@@ -72,7 +74,9 @@ justified exception with `// java-rules:allow <ID> <reason>`.
 - S8–S9 Controller orchestrates (DTO → domain, `If-Match` → version, call
   service, `ETag` back), no business decisions.
 - S10–S12 `<Entity>Service` is small CRUD; a multi-step process is a use
-  case `<Entity><Process>UseCase` with one public `handle` method.
+  case `<Entity><Process>UseCase` with one public `handle` method taking
+  one `<Entity><Process>Command` record that has a static `builder()`
+  (or a `Consumer` of its builder, or nothing).
 - S13 Models: `*ReadDto`, `*WriteDto`, `*FilterDto`, domain, `*Filter`,
   `*Entity` — only those needed.
 - S14 Read DTOs `@Value @Builder`; write/filter DTOs `@Data`.
@@ -109,6 +113,15 @@ justified exception with `// java-rules:allow <ID> <reason>`.
 - S54–S56 Cache only stale-tolerant data, with a TTL; Logbook with masking.
 - S57–S58 One `<Target>HttpClient` per remote system on `RestClient`,
   speaking the domain, with timeouts; Resilience4j per remote.
+- S59 More than 2 operations of a remote with an OpenAPI spec (look for a
+  public product's spec online): generate the client (`spring` generator,
+  `spring-http-interface`), spec committed, generated code behind the client.
+- S60 No URL in code: protocol, host, version, paths in properties (own
+  file such as `paypal-api.properties` via `@PropertySource` when many).
+- S61 Property keys: dotted hierarchy, general to specific, kebab-case
+  (`paypal.api.payments.path`); shared values via `${…}`.
+- S62 Controller paths are keys in `api-paths.properties`; mappings use one
+  placeholder: `@GetMapping("${api.v1.projects.id.path}")`.
 
 ## Domain and events
 
@@ -120,6 +133,9 @@ justified exception with `// java-rules:allow <ID> <reason>`.
 - D6–D7 Explicit state machines; optimistic locking.
 - D8–D11 Transactional outbox; idempotent consumers; versioned event
   schemas; locked, switchable scheduled jobs.
+- D12 Values that belong together are one type: domain value object,
+  nested DTO, `@Embeddable` (columns of the same table); raw SQL rows stay
+  flat.
 
 ## Testing
 

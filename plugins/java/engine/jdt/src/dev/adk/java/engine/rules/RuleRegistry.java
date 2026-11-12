@@ -20,6 +20,7 @@ public final class RuleRegistry {
         new TestShortcuts(),
         new MemberOrder(),
         new EmptyBodies(),
+        new LongParameterLists(),
         new VarUsage(),
         new TextBlocks(),
         new OptionalReturnOnly(),
@@ -31,6 +32,9 @@ public final class RuleRegistry {
         new MapperStyle(),
         new RestPaths.Nouns(),
         new RestPaths.VariableNames(),
+        new RestPaths.ConfiguredPaths(),
+        new OutboundUrls(),
+        new ValueGroups(),
         new ProblemDetails(),
         new NativeQueries(),
         new Nullness());

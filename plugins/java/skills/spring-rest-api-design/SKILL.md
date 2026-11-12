@@ -1,6 +1,6 @@
 ---
 name: spring-rest-api-design
-description: 'Use when adding or changing REST endpoints, request and response DTOs, validation, OpenAPI annotations, pagination or error handling in a project that follows the java-standards opt-in. Covers Richardson level 2, standard HTTP and RFC features, resource naming, PATCH with JSON Merge Patch and JSON Patch, validation split, OpenAPI documentation, PageableDto and PageDto, ProblemDetail errors and bulk operations (rules S26 to S43).'
+description: 'Use when adding or changing REST endpoints, request and response DTOs, validation, OpenAPI annotations, pagination or error handling in a project that follows the java-standards opt-in. Covers Richardson level 2, standard HTTP and RFC features, resource naming, PATCH with JSON Merge Patch and JSON Patch, validation split, OpenAPI documentation, PageableDto and PageDto, ProblemDetail errors, bulk operations and controller paths kept in api-paths.properties (rules S26 to S43, S61 and S62).'
 paths: '**/*.java, **/pom.xml, **/build.gradle*'
 ---
 
@@ -393,3 +393,41 @@ entry. When it isn't one transaction:
   each entry, with the same kind of useful message as S42.
 
 This applies to scheduled jobs as well as to API calls (see S49 and D11).
+
+## Configuration files
+
+**S61. Hierarchical property keys.** A property key is a dot-separated path
+from the most general segment to the most specific one: the owner (one of our
+features, or a remote system), then the area, then the detail, such as
+`paypal.api.payments.path` or `scheduler.order.cleanup.lock-at-most`. Each
+segment is lower-case kebab-case. A value used by several keys is defined once
+and referenced with `${…}`, so a base path or a host changes in one place, and
+keys under one prefix bind to one `@ConfigurationProperties` record (see S4).
+Related keys sit together under a comment heading, such as `### PAYPAL ###`.
+
+**S62. Endpoint paths live in `api-paths.properties`.** Every controller path
+is a key in `src/main/resources/api-paths.properties`, loaded by one
+`@PropertySource` configuration class, and each mapping annotation references
+its key as a single placeholder: no literal paths and no class-level prefix.
+The file lists the whole API surface in one place, the version prefix composes
+from one base path, and S28 to S30 apply to the resolved paths.
+
+```properties
+api.v1.version=v1
+api.v1.base-path=/api/${api.v1.version}
+### PROJECTS ###
+api.v1.projects.path=${api.v1.base-path}/projects
+api.v1.projects.id.path=${api.v1.projects.path}/{projectId}
+api.v1.projects.id.tasks.path=${api.v1.projects.id.path}/tasks
+```
+
+```java
+@Configuration
+@PropertySource("classpath:api-paths.properties")
+class ApiPathsConfig {
+    // Loads the controller paths that the mappings reference as ${…} placeholders.
+}
+
+@GetMapping("${api.v1.projects.id.path}")
+ResponseEntity<ProjectReadDto> findById(@PathVariable UUID projectId);
+```

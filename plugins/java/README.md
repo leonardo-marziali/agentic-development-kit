@@ -10,7 +10,7 @@ runs **outside the project's build**, and every opinion is **opt-in per
 project**.
 
 The standard itself is [standards/java-standards.md](standards/java-standards.md)
-(rules J1–J25, B1–B10, S1–S58, D1–D11, T1–T7).
+(rules J1–J26, B1–B10, S1–S62, D1–D12, T1–T7).
 
 ## What This Plugin Provides
 
@@ -40,21 +40,27 @@ blocks the stop while findings remain **on lines the session changed**
 (findings on older lines are listed but never block). Claude gets one
 report with these sections, capped at 3 attempts per session:
 
-- **Source rules**: about 40 checks on JDT's syntax tree (no compilation),
+- **Source rules**: about 45 checks on JDT's syntax tree (no compilation),
   each named by its rule ID. Examples: wildcard imports (J16), empty
-  bodies without a comment (J25), `@Autowired` (S3), `@Value("${…}")` (S4),
-  `@Data` on entities (S15), `expression = "java(…)"` in mappers (S21),
-  verbs in paths (S28), and the JSpecify
+  bodies without a comment (J25), more than 7 parameters (J26),
+  `@Autowired` (S3), `@Value("${…}")` (S4), `@Data` on entities (S15),
+  `expression = "java(…)"` in mappers (S21), verbs in paths (S28), URLs in
+  production code (S60), controller paths not taken from
+  `api-paths.properties` (S62), three or more fields that share a prefix in
+  an entity, DTO or domain class (D12, a heuristic), and the JSpecify
   annotation rules for J20 (`@NullMarked` packages, one nullness library,
   `return null` only from `@Nullable` methods). REST path rules skip
-  `@Hidden` internal endpoints (S37), and the test rules (T2, T7) check
-  `*Test` classes under `src/test`.
+  `@Hidden` internal endpoints (S37) and check a `${…}` path as resolved
+  from the module's `src/main/resources/*.properties`, and the test rules
+  (T2, T7) check `*Test` classes under `src/test`. S59 (generated OpenAPI
+  clients) and S61 (property key names) are guidance only.
 - **Build files**: literal dependency versions (B2) and a missing Java
   version (B4) in `pom.xml` / `build.gradle(.kts)`.
 - **NullAway**: the changed files compiled with javac + Error Prone +
   NullAway against the module's own classpath (J20).
 - **ArchUnit**: the standard's architecture rules (S24 method vocabulary
-  and one public `handle` per `*UseCase`, S7 domain-only service
+  and one public `handle` per `*UseCase`, S11 a single `*Command`
+  argument whose class has a static `builder()`, S7 domain-only service
   signatures, D1 domain purity, D5 `rehydrate` callers, S47 audit fields,
   S40 error advice, S6 visibility, S25 cycles) over the module's compiled
   classes, plus the project's own rules.

@@ -41,6 +41,14 @@ public final class StandardRules {
         rules.put("S24-usecase", classes().that().haveSimpleNameEndingWith("UseCase").and().areNotInterfaces()
             .should(haveOnlyPublicHandle())
             .because("a use case exposes exactly one public method, handle (S24)"));
+        rules.put("S11", methods().that().areDeclaredInClassesThat().haveSimpleNameEndingWith("UseCase")
+            .and().areDeclaredInClassesThat().areNotInterfaces().and().arePublic().and().haveName("handle")
+            .should(takeOneCommand())
+            .because("a use case takes its input as one *Command, or a Consumer of the command's builder (S11)"));
+        rules.put("S11-builder", classes().that().haveSimpleNameEndingWith("Command").and().areNotInterfaces()
+            .and().areNotEnums().and().areTopLevelClasses()
+            .should(haveStaticBuilder())
+            .because("a command is built with a fluent builder, through a static builder() method (S11)"));
         rules.put("S7", methods().that().areDeclaredInClassesThat().resideInAnyPackage("..service..", "..persistence..")
             .and().areDeclaredInClassesThat().areInterfaces().and().arePublic()
             .should(speakOnlyDomainObjects())
@@ -102,12 +110,49 @@ public final class StandardRules {
                     .filter(method -> !method.getModifiers().contains(JavaModifier.SYNTHETIC)
                         && !method.getModifiers().contains(JavaModifier.BRIDGE))
                     .map(JavaMethod::getName)
+                    .distinct()
                     .sorted()
                     .toList();
                 if (!publicMethods.equals(List.of("handle"))) {
                     events.add(SimpleConditionEvent.violated(javaClass, "Class <" + javaClass.getName()
                         + "> has public methods " + publicMethods + " instead of only handle in "
                         + javaClass.getSourceCodeLocation()));
+                }
+            }
+        };
+    }
+
+    // handle(), handle(XCommand) or handle(Consumer<XCommand.Builder>): never a list of separate arguments.
+    private static ArchCondition<JavaMethod> takeOneCommand() {
+        return new ArchCondition<>("take one *Command") {
+            @Override
+            public void check(JavaMethod method, ConditionEvents events) {
+                if (method.getModifiers().contains(JavaModifier.SYNTHETIC) || method.getModifiers().contains(JavaModifier.BRIDGE)) {
+                    return;
+                }
+                List<JavaClass> parameters = method.getRawParameterTypes();
+                boolean command = parameters.isEmpty() || parameters.size() == 1
+                    && (parameters.get(0).getSimpleName().endsWith("Command")
+                        || parameters.get(0).getName().equals("java.util.function.Consumer"));
+                if (!command) {
+                    events.add(SimpleConditionEvent.violated(method, method.getDescription() + " takes "
+                        + parameters.stream().map(JavaClass::getSimpleName).toList()
+                        + " instead of one <Entity><Process>Command in " + method.getSourceCodeLocation()));
+                }
+            }
+        };
+    }
+
+    private static ArchCondition<JavaClass> haveStaticBuilder() {
+        return new ArchCondition<>("have a static builder() method") {
+            @Override
+            public void check(JavaClass javaClass, ConditionEvents events) {
+                boolean builder = javaClass.getMethods().stream()
+                    .anyMatch(method -> method.getName().equals("builder") && method.getParameters().isEmpty()
+                        && method.getModifiers().contains(JavaModifier.STATIC));
+                if (!builder) {
+                    events.add(SimpleConditionEvent.violated(javaClass, "Class <" + javaClass.getName()
+                        + "> has no static builder() method in " + javaClass.getSourceCodeLocation()));
                 }
             }
         };

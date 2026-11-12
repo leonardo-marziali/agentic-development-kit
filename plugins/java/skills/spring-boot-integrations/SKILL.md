@@ -1,6 +1,6 @@
 ---
 name: spring-boot-integrations
-description: 'Use when adding caching, Logbook HTTP logging, outbound HTTP clients or Resilience4j in a project that follows the java-standards opt-in. Covers stale-tolerant Spring Cache use, Logbook configuration and masking, one RestClient-based client per remote system speaking the domain, timeouts, OAuth2 client credentials and fault tolerance (rules S54 to S58).'
+description: 'Use when adding caching, Logbook HTTP logging, outbound HTTP clients or Resilience4j in a project that follows the java-standards opt-in. Covers stale-tolerant Spring Cache use, Logbook configuration and masking, one RestClient-based client per remote system speaking the domain, timeouts, OAuth2 client credentials, fault tolerance, clients generated from OpenAPI specifications and outbound URLs kept in properties (rules S54 to S60).'
 paths: '**/*.java, **/pom.xml, **/build.gradle*'
 ---
 
@@ -87,7 +87,8 @@ the feature that uses it, for example `payment.client.http.PayPalHttpClient`.
   or an `@HttpExchange` interface backed by it, and configure it through
   properties and Spring Boot's builder customizers rather than by hand (see S5).
   The base URL, timeouts and credentials come from `@ConfigurationProperties`
-  (see S4).
+  (see S4 and S60). With more than two operations, the interface is generated
+  from the remote's OpenAPI specification (see S59).
 - **Always set timeouts.** Connect and read timeouts are explicit for every
   client. A default of "wait forever" isn't acceptable.
 - **Authentication through Spring.** OAuth2 client credentials go through
@@ -111,3 +112,84 @@ alone, Spring Framework 7 and later has `@Retryable` built in.
   doesn't trip the others.
 - A fallback returns something meaningful or fails with a clear error. It never
   hides the failure behind an empty result.
+
+**S59. Generated clients from OpenAPI.** When we call more than two operations
+of a remote API that has an OpenAPI specification, the client is generated
+with OpenAPI Generator rather than written by hand. For a public product, look
+for its specification online first: the vendor's developer portal, its GitHub
+organization, or the APIs.guru directory. For an internal service, use the
+specification its build generates (see B8). With one or two operations, a
+hand-written `@HttpExchange` interface is simpler than a generator setup.
+
+- **The specification is committed** under `src/main/resources/openapi/`, so a
+  vendor change arrives as a reviewed diff. The generated code isn't
+  committed: the build generates it.
+- **Spring HTTP interfaces.** Use the `spring` generator with the
+  `spring-http-interface` library and
+  `useHttpServiceProxyFactoryInterfacesConfigurator`, so the generated
+  interfaces run on our configured `RestClient` (see S57).
+- **Behind the client.** The generated API and models are used only by the
+  `<Target>HttpClient` implementation, which maps them to domain objects with a
+  MapStruct mapper, so nothing generated leaks into the services.
+
+```xml
+<plugin>
+  <groupId>org.openapitools</groupId>
+  <artifactId>openapi-generator-maven-plugin</artifactId>
+  <version>${openapi-generator-maven-plugin.version}</version>
+  <executions>
+    <execution>
+      <id>paypal-payments</id>
+      <goals>
+        <goal>generate</goal>
+      </goals>
+      <configuration>
+        <inputSpec>${project.basedir}/src/main/resources/openapi/paypal-payments.yaml</inputSpec>
+        <generatorName>spring</generatorName>
+        <library>spring-http-interface</library>
+        <apiPackage>com.company.app.payment.client.http.paypal.api</apiPackage>
+        <modelPackage>com.company.app.payment.client.http.paypal.model</modelPackage>
+        <configOptions>
+          <useSpringBoot3>true</useSpringBoot3>
+          <useHttpServiceProxyFactoryInterfacesConfigurator>true</useHttpServiceProxyFactoryInterfacesConfigurator>
+          <openApiNullable>false</openApiNullable>
+        </configOptions>
+      </configuration>
+    </execution>
+  </executions>
+</plugin>
+```
+
+On Spring Boot 4, set `useSpringBoot4` instead of `useSpringBoot3`.
+
+**S60. Outbound URLs live in properties.** No URL is written in code. Each
+remote system's protocol, host, version and endpoint paths are properties named
+as S61 describes, composed with placeholders and bound with
+`@ConfigurationProperties` (see S4). A remote with many endpoints gets its own
+file, such as `paypal-api.properties`, loaded with `@PropertySource` the way
+`api-paths.properties` is (see S62), so `application.properties` stays
+readable. Values that change per environment come from environment variables.
+
+```properties
+### PAYPAL ###
+paypal.api.protocol=https
+paypal.api.host=${PAYPAL_API_HOST:api-m.sandbox.paypal.com}
+paypal.api.version=v2
+paypal.api.base-url=${paypal.api.protocol}://${paypal.api.host}/${paypal.api.version}
+paypal.api.payments.path=/payments
+paypal.api.payments.id.path=${paypal.api.payments.path}/{paymentId}
+paypal.api.connect-timeout=2s
+paypal.api.read-timeout=5s
+```
+
+```java
+@Configuration
+@PropertySource("classpath:paypal-api.properties")
+@EnableConfigurationProperties(PayPalApiProperties.class)
+class PayPalHttpClientConfig {
+    // Loads PayPal's endpoints and binds them to PayPalApiProperties.
+}
+
+@ConfigurationProperties("paypal.api")
+record PayPalApiProperties(String baseUrl, Duration connectTimeout, Duration readTimeout) {}
+```

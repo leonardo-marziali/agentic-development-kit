@@ -1,6 +1,6 @@
 ---
 name: spring-data-persistence
-description: 'Use when writing repositories, entities, queries, auditing, migrations or filters with Spring Data JPA or MongoDB in a project that follows the java-standards opt-in. Covers repositories that hide the store, generated ids, UTC times, automatic auditing, JaVers, avoiding N+1 queries, query preference order, Liquibase, and QueryDSL predicate classes (rules S44 to S53).'
+description: 'Use when writing repositories, entities, queries, auditing, migrations or filters with Spring Data JPA or MongoDB in a project that follows the java-standards opt-in. Covers repositories that hide the store, generated ids, UTC times, automatic auditing, JaVers, avoiding N+1 queries, query preference order, Liquibase, QueryDSL predicate classes and @Embeddable value groups (rules S44 to S53 and D12).'
 paths: '**/*.java, **/pom.xml, **/build.gradle*'
 ---
 
@@ -217,6 +217,44 @@ class ProjectPredicates {
 
         return createdFrom == null ? null : QProjectEntity.projectEntity.createdAt.goe(createdFrom);
     }
+
+}
+```
+
+## Value grouping
+
+**D12. Group what belongs together.** Values that form one concept in the
+domain are one type wherever they're modelled: a value object in the domain, a
+nested DTO in the API, an `@Embeddable` in a JPA entity and an embedded
+document in MongoDB. An address is an `Address`, never `addressStreet`,
+`addressCity` and `addressZipCode` side by side. The group carries its own
+validation and behavior, and each layer maps it with one mapper method.
+`AuditEmbeddable` (see S47) is one such group.
+
+The grouping lives in the object model only. In the database the group stays
+columns of the owning table, which is how `@Embeddable` maps it, and raw SQL
+persistence (Spring Data JDBC, jOOQ, hand-written SQL) isn't modelled this
+way, because a table per group costs a join on every read.
+
+```java
+@Entity
+class CustomerEntity {
+
+    @Embedded
+    private AddressEmbeddable address;
+
+}
+
+@Embeddable
+@Getter
+@Setter
+class AddressEmbeddable {
+
+    private String street;
+
+    private String city;
+
+    private String zipCode;
 
 }
 ```

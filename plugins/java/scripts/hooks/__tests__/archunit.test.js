@@ -103,6 +103,28 @@ test(
 );
 
 test(
+  'a use case takes one *Command built by a builder, or a Consumer of its builder (S11)',
+  { skip: SKIP_WITHOUT_JDK },
+  async (t) => {
+    const { manifest, dir } = await setup(t);
+    const classes = path.join(dir, 'command-classes');
+    compile(manifest, classes, path.join(FIXTURES, 'command'));
+
+    const findings = runner(manifest, ['--classes', classes, '--packages', 'com.acme..']);
+
+    const s11 = findings.filter((f) => f.rule === 'S11');
+    // Shipping: two arguments; Cancellation: a bare id; OrderRefundCommand: no builder().
+    assert.deepEqual(s11.map((f) => path.basename(f.file)).sort(), [
+      'OrderCancellationUseCase.java',
+      'OrderRefundCommand.java',
+      'OrderShippingUseCase.java',
+    ]);
+    assert.equal(findings.filter((f) => f.rule === 'S24').length, 0);
+    assert.match(s11.find((f) => f.file.endsWith('OrderShippingUseCase.java')).message, /Command/);
+  },
+);
+
+test(
   'S40 accepts a servlet or a WebFlux ResponseEntityExceptionHandler',
   { skip: SKIP_WITHOUT_JDK },
   async (t) => {
