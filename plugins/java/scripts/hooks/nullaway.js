@@ -214,7 +214,10 @@ function runNullAway({
 // The changed files' common package, for Spring mode when no basePackage is configured.
 function commonPackage(files) {
   const packages = files
-    .map((file) => (/^\s*package\s+([\w.]+)\s*;/m.exec(fs.readFileSync(file, 'utf8')) || [])[1])
+    .map(
+      (file) =>
+        (/^[ \t]*package[ \t]+([\w.]+)[ \t]*;/m.exec(fs.readFileSync(file, 'utf8')) || [])[1],
+    )
     .filter(Boolean);
   if (packages.length === 0) return null;
   let prefix = packages[0].split('.');
@@ -280,7 +283,7 @@ function runSection({ config, modules, manifest, warn }) {
   return { findings };
 }
 
-registerSection({ name: 'NullAway', partition: true, run: runSection });
+registerSection({ name: 'NullAway', scope: 'lines', run: runSection });
 
 module.exports = {
   buildJavacArgs,

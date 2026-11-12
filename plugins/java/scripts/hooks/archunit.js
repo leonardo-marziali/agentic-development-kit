@@ -338,7 +338,7 @@ function runSection({ repoRoot, config, modules, manifest, warn, createStore = f
   return { findings, analysed };
 }
 
-registerSection({ name: 'ArchUnit', partition: 'files', run: runSection });
+registerSection({ name: 'ArchUnit', scope: 'files', run: runSection });
 
 module.exports = {
   runSection,

@@ -2,9 +2,10 @@
 
 /*
  * Extra report sections for the Stop loop (NullAway, ArchUnit). Each one is
- * `{ name, partition, run(context) → { findings } }`; `partition: false`
- * means its findings aren't scoped to changed lines (ArchUnit scopes by
- * package and freeze store instead).
+ * `{ name, scope, run(context) → { findings } }`. `scope` says which
+ * findings block: `'lines'` (the default) those on lines the session
+ * changed, `'files'` those in files it touched (ArchUnit, whose findings
+ * carry no reliable line), `'all'` every one.
  */
 
 const SECTIONS = [];

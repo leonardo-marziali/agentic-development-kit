@@ -21,7 +21,7 @@ const GRADLE_DEPENDENCY = new RegExp(
 
 function lineOf(text, offset) {
   let line = 1;
-  for (let i = 0; i < offset; i += 1) if (text.charCodeAt(i) === 10) line += 1;
+  for (let i = 0; i < offset; i += 1) if (text.codePointAt(i) === 10) line += 1;
   return line;
 }
 

@@ -144,7 +144,7 @@ function demote(part) {
 }
 
 function unlink(text) {
-  return text.replaceAll(/\[([^\]]+)\]\(#[^)]*\)/g, '$1');
+  return text.replaceAll(/\[([^[\]\n]+)\]\(#[^)\n]*\)/g, '$1');
 }
 
 function quote(value) {

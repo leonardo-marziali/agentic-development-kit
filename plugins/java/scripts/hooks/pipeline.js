@@ -150,13 +150,14 @@ function formatFindings(repoRoot, findings) {
 
 /*
  * Splits a section's findings into what blocks and what was already there.
- * `partition: true` scopes to the lines the session changed; `'files'` (for
- * ArchUnit, whose findings carry no reliable line) to the files it touched.
+ * `scope: 'lines'` blocks on the lines the session changed, `'files'` (for
+ * ArchUnit, whose findings carry no reliable line) on the files it touched,
+ * `'all'` on every finding.
  */
-function section(name, repoRoot, findings, { partition = true, touched = [] } = {}) {
+function section(name, repoRoot, findings, { scope = 'lines', touched = [] } = {}) {
   if (findings.length === 0) return null;
-  if (!partition) return { name, repoRoot, blocking: findings, existing: [] };
-  if (partition === 'files') {
+  if (scope === 'all') return { name, repoRoot, blocking: findings, existing: [] };
+  if (scope === 'files') {
     const touchedSet = new Set(touched.map((file) => path.resolve(file)));
     const blocking = findings.filter((f) => touchedSet.has(path.resolve(f.file)));
     return { name, repoRoot, blocking, existing: findings.filter((f) => !blocking.includes(f)) };
@@ -168,16 +169,15 @@ function section(name, repoRoot, findings, { partition = true, touched = [] } = 
 
 function check(repos, manifest, { changedLinesOnly = true } = {}) {
   const sections = [];
+  const lines = changedLinesOnly ? 'lines' : 'all';
   for (const repo of repos) {
     const engine = engineFindings(repo, manifest);
     if (!repo.config) continue;
-    sections.push(section('Source rules', repo.repoRoot, engine, { partition: changedLinesOnly }));
+    sections.push(section('Source rules', repo.repoRoot, engine, { scope: lines }));
     const buildFindings = repo.config.checks.enabled
       ? repo.buildFiles.flatMap((file) => checkBuildFile(file, fs.readFileSync(file, 'utf8')))
       : [];
-    sections.push(
-      section('Build files', repo.repoRoot, buildFindings, { partition: changedLinesOnly }),
-    );
+    sections.push(section('Build files', repo.repoRoot, buildFindings, { scope: lines }));
     for (const extra of registeredSections()) {
       if (timeLeft() < SECTION_MIN_MS) {
         warnOnce(
@@ -188,7 +188,7 @@ function check(repos, manifest, { changedLinesOnly = true } = {}) {
       const { findings } = extra.run({ ...repo, manifest, warn: warnOnce });
       sections.push(
         section(extra.name, repo.repoRoot, findings, {
-          partition: changedLinesOnly && (extra.partition ?? true),
+          scope: changedLinesOnly ? (extra.scope ?? 'lines') : 'all',
           touched: repo.javaFiles,
         }),
       );
