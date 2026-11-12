@@ -107,3 +107,13 @@ test('flags a Gradle build without a Java version', (t) => {
   const root = project(t, { 'build.gradle': "plugins { id 'java' }\n" });
   assert.deepEqual(check(root, 'build.gradle'), ['1 B4']);
 });
+
+test('does not ask a Gradle submodule to repeat a level its root or convention plugins set', (t) => {
+  const root = project(t, {
+    'settings.gradle': "include 'service', 'api'",
+    'buildSrc/src/main/groovy/java-conventions.gradle':
+      'java { toolchain { languageVersion = JavaLanguageVersion.of(21) } }',
+    'service/build.gradle': "plugins { id 'java-conventions' }\n",
+  });
+  assert.deepEqual(check(root, 'service/build.gradle'), []);
+});

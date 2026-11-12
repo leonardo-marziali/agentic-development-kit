@@ -117,20 +117,66 @@ function gradleText(moduleRoot) {
   );
 }
 
-function gradleLevel(moduleRoot) {
-  const text = gradleText(moduleRoot);
-  if (text === null) return null;
-  const patterns = [
-    /JavaLanguageVersion\.of\(\s*['"]?(\d+)['"]?\s*\)/,
-    /options\.release(?:\.set\(\s*|\s*=\s*)(\d+)/,
-    /sourceCompatibility\s*=\s*(?:JavaVersion\.)?['"]?(VERSION_[\d_]+|[\d.]+)['"]?/,
-  ];
-  for (const pattern of patterns) {
+const GRADLE_LEVEL_PATTERNS = [
+  /JavaLanguageVersion\.of\(\s*['"]?(\d+)['"]?\s*\)/,
+  /jvmToolchain\(\s*(\d+)\s*\)/,
+  /options\.release(?:\.set\(\s*|\s*=\s*)(\d+)/,
+  /sourceCompatibility\s*=\s*(?:JavaVersion\.)?['"]?(VERSION_[\d_]+|[\d.]+)['"]?/,
+];
+
+function levelIn(text) {
+  for (const pattern of GRADLE_LEVEL_PATTERNS) {
     const match = pattern.exec(text);
     const level = match ? toLevel(match[1]) : null;
     if (level !== null) return level;
   }
   return null;
+}
+
+// Gradle scripts under a convention-plugin build (buildSrc/, build-logic/).
+function conventionScripts(dir) {
+  const scripts = [];
+  const walk = (current, depth) => {
+    if (depth > 6) return;
+    let entries;
+    try {
+      entries = fs.readdirSync(current, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory() && entry.name !== 'build' && entry.name !== '.gradle')
+        walk(full, depth + 1);
+      else if (/\.gradle(\.kts)?$/.test(entry.name)) scripts.push(full);
+    }
+  };
+  walk(dir, 0);
+  return scripts.sort((a, b) => a.localeCompare(b));
+}
+
+/*
+ * A Gradle module's level: its own build file, then each enclosing build up
+ * to the repository root (a root `subprojects {}` / `allprojects {}`), then
+ * the root's convention plugins in buildSrc/ or build-logic/.
+ */
+function gradleLevel(moduleRoot) {
+  if (gradleText(moduleRoot) === null) return null;
+  let dir = moduleRoot;
+  while (true) {
+    const text = gradleText(dir);
+    const level = text === null ? null : levelIn(text);
+    if (level !== null) return level;
+    for (const plugins of ['buildSrc', 'build-logic']) {
+      for (const script of conventionScripts(path.join(dir, plugins))) {
+        const fromPlugin = levelIn(read(script) || '');
+        if (fromPlugin !== null) return fromPlugin;
+      }
+    }
+    const parent = path.dirname(dir);
+    if (fs.existsSync(path.join(dir, '.git')) || parent === dir) return null;
+    dir = parent;
+  }
 }
 
 function detectJavaLevel(moduleRoot) {

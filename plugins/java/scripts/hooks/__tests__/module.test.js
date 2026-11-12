@@ -131,6 +131,21 @@ describe('detectJavaLevel', () => {
     });
   }
 
+  it('reads kotlin { jvmToolchain(17) }', () => {
+    writeTree(root, { 'build.gradle.kts': 'kotlin { jvmToolchain(17) }' });
+    assert.equal(detectJavaLevel(root), 17);
+  });
+
+  it("reads a Gradle submodule's level from the root build file", () => {
+    writeTree(root, {
+      'settings.gradle': "include 'service'",
+      'build.gradle':
+        'subprojects { java { toolchain { languageVersion = JavaLanguageVersion.of(11) } } }',
+      'service/build.gradle': "plugins { id 'java' }",
+    });
+    assert.equal(detectJavaLevel(path.join(root, 'service')), 11);
+  });
+
   it('returns null when nothing declares a level', () => {
     writeTree(root, { 'pom.xml': pom('') });
     assert.equal(detectJavaLevel(root), null);
