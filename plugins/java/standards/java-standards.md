@@ -1,3 +1,6 @@
+<!-- Verbatim copy of the author's standard. -->
+<!-- markdownlint-disable MD013 -->
+
 # Opinionated Standards for Cloud-Native Java Enterprise Development
 
 These are my opinions on how domain-driven and event-driven Java services should
