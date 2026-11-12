@@ -277,3 +277,20 @@ test(
     assert.ok(fs.existsSync(path.join(root, '.claude', 'archunit-store', 'b', 'stored.rules')));
   },
 );
+
+test('does not retry a failed compile until the sources or build files change', (t) => {
+  const ctx = setup(t, { classesAge: 'stale', wrapper: 'echo "[ERROR] boom" >&2; exit 1' });
+  touch(ctx, SOURCE);
+  stop(ctx);
+  touch(ctx, SOURCE);
+  stop(ctx);
+  assert.equal(compiles(ctx).length, 1);
+
+  writeTree(ctx.root, {
+    [SOURCE]:
+      'package com.acme.project.service;\n\npublic interface ProjectService {\n    void save();\n}\n',
+  });
+  touch(ctx, SOURCE);
+  stop(ctx);
+  assert.equal(compiles(ctx).length, 2);
+});

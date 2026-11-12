@@ -15,6 +15,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const BUILD_TIMEOUT_MS = 120 * 1000;
+const FAILURE_TTL_MS = 30 * 60 * 1000;
 const INIT_SCRIPT = path.join(__dirname, 'print-classpath.gradle');
 const OUTPUT_DIRS = [
   'target/classes',
@@ -140,6 +141,14 @@ function gradle(moduleRoot, javaHome) {
   return { classpath: pick('CP'), processorPath: pick('AP') };
 }
 
+function recentFailure(file) {
+  try {
+    return Date.now() - fs.statSync(file).mtimeMs < FAILURE_TTL_MS;
+  } catch {
+    return false;
+  }
+}
+
 function resolveClasspath({ moduleRoot, cacheDir, javaHome = null, warn = () => {} }) {
   const tool = buildTool(moduleRoot);
   if (!tool) return null;
@@ -152,8 +161,24 @@ function resolveClasspath({ moduleRoot, cacheDir, javaHome = null, warn = () => 
     // not cached yet
   }
 
+  /*
+   * A failure is remembered too, so a module that can't resolve (a sibling
+   * SNAPSHOT that isn't installed, say) doesn't cost a full build-tool run on
+   * every stop. It is retried when the build files change or after a while.
+   */
+  const failFile = cacheFile.replace(/\.json$/, '.failed');
+  if (recentFailure(failFile)) {
+    warn(
+      `classpath resolution for ${moduleRoot} failed recently; skipping NullAway there until its build files change ` +
+        `or ${FAILURE_TTL_MS / 60000} minutes pass.`,
+    );
+    return null;
+  }
+
   const resolved = tool === 'maven' ? maven(moduleRoot, javaHome) : gradle(moduleRoot, javaHome);
   if (resolved.error !== undefined) {
+    fs.mkdirSync(cacheDir, { recursive: true });
+    fs.writeFileSync(failFile, resolved.error);
     warn(
       `could not resolve the classpath of ${moduleRoot} with ${tool}; skipping NullAway there:\n${resolved.error}`,
     );
@@ -164,4 +189,4 @@ function resolveClasspath({ moduleRoot, cacheDir, javaHome = null, warn = () => 
   return { ...resolved, outputDirs };
 }
 
-module.exports = { resolveClasspath, buildTool };
+module.exports = { resolveClasspath, buildTool, cacheKey, recentFailure, FAILURE_TTL_MS };

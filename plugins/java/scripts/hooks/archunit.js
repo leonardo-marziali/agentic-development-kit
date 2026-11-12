@@ -16,7 +16,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { buildTool } = require('./classpath');
+const { buildTool, cacheKey, recentFailure } = require('./classpath');
 const { buildJavaHome } = require('./module');
 const { registerSection } = require('./sections');
 
@@ -87,6 +87,22 @@ function compileModule(moduleRoot, javaHome) {
 }
 
 /*
+ * Where a failed compile is remembered: keyed by the build files and the
+ * session's sources (contents' mtimes), so any edit retries it.
+ */
+function compileFailureFile(moduleRoot, trackedSources, javaHome) {
+  const stamp = trackedSources.map((file) => `${file}@${fs.statSync(file).mtimeMs}`).join('|');
+  const key = crypto
+    .createHash('sha256')
+    .update(cacheKey(moduleRoot, javaHome))
+    .update(stamp)
+    .digest('hex');
+  const base =
+    process.env.CLAUDE_PLUGIN_DATA || path.join(os.homedir(), '.cache', 'claude-java-plugin');
+  return path.join(base, 'compile-failures', `${key}.failed`);
+}
+
+/*
  * Makes the module's classes current enough to analyse: `auto` compiles only
  * when a tracked source is newer than every class, `always` compiles every
  * time, `never` skips a module whose classes are missing or stale.
@@ -102,8 +118,17 @@ function ensureCompiled({ moduleRoot, trackedSources, mode, javaHome, warn }) {
     return 'skipped';
   }
   if (mode !== 'always' && !stale) return 'fresh';
+  const failFile = compileFailureFile(moduleRoot, trackedSources, javaHome);
+  if (recentFailure(failFile)) {
+    warn(
+      `compiling ${moduleRoot} failed recently and nothing changed since; skipping ArchUnit there.`,
+    );
+    return 'skipped';
+  }
   const result = compileModule(moduleRoot, javaHome);
   if (result.error || result.status !== 0) {
+    fs.mkdirSync(path.dirname(failFile), { recursive: true });
+    fs.writeFileSync(failFile, String(result.status));
     const output = result.error
       ? result.error.message
       : `${result.stdout || ''}${result.stderr || ''}`.trim().split('\n').slice(-15).join('\n');

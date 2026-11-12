@@ -119,3 +119,27 @@ test('returns null with a warning when the build tool fails', (t) => {
   assert.equal(result, null);
   assert.match(warnings[0], /could not resolve the classpath.*boom/s);
 });
+
+test('remembers a failed resolution instead of re-running the build tool every stop', (t) => {
+  const root = scratch(t);
+  writeTree(root, { 'pom.xml': '<project/>' });
+  fakeWrapper(root, 'mvnw', 'echo "[ERROR] sibling SNAPSHOT missing" >&2; exit 1');
+  const cacheDir = path.join(root, 'cache');
+  const warnings = [];
+
+  assert.equal(
+    resolveClasspath({ moduleRoot: root, cacheDir, warn: (m) => warnings.push(m) }),
+    null,
+  );
+  assert.equal(
+    resolveClasspath({ moduleRoot: root, cacheDir, warn: (m) => warnings.push(m) }),
+    null,
+  );
+
+  assert.equal(calls(root).length, 1);
+  assert.match(warnings[1], /failed recently.*build files change/s);
+
+  writeTree(root, { 'pom.xml': '<project><!-- fixed --></project>' });
+  resolveClasspath({ moduleRoot: root, cacheDir, warn: () => {} });
+  assert.equal(calls(root).length, 2);
+});
