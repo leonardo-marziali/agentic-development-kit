@@ -37,6 +37,8 @@ const { moduleInfo } = require('./module');
 const { runEngine } = require('./engine');
 const { checkBuildFile } = require('./build-rules');
 const { registeredSections } = require('./sections');
+// Each of these registers its report section on load.
+require('./nullaway');
 const { readInstall } = require('../provision');
 
 const OWN_STATE_FILES = [TOUCHED_FILES, 'attempts.json'];
