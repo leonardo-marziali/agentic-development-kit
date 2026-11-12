@@ -282,4 +282,11 @@ describe('buildJavaHome', () => {
     fakeJdk(path.join(home, 'jvm', 'java-21-openjdk'), '21.0.5');
     assert.equal(buildJavaHome(8, { searchRoots: searchRoots() }), null);
   });
+
+  it('says so when no JDK of that version exists', () => {
+    const notes = [];
+    buildJavaHome(8, { searchRoots: searchRoots(), warn: (message) => notes.push(message) });
+    assert.equal(notes.length, 1);
+    assert.match(notes[0], /no JDK 8 found.*jdk_homes/);
+  });
 });

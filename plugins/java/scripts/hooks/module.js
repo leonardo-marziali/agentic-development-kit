@@ -301,13 +301,19 @@ function installedHomes(searchRoots) {
   return homes;
 }
 
-function buildJavaHome(level, { searchRoots = defaultSearchRoots() } = {}) {
+function buildJavaHome(level, { searchRoots = defaultSearchRoots(), warn } = {}) {
   const candidates = [
     ...configuredHomes(),
     ...toolchainHomes(level),
     ...installedHomes(searchRoots),
   ];
-  return candidates.find((home) => jdkMajor(home) === level) ?? null;
+  const home = candidates.find((candidate) => jdkMajor(candidate) === level) ?? null;
+  if (home === null && warn) {
+    warn(
+      `no JDK ${level} found for the build tool; using JAVA_HOME. Add one to the plugin's jdk_homes option (/config).`,
+    );
+  }
+  return home;
 }
 
 module.exports = { detectJavaLevel, detectSpringBoot, moduleInfo, buildJavaHome, toLevel };

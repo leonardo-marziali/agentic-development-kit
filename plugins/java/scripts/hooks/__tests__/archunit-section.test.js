@@ -212,7 +212,10 @@ public class TeamRules {
       warn: (m) => warnings.push(m),
     });
 
-    assert.deepEqual(warnings, []);
+    assert.deepEqual(
+      warnings.filter((m) => !m.startsWith('no JDK ')),
+      [],
+    );
     const extra = arg(runnerCalls(ctx)[0], '--extra');
     assert.ok(fs.existsSync(path.join(extra, 'TeamRules.class')));
   },

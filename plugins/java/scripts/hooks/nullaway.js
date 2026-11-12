@@ -225,7 +225,7 @@ function runSection({ config, modules, manifest, warn }) {
     const resolved = resolveClasspath({
       moduleRoot,
       cacheDir: classpathCacheDir(),
-      javaHome: buildJavaHome(level),
+      javaHome: buildJavaHome(level, { warn }),
       warn,
     });
     if (!resolved) continue;

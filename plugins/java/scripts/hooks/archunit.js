@@ -226,7 +226,7 @@ function runModule({ moduleRoot, module, command, archunit, store, extra, create
     moduleRoot,
     trackedSources: module.files,
     mode: archunit.compile,
-    javaHome: buildJavaHome(module.info.javaLevel),
+    javaHome: buildJavaHome(module.info.javaLevel, { warn }),
     warn,
   });
   const outputDirs = outputDirsOf(moduleRoot);
