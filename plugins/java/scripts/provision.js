@@ -261,6 +261,10 @@ function readInstall(
   }
   if (manifest.version !== pluginVersion() || manifest.sourceHash !== sourceHash(engineSrc))
     return null;
+  // A JDK that was upgraded or removed since the install leaves nothing to run the tools with.
+  for (const bin of [manifest.javaBin, manifest.javac]) {
+    if (path.isAbsolute(bin) && !fs.existsSync(bin)) return null;
+  }
   for (const [group, entries] of Object.entries(lock.groups)) {
     const expected = entries.map((coords) =>
       path.join(dataDir, 'jars', group, artifactFileName(coords)),
