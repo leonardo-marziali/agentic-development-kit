@@ -1,3 +1,10 @@
+# [2.14.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.13.0...v2.14.0) (2026-11-12)
+
+
+### Features
+
+* **diagrams:** add diagrams plugin with mermaid-export skill ([#49](https://github.com/leonardo-marziali/agentic-development-kit/issues/49)) ([d2b9b3e](https://github.com/leonardo-marziali/agentic-development-kit/commit/d2b9b3e44e278dc5441d3cced92dd41fe0120e7f))
+
 # [2.13.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.12.0...v2.13.0) (2026-11-12)
 
 
