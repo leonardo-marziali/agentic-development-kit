@@ -57,7 +57,8 @@ public final class StandardRules {
             .because("every entity embeds the framework-filled AuditEmbeddable (S47)"));
         rules.put("S40", classes().that().areAnnotatedWith("org.springframework.web.bind.annotation.RestControllerAdvice")
             .should().beAssignableTo("org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler")
-            .because("one advice extending ResponseEntityExceptionHandler keeps Spring's own errors correct (S40)"));
+            .orShould().beAssignableTo("org.springframework.web.reactive.result.method.annotation.ResponseEntityExceptionHandler")
+            .because("one advice extending ResponseEntityExceptionHandler (servlet or WebFlux) keeps Spring's own errors correct (S40)"));
         rules.put("S6", classes().that().areAnnotatedWith("org.springframework.context.annotation.Configuration")
             .or().areAnnotatedWith("org.springframework.web.bind.annotation.RestController")
             .or().areAnnotatedWith("org.springframework.stereotype.Controller")

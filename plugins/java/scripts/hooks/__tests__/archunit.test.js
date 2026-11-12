@@ -103,6 +103,23 @@ test(
 );
 
 test(
+  'S40 accepts a servlet or a WebFlux ResponseEntityExceptionHandler',
+  { skip: SKIP_WITHOUT_JDK },
+  async (t) => {
+    const { manifest, dir } = await setup(t);
+    const classes = path.join(dir, 'advice-classes');
+    compile(manifest, classes, path.join(FIXTURES, 'advice'));
+
+    const findings = runner(manifest, ['--classes', classes, '--packages', 'com.acme..']);
+
+    assert.deepEqual(
+      findings.filter((f) => f.rule === 'S40').map((f) => path.basename(f.file)),
+      ['PlainAdvice.java'],
+    );
+  },
+);
+
+test(
   'skips disabled rules and classes outside the packages',
   { skip: SKIP_WITHOUT_JDK },
   async (t) => {
