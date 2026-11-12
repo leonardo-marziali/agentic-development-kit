@@ -156,4 +156,16 @@ function findRepoRoot(startPath) {
   }
 }
 
-module.exports = { CONFIG_RELATIVE_PATH, loadConfig, isInScope, findRepoRoot, toGlob };
+// Every default, as for an empty config file (the /java:check CLI in a project that didn't opt in).
+function defaultConfig() {
+  return normalise({});
+}
+
+module.exports = {
+  CONFIG_RELATIVE_PATH,
+  loadConfig,
+  defaultConfig,
+  isInScope,
+  findRepoRoot,
+  toGlob,
+};

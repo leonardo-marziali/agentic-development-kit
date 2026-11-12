@@ -181,7 +181,7 @@ function parseRunner(stdout, moduleRoot, warn) {
   return findings;
 }
 
-function runnerArgs({ outputDirs, archunit, store, extra }) {
+function runnerArgs({ outputDirs, archunit, store, extra, createStore }) {
   const { packages, basePackage, disabledRules } = archunit;
   let scope = packages;
   if (scope.length === 0 && basePackage) scope = [`${basePackage}..`];
@@ -189,12 +189,13 @@ function runnerArgs({ outputDirs, archunit, store, extra }) {
   if (scope.length > 0) args.push('--packages', scope.join(','));
   if (basePackage) args.push('--base-package', basePackage);
   if (disabledRules.length > 0) args.push('--disabled', disabledRules.join(','));
-  if (fs.existsSync(store)) args.push('--store', store);
+  if (createStore) args.push('--store', store, '--create-store');
+  else if (fs.existsSync(store)) args.push('--store', store);
   if (extra) args.push('--extra', extra);
   return args;
 }
 
-function runModule({ moduleRoot, module, command, archunit, store, extra, warn }) {
+function runModule({ moduleRoot, module, command, archunit, store, extra, createStore, warn }) {
   const state = ensureCompiled({
     moduleRoot,
     trackedSources: module.files,
@@ -207,7 +208,7 @@ function runModule({ moduleRoot, module, command, archunit, store, extra, warn }
 
   const result = spawnSync(
     command.bin,
-    [...command.prefix, ...runnerArgs({ outputDirs, archunit, store, extra })],
+    [...command.prefix, ...runnerArgs({ outputDirs, archunit, store, extra, createStore })],
     {
       encoding: 'utf8',
       timeout: RUNNER_TIMEOUT_MS,
@@ -223,7 +224,7 @@ function runModule({ moduleRoot, module, command, archunit, store, extra, warn }
   return parseRunner(result.stdout, moduleRoot, warn);
 }
 
-function runSection({ repoRoot, config, modules, manifest, warn }) {
+function runSection({ repoRoot, config, modules, manifest, warn, createStore = false }) {
   if (!config.archunit.enabled) return { findings: [] };
   const command = runnerCommand(manifest);
   if (!command) return { findings: [] };
@@ -233,7 +234,16 @@ function runSection({ repoRoot, config, modules, manifest, warn }) {
   const findings = [];
   for (const [moduleRoot, module] of modules) {
     findings.push(
-      ...runModule({ moduleRoot, module, command, archunit: config.archunit, store, extra, warn }),
+      ...runModule({
+        moduleRoot,
+        module,
+        command,
+        archunit: config.archunit,
+        store,
+        extra,
+        createStore,
+        warn,
+      }),
     );
   }
   return { findings };
