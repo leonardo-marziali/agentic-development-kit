@@ -76,12 +76,20 @@ public final class Runner {
             rules.putAll(projectRules(Path.of(options.get("--extra"))));
         }
         boolean frozen = options.containsKey("--store");
+        boolean creating = options.containsKey("--create-store");
+        Set<String> recorded = frozen ? recordedRules(Path.of(options.get("--store"))) : Set.of();
         for (Map.Entry<String, ArchRule> entry : rules.entrySet()) {
             String id = entry.getKey().replaceAll("-.*$", "");
             if (disabled.contains(id) || disabled.contains(entry.getKey())) {
                 continue;
             }
-            ArchRule rule = frozen ? FreezingArchRule.freeze(entry.getValue()) : entry.getValue();
+            /*
+             * A rule the baseline never recorded (a new project rule, a newly
+             * set base package, a reworded rule) is checked unfrozen: freezing
+             * it would silently store the session's own violations.
+             */
+            boolean freeze = frozen && (creating || recorded.contains(entry.getValue().getDescription()));
+            ArchRule rule = freeze ? FreezingArchRule.freeze(entry.getValue()) : entry.getValue();
             try {
                 report(out, id, rule.evaluate(classes));
             } catch (RuntimeException exception) {
@@ -89,6 +97,19 @@ public final class Runner {
             }
         }
         out.flush();
+    }
+
+    // The rule descriptions a freeze store holds (its stored.rules index).
+    private static Set<String> recordedRules(Path store) throws java.io.IOException {
+        Path index = store.resolve("stored.rules");
+        if (!Files.exists(index)) {
+            return Set.of();
+        }
+        java.util.Properties properties = new java.util.Properties();
+        try (java.io.Reader reader = Files.newBufferedReader(index, StandardCharsets.UTF_8)) {
+            properties.load(reader);
+        }
+        return properties.stringPropertyNames();
     }
 
     private static void configure(Map<String, String> options) {

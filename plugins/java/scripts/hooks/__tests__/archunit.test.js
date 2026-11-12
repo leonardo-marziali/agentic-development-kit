@@ -129,3 +129,19 @@ test(
     assert.equal(fs.existsSync(path.join(dir, 'elsewhere')), false);
   },
 );
+
+test(
+  'a rule the baseline never recorded is checked, not silently frozen',
+  { skip: SKIP_WITHOUT_JDK },
+  async (t) => {
+    const { manifest, dir, classes } = await setup(t);
+    const store = path.join(dir, 'archunit-store');
+    const args = ['--classes', classes, '--packages', 'com.acme..', '--store', store];
+
+    runner(manifest, [...args, '--create-store', '--disabled', 'S24']);
+
+    assert.deepEqual(rulesOf(runner(manifest, args)), ['S24']);
+    assert.deepEqual(rulesOf(runner(manifest, args)), ['S24'], 'still reported on the next stop');
+    assert.doesNotMatch(fs.readFileSync(path.join(store, 'stored.rules'), 'utf8'), /vocabulary/);
+  },
+);

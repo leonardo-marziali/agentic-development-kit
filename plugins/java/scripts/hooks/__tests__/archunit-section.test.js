@@ -161,7 +161,10 @@ test('passes the freeze store when the project has one', (t) => {
   writeTree(ctx.root, { '.claude/archunit-store/root/stored.rules': '' });
   touch(ctx, SOURCE);
   stop(ctx);
-  assert.equal(arg(runnerCalls(ctx)[0], '--store'), path.join(ctx.root, '.claude/archunit-store/root'));
+  assert.equal(
+    arg(runnerCalls(ctx)[0], '--store'),
+    path.join(ctx.root, '.claude/archunit-store/root'),
+  );
 });
 
 test(
