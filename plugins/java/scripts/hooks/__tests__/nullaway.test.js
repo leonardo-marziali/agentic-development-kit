@@ -174,3 +174,31 @@ test(
     );
   },
 );
+
+test('says so when compile errors stop javac before NullAway runs', (t) => {
+  const dir = require('./helpers').mkScratchDir();
+  t.after(() => require('./helpers').rmScratchDir(dir));
+  const javac = path.join(dir, 'javac');
+  fs.writeFileSync(
+    javac,
+    "#!/bin/sh\necho '/p/Svc.java:3: error: cannot find symbol' >&2\necho '1 error' >&2\nexit 1\n",
+    { mode: 0o755 },
+  );
+
+  const result = runNullAway({
+    manifest: { ...MANIFEST, javac },
+    files: ['/p/Svc.java'],
+    classpath: [],
+    processorPath: [],
+    outputDirs: [],
+    sourcepath: [],
+    mode: 'jspecify',
+    javaLevel: 21,
+  });
+
+  assert.deepEqual(result.findings, []);
+  assert.ok(
+    result.notes.some((note) => /didn't compile.*NullAway didn't run.*Svc\.java:3/s.test(note)),
+    result.notes.join('\n'),
+  );
+});

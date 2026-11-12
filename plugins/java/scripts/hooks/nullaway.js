@@ -194,7 +194,18 @@ function runNullAway({
     });
     if (result.error)
       return { findings: [], notes: [...notes, `javac could not run: ${result.error.message}`] };
-    return { findings: parseNullAway(`${result.stdout}\n${result.stderr}`), notes };
+    const output = `${result.stdout}\n${result.stderr}`;
+    const findings = parseNullAway(output);
+    // NullAway runs in javac's flow phase, which other compile errors stop it reaching.
+    const otherErrors = output
+      .split(/\r?\n/)
+      .filter((line) => /\.java:\d+: error: /.test(line) && !line.includes('[NullAway]'));
+    if (result.status !== 0 && findings.length === 0 && otherErrors.length > 0) {
+      notes.push(
+        `the changed files didn't compile, so NullAway didn't run (fix these first):\n${otherErrors.slice(0, 5).join('\n')}`,
+      );
+    }
+    return { findings, notes };
   } finally {
     fs.rmSync(outDir, { recursive: true, force: true });
   }
