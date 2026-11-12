@@ -17,7 +17,21 @@ public final class RuleRegistry {
         new RestClientOnly(),
         new FormatterMarkers(),
         new TestStyle(),
-        new TestShortcuts());
+        new TestShortcuts(),
+        new MemberOrder(),
+        new VarUsage(),
+        new TextBlocks(),
+        new OptionalReturnOnly(),
+        new TypeAnnotations.NotPublic(),
+        new TypeAnnotations.ImmutableReadDto(),
+        new TypeAnnotations.AbstractMapper(),
+        new EntityStyle.Lombok(),
+        new EntityStyle.InstantTimes(),
+        new MapperStyle(),
+        new RestPaths.Nouns(),
+        new RestPaths.VariableNames(),
+        new ProblemDetails(),
+        new NativeQueries());
 
     private RuleRegistry() {
     }
