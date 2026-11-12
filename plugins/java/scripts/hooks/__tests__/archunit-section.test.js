@@ -294,3 +294,27 @@ test('does not retry a failed compile until the sources or build files change', 
   stop(ctx);
   assert.equal(compiles(ctx).length, 2);
 });
+
+test('a violation in a class the session did not touch is listed, not blocking', (t) => {
+  const ctx = setup(t);
+  touch(ctx, SOURCE);
+
+  const res = stop(ctx, {
+    FAKE_ARCHUNIT_OUTPUT: 'FINDING\tcom/acme/project/other/Legacy.java\t0\tD1\tlegacy violation\n',
+  });
+
+  assert.equal(res.stdout.trim(), '', res.stderr);
+});
+
+test('the block message gives ArchUnit-specific guidance, not the source-rule comment', (t) => {
+  const ctx = setup(t);
+  touch(ctx, SOURCE);
+
+  const res = stop(ctx, {
+    FAKE_ARCHUNIT_OUTPUT:
+      'FINDING\tcom/acme/project/service/ProjectService.java\t0\tS7\tuses ProjectEntity\n',
+  });
+
+  assert.match(res.json.reason, /archunit\.disabledRules/);
+  assert.doesNotMatch(res.json.reason, /java-rules:allow/);
+});

@@ -33,11 +33,28 @@ const { engineManifest, groupBy, planRepo, check } = require('./pipeline');
 
 const OWN_STATE_FILES = [TOUCHED_FILES, 'attempts.json'];
 
-const GUIDANCE = [
-  "Fix the findings above in the lines you changed, following the project's Java standard",
-  '(the java:* skills hold the full rules). When a rule genuinely does not apply, add',
-  '`// java-rules:allow <ID> <reason>` on that line or the line above; the reason is required.',
-].join(' ');
+const INTRO =
+  "Fix the findings above in the code you changed, following the project's Java standard " +
+  '(the java:* skills hold the full rules).';
+
+/*
+ * How a finding that genuinely doesn't apply is set aside differs per tool,
+ * so the message names only the ways that work for the sections that block.
+ */
+const EXCEPTIONS = {
+  'Source rules':
+    'Source rules: when one genuinely does not apply, add `// java-rules:allow <ID> <reason>` on that line or the line above; the reason is required.',
+  'Build files':
+    'Build files: fix the build file; if the user decides a rule does not fit the project, it goes in `checks.disabledRules` in .claude/java-standards.json.',
+  NullAway:
+    'NullAway: fix the nullness (annotate `@Nullable`, check for null, or return a value); only for a false positive, add `@SuppressWarnings("NullAway")` with a comment saying why.',
+  ArchUnit:
+    'ArchUnit: fix the design (layers, names, visibility); if the user decides a rule does not fit the project, it goes in `archunit.disabledRules` in .claude/java-standards.json, or existing violations go in the baseline (`/java:setup`).',
+};
+
+function guidance(sections) {
+  return [INTRO, ...sections.map((name) => EXCEPTIONS[name]).filter(Boolean)].join('\n');
+}
 
 function buildMessage({ attempt, maxAttempts, outcome }) {
   return {
@@ -45,7 +62,8 @@ function buildMessage({ attempt, maxAttempts, outcome }) {
     systemMessage: [
       `The Java standard found issues in files edited this session (attempt ${attempt}/${maxAttempts}):`,
       outcome.report,
-      `${GUIDANCE} After attempt ${maxAttempts} the loop stops and reports whatever is left.`,
+      guidance(outcome.blockingSections || []),
+      `After attempt ${maxAttempts} the loop stops and reports whatever is left.`,
     ].join('\n\n'),
   };
 }

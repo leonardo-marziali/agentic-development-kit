@@ -144,9 +144,19 @@ function formatFindings(repoRoot, findings) {
     .join('\n');
 }
 
-function section(name, repoRoot, findings, { partition = true } = {}) {
+/*
+ * Splits a section's findings into what blocks and what was already there.
+ * `partition: true` scopes to the lines the session changed; `'files'` (for
+ * ArchUnit, whose findings carry no reliable line) to the files it touched.
+ */
+function section(name, repoRoot, findings, { partition = true, touched = [] } = {}) {
   if (findings.length === 0) return null;
   if (!partition || !scopeToChanges) return { name, repoRoot, blocking: findings, existing: [] };
+  if (partition === 'files') {
+    const touchedSet = new Set(touched.map((file) => path.resolve(file)));
+    const blocking = findings.filter((f) => touchedSet.has(path.resolve(f.file)));
+    return { name, repoRoot, blocking, existing: findings.filter((f) => !blocking.includes(f)) };
+  }
   const scopes = scopesFor([...new Set(findings.map((f) => f.file))]);
   const { inScope, outOfScope } = partitionByScope(findings, { scopes });
   return { name, repoRoot, blocking: inScope, existing: outOfScope };
@@ -166,7 +176,10 @@ function check(repos, manifest, { changedLinesOnly = true } = {}) {
     for (const extra of registeredSections()) {
       const { findings } = extra.run({ ...repo, manifest, warn: warnOnce });
       sections.push(
-        section(extra.name, repo.repoRoot, findings, { partition: extra.partition !== false }),
+        section(extra.name, repo.repoRoot, findings, {
+          partition: extra.partition ?? true,
+          touched: repo.javaFiles,
+        }),
       );
     }
   }
@@ -183,7 +196,10 @@ function check(repos, manifest, { changedLinesOnly = true } = {}) {
       return parts.join('\n\n');
     })
     .join('\n\n');
-  return { failed, report };
+  const blockingSections = [
+    ...new Set(present.filter((s) => s.blocking.length > 0).map((s) => s.name)),
+  ];
+  return { failed, report, blockingSections };
 }
 
 module.exports = { warnOnce, engineManifest, moduleRootOf, groupBy, planRepo, check, formatRanges };

@@ -284,6 +284,6 @@ function runSection({ repoRoot, config, modules, manifest, warn, createStore = f
   return { findings, analysed };
 }
 
-registerSection({ name: 'ArchUnit', partition: false, run: runSection });
+registerSection({ name: 'ArchUnit', partition: 'files', run: runSection });
 
 module.exports = { runSection, ensureCompiled, parseRunner, RUNNER_CLASS };
