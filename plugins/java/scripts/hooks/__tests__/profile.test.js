@@ -75,3 +75,18 @@ test('a configured profile that does not exist falls through with a warning', (t
     DEFAULT_PROFILE,
   );
 });
+
+test('ignores Eclipse preferences that hold no formatter settings', (t) => {
+  const root = repo(t, {
+    '.settings/org.eclipse.jdt.core.prefs': 'org.eclipse.jdt.core.compiler.source=17\n',
+  });
+  assert.equal(resolveProfile({ repoRoot: root, config: null }), null);
+});
+
+test('ignores untracked Eclipse preferences', (t) => {
+  const root = repo(t, { 'pom.xml': '<project/>' });
+  writeTree(root, {
+    '.settings/org.eclipse.jdt.core.prefs': 'org.eclipse.jdt.core.formatter.lineSplit=100\n',
+  });
+  assert.equal(resolveProfile({ repoRoot: root, config: null }), null);
+});

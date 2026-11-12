@@ -26,6 +26,18 @@ function isFormatterProfile(file) {
   }
 }
 
+/*
+ * Eclipse writes this file for any project-specific compiler setting, so it
+ * only counts when it is tracked and actually holds formatter settings;
+ * otherwise a legacy project would be restyled with Eclipse's defaults.
+ */
+function isFormatterPrefs(repoRoot, file) {
+  if (!fs.existsSync(file)) return false;
+  const tracked = spawnSync('git', ['ls-files', '--cached', '--error-unmatch', '--', PREFS], { cwd: repoRoot });
+  if (tracked.error || tracked.status !== 0) return false;
+  return /^org\.eclipse\.jdt\.core\.formatter\./m.test(fs.readFileSync(file, 'utf8'));
+}
+
 // Committed (or staged) XML files, so build output and ignored files never count.
 function trackedXmlFiles(repoRoot) {
   const result = spawnSync('git', ['ls-files', '--cached', '--', '*.xml'], {
@@ -51,7 +63,7 @@ function resolveProfile({ repoRoot, config }) {
     if (isFormatterProfile(file)) return file;
   }
   const prefs = path.join(repoRoot, PREFS);
-  if (fs.existsSync(prefs)) return prefs;
+  if (isFormatterPrefs(repoRoot, prefs)) return prefs;
   return config ? DEFAULT_PROFILE : null;
 }
 
