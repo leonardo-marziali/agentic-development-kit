@@ -221,26 +221,54 @@ async function install({
     }
   }
 
+  /*
+   * Classes go in a directory named after the sources' hash, compiled aside
+   * and renamed into place: a session still running the previous engine
+   * keeps its classes while another session installs a new one.
+   */
+  const hash = sourceHash(engineSrc);
   const classes = {};
   for (const [name, groups] of Object.entries(ENGINE_CLASSPATH)) {
     const sources = listJavaSources(path.join(engineSrc, name, 'src'));
     if (sources.length === 0) continue;
-    const outDir = path.join(dataDir, 'classes', name);
-    compile({ name, sources, classpath: groups.flatMap((g) => jars[g] || []), outDir, java });
+    const outDir = path.join(dataDir, 'classes', `${name}-${hash.slice(0, 16)}`);
+    if (!fs.existsSync(outDir)) {
+      const partial = `${outDir}.partial-${process.pid}`;
+      try {
+        compile({
+          name,
+          sources,
+          classpath: groups.flatMap((g) => jars[g] || []),
+          outDir: partial,
+          java,
+        });
+        try {
+          fs.renameSync(partial, outDir);
+        } catch (err) {
+          // Another install finished the same classes first: theirs are identical.
+          if (!fs.existsSync(outDir)) throw err;
+        }
+      } finally {
+        fs.rmSync(partial, { recursive: true, force: true });
+      }
+      log(`compiled ${name} engine`);
+    }
     classes[name] = outDir;
-    log(`compiled ${name} engine`);
   }
 
   const manifest = {
     version: pluginVersion(),
-    sourceHash: sourceHash(engineSrc),
+    sourceHash: hash,
     javaBin: java.bin,
     javac: java.javac,
     javaMajor: java.major,
     jars,
     classes,
   };
-  fs.writeFileSync(path.join(dataDir, MANIFEST), `${JSON.stringify(manifest, null, 2)}\n`);
+  // Renamed into place so a reader never sees a half-written manifest.
+  const manifestPartial = path.join(dataDir, `${MANIFEST}.partial-${process.pid}`);
+  fs.writeFileSync(manifestPartial, `${JSON.stringify(manifest, null, 2)}\n`);
+  fs.renameSync(manifestPartial, path.join(dataDir, MANIFEST));
   return manifest;
 }
 

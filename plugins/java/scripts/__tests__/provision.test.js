@@ -131,6 +131,29 @@ test('readInstall treats a changed engine source as not installed', async (t) =>
   assert.equal(p.readInstall(dataDir, { lock, engineSrc }), null);
 });
 
+test('a reinstall leaves the classes another session runs from in place', async (t) => {
+  const dir = scratch(t);
+  const { lock, fromDir } = fakeLock(dir);
+  const engineSrc = path.join(dir, 'engine');
+  const source = path.join(engineSrc, 'jdt', 'src', 'Hello.java');
+  fs.mkdirSync(path.dirname(source), { recursive: true });
+  fs.writeFileSync(source, 'class Hello {}');
+  const java = { bin: 'java', javac: 'javac', major: 21 };
+  const dataDir = path.join(dir, 'data');
+  const compile = ({ outDir }) => {
+    fs.mkdirSync(outDir, { recursive: true });
+    fs.writeFileSync(path.join(outDir, 'Hello.class'), '');
+  };
+
+  const first = await p.install({ dataDir, lock, fromDir, engineSrc, java, compile });
+  fs.writeFileSync(source, 'class Hello { int changed; }');
+  const second = await p.install({ dataDir, lock, fromDir, engineSrc, java, compile });
+
+  assert.ok(fs.existsSync(path.join(first.classes.jdt, 'Hello.class')));
+  assert.notEqual(second.classes.jdt, first.classes.jdt);
+  assert.ok(fs.existsSync(path.join(second.classes.jdt, 'Hello.class')));
+});
+
 test(
   'compiles each engine source directory against its jar group',
   { skip: SKIP_WITHOUT_JDK },
