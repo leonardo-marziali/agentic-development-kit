@@ -1,3 +1,10 @@
+## [2.14.1](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.14.0...v2.14.1) (2026-11-12)
+
+
+### Bug Fixes
+
+* **java:** put main compileOnly jars on the Gradle NullAway classpath ([#50](https://github.com/leonardo-marziali/agentic-development-kit/issues/50)) ([976f7b6](https://github.com/leonardo-marziali/agentic-development-kit/commit/976f7b6b07b51eeaca2708eb87ea2db3a47a1c28))
+
 # [2.14.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.13.0...v2.14.0) (2026-11-12)
 
 
