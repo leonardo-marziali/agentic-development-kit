@@ -106,5 +106,5 @@ test('--create-archunit-store creates the freeze baseline', (t) => {
   assert.equal(res.status, 0, res.stderr);
   const [call] = log(ctx.env.FAKE_ARCHUNIT_LOG);
   assert.ok(call.includes('--create-store'));
-  assert.equal(flag(call, '--store'), path.join(ctx.root, '.claude', 'archunit-store'));
+  assert.equal(flag(call, '--store'), path.join(ctx.root, '.claude', 'archunit-store', 'root'));
 });

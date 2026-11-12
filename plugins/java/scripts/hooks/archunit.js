@@ -8,7 +8,7 @@
  *
  * Findings aren't scoped to changed lines: ArchUnit scopes by package
  * (`archunit.packages`) and, for brownfield code, by the freeze store in
- * .claude/archunit-store/, which only /java:setup creates.
+ * .claude/archunit-store/<module>/, which only /java:setup creates.
  */
 
 const crypto = require('node:crypto');
@@ -224,13 +224,22 @@ function runModule({ moduleRoot, module, command, archunit, store, extra, create
   return parseRunner(result.stdout, moduleRoot, warn);
 }
 
+/*
+ * Each module gets its own freeze store: ArchUnit keys stored violations by
+ * rule, so a store shared across modules would count one module's frozen
+ * violations as solved while analysing another, and drop them.
+ */
+function moduleStore(repoRoot, moduleRoot) {
+  const relative = path.relative(repoRoot, moduleRoot).split(path.sep).join('/');
+  return path.join(repoRoot, '.claude', 'archunit-store', relative || 'root');
+}
+
 function runSection({ repoRoot, config, modules, manifest, warn, createStore = false }) {
   if (!config.archunit.enabled) return { findings: [] };
   const command = runnerCommand(manifest);
   if (!command) return { findings: [] };
 
   const extra = manifest?.javac ? compileProjectRules(repoRoot, manifest, warn) : null;
-  const store = path.join(repoRoot, '.claude', 'archunit-store');
   const findings = [];
   for (const [moduleRoot, module] of modules) {
     findings.push(
@@ -239,7 +248,7 @@ function runSection({ repoRoot, config, modules, manifest, warn, createStore = f
         module,
         command,
         archunit: config.archunit,
-        store,
+        store: moduleStore(repoRoot, moduleRoot),
         extra,
         createStore,
         warn,

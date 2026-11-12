@@ -158,10 +158,10 @@ test('a failed compile warns and never blocks', (t) => {
 
 test('passes the freeze store when the project has one', (t) => {
   const ctx = setup(t);
-  writeTree(ctx.root, { '.claude/archunit-store/stored.rules': '' });
+  writeTree(ctx.root, { '.claude/archunit-store/root/stored.rules': '' });
   touch(ctx, SOURCE);
   stop(ctx);
-  assert.equal(arg(runnerCalls(ctx)[0], '--store'), path.join(ctx.root, '.claude/archunit-store'));
+  assert.equal(arg(runnerCalls(ctx)[0], '--store'), path.join(ctx.root, '.claude/archunit-store/root'));
 });
 
 test(
@@ -212,5 +212,65 @@ public class TeamRules {
     assert.deepEqual(warnings, []);
     const extra = arg(runnerCalls(ctx)[0], '--extra');
     assert.ok(fs.existsSync(path.join(extra, 'TeamRules.class')));
+  },
+);
+
+test(
+  'keeps a separate freeze baseline per module of a multi-module repo',
+  { skip: SKIP_WITHOUT_JDK },
+  async (t) => {
+    const manifest = await installedEngine();
+    const root = require('./helpers').mkScratchDir();
+    t.after(() => rmScratchDir(root));
+    fs.mkdirSync(path.join(root, '.git'));
+    const fixtures = path.join(__dirname, 'fixtures', 'archunit');
+    const javaSources = (dir) =>
+      fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+        const full = path.join(dir, e.name);
+        return e.isDirectory() ? javaSources(full) : e.name.endsWith('.java') ? [full] : [];
+      });
+    const compileInto = (module, ...dirs) => {
+      const out = path.join(root, module, 'target', 'classes');
+      fs.mkdirSync(out, { recursive: true });
+      writeTree(root, { [`${module}/pom.xml`]: POM });
+      const r = require('node:child_process').spawnSync(
+        manifest.javac,
+        ['-d', out, ...dirs.flatMap(javaSources)],
+        { encoding: 'utf8' },
+      );
+      assert.equal(r.status, 0, r.stderr);
+    };
+    compileInto('a', path.join(fixtures, 'base'));
+    compileInto('b', path.join(fixtures, 'base', 'org'), path.join(fixtures, 'extra'));
+
+    const { runSection } = require('../archunit');
+    const modules = new Map(
+      ['a', 'b'].map((m) => [path.join(root, m), { files: [], info: { javaLevel: 17 } }]),
+    );
+    const config = {
+      archunit: {
+        enabled: true,
+        basePackage: 'com.acme',
+        packages: [],
+        disabledRules: [],
+        compile: 'never',
+      },
+    };
+    const warnings = [];
+    const run = (extra = {}) =>
+      runSection({
+        repoRoot: root,
+        config,
+        modules,
+        manifest,
+        warn: (m) => warnings.push(m),
+        ...extra,
+      }).findings;
+
+    run({ createStore: true });
+    assert.deepEqual(run(), [], 'neither module reports its frozen violations');
+    assert.deepEqual(run(), [], 'and the baseline survives a second stop');
+    assert.ok(fs.existsSync(path.join(root, '.claude', 'archunit-store', 'a', 'stored.rules')));
+    assert.ok(fs.existsSync(path.join(root, '.claude', 'archunit-store', 'b', 'stored.rules')));
   },
 );
