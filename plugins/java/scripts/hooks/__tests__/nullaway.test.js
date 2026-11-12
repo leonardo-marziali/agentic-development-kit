@@ -89,6 +89,8 @@ test('detects the nullness library from the classpath', () => {
   );
   assert.equal(detectMode(['/m2/spring-core-5.3.31.jar'], 'auto'), 'spring');
   assert.equal(detectMode(['/m2/guava.jar'], 'auto'), null);
+  // Spring 4 has no org.springframework.lang annotations to analyse.
+  assert.equal(detectMode(['/m2/spring-core-4.3.30.RELEASE.jar'], 'auto'), null);
   assert.equal(detectMode([], 'spring'), 'spring');
 });
 

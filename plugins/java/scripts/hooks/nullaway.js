@@ -88,8 +88,17 @@ function processorJars(classpath, processorPath, manifest) {
 function detectMode(classpath, configured) {
   if (configured === 'jspecify' || configured === 'spring') return configured;
   if (jarNamed(classpath, 'jspecify-')) return 'jspecify';
-  if (jarNamed(classpath, 'spring-core-')) return 'spring';
+  if (springCoreMajor(classpath) >= 5) return 'spring';
   return null;
+}
+
+// org.springframework.lang (@NonNullApi, @Nullable) arrived in Spring 5.
+function springCoreMajor(classpath) {
+  for (const jar of classpath) {
+    const match = /(?:^|[\\/])spring-core-(\d+)\.[^\\/]*\.jar$/.exec(jar);
+    if (match) return Number(match[1]);
+  }
+  return 0;
 }
 
 function buildJavacArgs({
