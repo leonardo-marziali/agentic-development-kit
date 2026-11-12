@@ -154,7 +154,10 @@ function compileProjectRules(repoRoot, manifest, warn) {
   const base =
     process.env.CLAUDE_PLUGIN_DATA || path.join(os.homedir(), '.cache', 'claude-java-plugin');
   const outDir = path.join(base, 'archunit-extra', hash.digest('hex').slice(0, 16));
-  if (fs.existsSync(outDir)) return outDir;
+  // Written last: a directory without it is what a killed compile left behind.
+  const complete = path.join(outDir, '.complete');
+  if (fs.existsSync(complete)) return outDir;
+  fs.rmSync(outDir, { recursive: true, force: true });
   fs.mkdirSync(outDir, { recursive: true });
   const result = spawnSync(
     manifest.javac,
@@ -168,6 +171,7 @@ function compileProjectRules(repoRoot, manifest, warn) {
     );
     return null;
   }
+  fs.writeFileSync(complete, '');
   return outDir;
 }
 
@@ -287,4 +291,4 @@ function runSection({ repoRoot, config, modules, manifest, warn, createStore = f
 
 registerSection({ name: 'ArchUnit', partition: 'files', run: runSection });
 
-module.exports = { runSection, ensureCompiled, parseRunner, RUNNER_CLASS };
+module.exports = { runSection, ensureCompiled, compileProjectRules, parseRunner, RUNNER_CLASS };

@@ -335,3 +335,30 @@ test('skips the slow sections with a warning once the stop has used its time bud
   assert.match(res.stderr, /java plugin: .*time budget.*ArchUnit/);
   assert.equal(res.stdout.trim(), '');
 });
+
+test('recompiles project rules a killed compile left half-written', (t) => {
+  const { compileProjectRules } = require('../archunit');
+  const root = require('./helpers').mkScratchDir();
+  t.after(() => rmScratchDir(root));
+  writeTree(root, { '.claude/archunit/TeamRules.java': 'public class TeamRules {}\n' });
+  const javac = path.join(root, 'fake-javac');
+  fs.writeFileSync(
+    javac,
+    '#!/bin/sh\nwhile [ "$1" != "-d" ]; do shift; done\ntouch "$2/TeamRules.class"\n',
+    { mode: 0o755 },
+  );
+  const saved = process.env.CLAUDE_PLUGIN_DATA;
+  process.env.CLAUDE_PLUGIN_DATA = path.join(root, 'data');
+  t.after(() => {
+    if (saved === undefined) delete process.env.CLAUDE_PLUGIN_DATA;
+    else process.env.CLAUDE_PLUGIN_DATA = saved;
+  });
+  const manifest = { javac, jars: { archunit: [] } };
+
+  const outDir = compileProjectRules(root, manifest, () => {});
+  // What a compile killed before finishing leaves: the output directory, without its classes.
+  for (const name of fs.readdirSync(outDir)) fs.rmSync(path.join(outDir, name), { force: true });
+
+  const again = compileProjectRules(root, manifest, () => {});
+  assert.ok(fs.existsSync(path.join(again, 'TeamRules.class')));
+});
