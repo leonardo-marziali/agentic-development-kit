@@ -108,3 +108,18 @@ test('--create-archunit-store creates the freeze baseline', (t) => {
   assert.ok(call.includes('--create-store'));
   assert.equal(flag(call, '--store'), path.join(ctx.root, '.claude', 'archunit-store', 'root'));
 });
+
+test('--create-archunit-store fails when no module could be analysed', (t) => {
+  const ctx = project(t, {
+    '.claude/java-standards.json': JSON.stringify({
+      archunit: { basePackage: 'demo', compile: 'never' },
+    }),
+    [A]: 'class A {}\n',
+  });
+
+  const res = cli('check.js', ['--create-archunit-store'], ctx);
+
+  assert.equal(res.status, 2);
+  assert.doesNotMatch(res.stdout, /baseline written/);
+  assert.match(res.stderr, /no module could be analysed/);
+});

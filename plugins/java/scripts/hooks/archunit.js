@@ -204,7 +204,7 @@ function runModule({ moduleRoot, module, command, archunit, store, extra, create
     warn,
   });
   const outputDirs = outputDirsOf(moduleRoot);
-  if (state === 'skipped' || outputDirs.length === 0) return [];
+  if (state === 'skipped' || outputDirs.length === 0) return { findings: [], analysed: false };
 
   const result = spawnSync(
     command.bin,
@@ -219,9 +219,9 @@ function runModule({ moduleRoot, module, command, archunit, store, extra, create
     warn(
       `ArchUnit could not run on ${moduleRoot}: ${result.error?.message || (result.stderr || '').trim().slice(-2000)}`,
     );
-    return [];
+    return { findings: [], analysed: false };
   }
-  return parseRunner(result.stdout, moduleRoot, warn);
+  return { findings: parseRunner(result.stdout, moduleRoot, warn), analysed: true };
 }
 
 /*
@@ -235,27 +235,28 @@ function moduleStore(repoRoot, moduleRoot) {
 }
 
 function runSection({ repoRoot, config, modules, manifest, warn, createStore = false }) {
-  if (!config.archunit.enabled) return { findings: [] };
+  if (!config.archunit.enabled) return { findings: [], analysed: 0 };
   const command = runnerCommand(manifest);
-  if (!command) return { findings: [] };
+  if (!command) return { findings: [], analysed: 0 };
 
   const extra = manifest?.javac ? compileProjectRules(repoRoot, manifest, warn) : null;
   const findings = [];
+  let analysed = 0;
   for (const [moduleRoot, module] of modules) {
-    findings.push(
-      ...runModule({
-        moduleRoot,
-        module,
-        command,
-        archunit: config.archunit,
-        store: moduleStore(repoRoot, moduleRoot),
-        extra,
-        createStore,
-        warn,
-      }),
-    );
+    const result = runModule({
+      moduleRoot,
+      module,
+      command,
+      archunit: config.archunit,
+      store: moduleStore(repoRoot, moduleRoot),
+      extra,
+      createStore,
+      warn,
+    });
+    findings.push(...result.findings);
+    if (result.analysed) analysed += 1;
   }
-  return { findings };
+  return { findings, analysed };
 }
 
 registerSection({ name: 'ArchUnit', partition: false, run: runSection });

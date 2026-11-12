@@ -79,7 +79,7 @@ function createStore() {
   }
   const config = configFor(repoRoot);
   const manifest = engineManifest();
-  runSection({
+  const { analysed } = runSection({
     repoRoot,
     config,
     modules: repositoryModules(repoRoot, config),
@@ -87,6 +87,12 @@ function createStore() {
     warn: warnOnce,
     createStore: true,
   });
+  if (!analysed) {
+    process.stderr.write(
+      'java plugin: no module could be analysed (see the warnings above), so no ArchUnit baseline was written.\n',
+    );
+    process.exit(2);
+  }
   process.stdout.write(
     `ArchUnit baseline written to ${path.join(repoRoot, '.claude', 'archunit-store')}\n`,
   );
