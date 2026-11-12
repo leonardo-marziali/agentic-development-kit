@@ -16,7 +16,7 @@ const GRADLE_CONFIGURATIONS =
   'annotationProcessor|testAnnotationProcessor|developmentOnly|kapt|compile|testCompile';
 
 const GRADLE_DEPENDENCY = new RegExp(
-  `^\\s*(?:${GRADLE_CONFIGURATIONS})\\s*\\(?\\s*['"]([^'":]+):([^'":]+):([^'"]+)['"]`,
+  String.raw`^\s*(?:${GRADLE_CONFIGURATIONS})\s*\(?\s*['"]([^'":]+):([^'":]+):([^'"]+)['"]`,
 );
 
 function lineOf(text, offset) {

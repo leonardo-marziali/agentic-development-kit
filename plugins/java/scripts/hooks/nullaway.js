@@ -43,7 +43,7 @@ const jarNamed = (jars, prefix) =>
   );
 
 function versionOf(jar, prefix) {
-  const match = new RegExp(`^${prefix}(\\d+)\\.(\\d+)\\.(\\d+)`).exec(path.basename(jar));
+  const match = new RegExp(String.raw`^${prefix}(\d+)\.(\d+)\.(\d+)`).exec(path.basename(jar));
   return match ? match.slice(1, 4).map(Number) : null;
 }
 

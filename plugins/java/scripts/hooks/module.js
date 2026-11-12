@@ -36,12 +36,14 @@ function toLevel(value) {
 }
 
 function tagValue(block, tag) {
-  const match = new RegExp(`<${tag}>\\s*([^<]*?)\\s*</${tag}>`).exec(block);
+  const match = new RegExp(String.raw`<${tag}>\s*([^<]*?)\s*</${tag}>`).exec(block);
   return match ? match[1] : null;
 }
 
 function blocks(text, tag) {
-  return [...text.matchAll(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, 'g'))].map((m) => m[1]);
+  return [...text.matchAll(new RegExp(String.raw`<${tag}>([\s\S]*?)</${tag}>`, 'g'))].map(
+    (m) => m[1],
+  );
 }
 
 /*
@@ -155,6 +157,21 @@ function conventionScripts(dir) {
   return scripts.sort((a, b) => a.localeCompare(b));
 }
 
+// The value `find` reads from one directory's build file, else its convention plugins.
+function gradleValueIn(dir, find) {
+  const text = gradleText(dir);
+  const value = text === null ? null : find(text);
+  if (value !== null) return value;
+  const scripts = ['buildSrc', 'build-logic'].flatMap((plugins) =>
+    conventionScripts(path.join(dir, plugins)),
+  );
+  for (const script of scripts) {
+    const fromPlugin = find(read(script) || '');
+    if (fromPlugin !== null) return fromPlugin;
+  }
+  return null;
+}
+
 /*
  * The first value `find` reads from a Gradle module's build: its own build
  * file, then each enclosing build up to the repository root (a root
@@ -165,15 +182,8 @@ function searchGradle(moduleRoot, find) {
   if (gradleText(moduleRoot) === null) return null;
   let dir = moduleRoot;
   while (true) {
-    const text = gradleText(dir);
-    const value = text === null ? null : find(text);
+    const value = gradleValueIn(dir, find);
     if (value !== null) return value;
-    for (const plugins of ['buildSrc', 'build-logic']) {
-      for (const script of conventionScripts(path.join(dir, plugins))) {
-        const fromPlugin = find(read(script) || '');
-        if (fromPlugin !== null) return fromPlugin;
-      }
-    }
     const parent = path.dirname(dir);
     if (fs.existsSync(path.join(dir, '.git')) || parent === dir) return null;
     dir = parent;
