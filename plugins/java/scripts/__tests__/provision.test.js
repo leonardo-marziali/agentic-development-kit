@@ -161,3 +161,20 @@ test('findJava reports the major version of the JDK it finds', { skip: SKIP_WITH
   assert.ok(JAVA_21.major >= 21);
   assert.ok(fs.existsSync(JAVA_21.javac) || JAVA_21.javac === 'javac');
 });
+
+test('readInstall treats an install whose JDK has disappeared as not installed', async (t) => {
+  const dir = scratch(t);
+  const { lock, fromDir } = fakeLock(dir);
+  const engineSrc = path.join(dir, 'none');
+  const dataDir = path.join(dir, 'data');
+  const gone = path.join(dir, 'old-jdk', 'bin');
+  await p.install({
+    dataDir,
+    lock,
+    fromDir,
+    engineSrc,
+    java: { bin: path.join(gone, 'java'), javac: path.join(gone, 'javac'), major: 21 },
+  });
+
+  assert.equal(p.readInstall(dataDir, { lock, engineSrc }), null);
+});
