@@ -184,6 +184,27 @@ test('real engine: formats the whole file with *', { skip: SKIP_WITHOUT_JDK }, a
   );
 });
 
+test(
+  "real engine: the default profile follows the author's IntelliJ style",
+  { skip: SKIP_WITHOUT_JDK },
+  async (t) => {
+    const manifest = await installedEngine();
+    const file = copyFixture(scratch(t), 'Style.java');
+
+    runEngine({
+      manifest,
+      files: [{ path: file, ranges: '*' }],
+      profile: DEFAULT_PROFILE,
+      source: 21,
+    });
+
+    assert.equal(
+      fs.readFileSync(file, 'utf8'),
+      fs.readFileSync(path.join(FIXTURES, 'Style.expected.java'), 'utf8'),
+    );
+  },
+);
+
 test('real engine: keeps CRLF line endings', { skip: SKIP_WITHOUT_JDK }, async (t) => {
   const manifest = await installedEngine();
   const dir = scratch(t);
