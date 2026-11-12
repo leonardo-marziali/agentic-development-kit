@@ -1,0 +1,266 @@
+{
+  "$comment": "Pinned jars for the java plugin's engine. Never resolved at runtime: bump deliberately, then re-pin every sha256 from a download whose Maven Central .sha1 matched.",
+  "minJava": 21,
+  "groups": {
+    "jdt": [
+      {
+        "groupId": "org.eclipse.jdt",
+        "artifactId": "org.eclipse.jdt.core",
+        "version": "3.47.0",
+        "sha256": "723e30be1e841516c388ebb32017cb8b36662808f46be5265b78cc06bd4fe71c"
+      },
+      {
+        "groupId": "org.eclipse.jdt",
+        "artifactId": "ecj",
+        "version": "3.46.100",
+        "sha256": "74c93172475fee0cd4e6eefb44233516dd40525642da35d009146d97ea598229"
+      },
+      {
+        "groupId": "org.eclipse.platform",
+        "artifactId": "org.eclipse.core.resources",
+        "version": "3.24.100",
+        "sha256": "946851cf5902cd3b002920063a30b169e5710088b6c1ad7dd05bdd3be4fbfff4"
+      },
+      {
+        "groupId": "org.eclipse.platform",
+        "artifactId": "org.eclipse.core.runtime",
+        "version": "3.35.0",
+        "sha256": "5b0c2794e9fe1785360dec920cc802f3388a0eb72ee25b89054b79ff3e2f07c9"
+      },
+      {
+        "groupId": "org.eclipse.platform",
+        "artifactId": "org.eclipse.core.contenttype",
+        "version": "3.9.900",
+        "sha256": "6c57132740523b5c5de125c0041ca43c1606da6563214c1bae3999fa21ead893"
+      },
+      {
+        "groupId": "org.eclipse.platform",
+        "artifactId": "org.eclipse.core.jobs",
+        "version": "3.15.900",
+        "sha256": "941b3c5feeba4ec0a949a8a94ff10283b2505813fa736c9e6345f146ae1b7e8a"
+      },
+      {
+        "groupId": "org.eclipse.platform",
+        "artifactId": "org.eclipse.equinox.common",
+        "version": "3.21.0",
+        "sha256": "2545ed27d408f19882695703097e5998bf25652bd0dac76a8e6d1391ec228ab7"
+      },
+      {
+        "groupId": "org.eclipse.platform",
+        "artifactId": "org.eclipse.equinox.preferences",
+        "version": "3.12.100",
+        "sha256": "fd04e81a28ab32b6bb073286eb293c44b760176fcf1e35ef15614d62df820f86"
+      },
+      {
+        "groupId": "org.eclipse.platform",
+        "artifactId": "org.eclipse.osgi",
+        "version": "3.24.300",
+        "sha256": "4a770aa4a78df653af871073c8b4ddd56884895f5fc71d10c40b4289ac7c8b9f"
+      },
+      {
+        "groupId": "org.eclipse.platform",
+        "artifactId": "org.eclipse.text",
+        "version": "3.14.800",
+        "sha256": "14814c1f1a737fde0a2d56c47a2f02cf4c8c5dee748756c4763e674cae214250"
+      },
+      {
+        "groupId": "org.osgi",
+        "artifactId": "org.osgi.service.prefs",
+        "version": "1.1.2",
+        "sha256": "43c7c870710e363405d422da653cce0d798a4537f76e4930f79bceadd3a55345"
+      }
+    ],
+    "errorprone": [
+      {
+        "groupId": "com.github.ben-manes.caffeine",
+        "artifactId": "caffeine",
+        "version": "3.3.1",
+        "sha256": "1f916d052a3f8c0c10951f343f043f176ff2d3c2f9e380e15f0be673c5e67c48"
+      },
+      {
+        "groupId": "com.github.kevinstern",
+        "artifactId": "software-and-algorithms",
+        "version": "1.0",
+        "sha256": "61ab82439cef37343b14f53154c461619375373a56b9338e895709fb54e0864c"
+      },
+      {
+        "groupId": "com.google.auto.service",
+        "artifactId": "auto-service-annotations",
+        "version": "1.1.1",
+        "sha256": "16a76dd00a2650568447f5d6e3a9e2c809d9a42367d56b45215cfb89731f4d24"
+      },
+      {
+        "groupId": "com.google.auto.value",
+        "artifactId": "auto-value-annotations",
+        "version": "1.11.1",
+        "sha256": "6c61a11420a5cddf3313888e9d335d5eedfbeb9a8da26591470fbfe61f5bf859"
+      },
+      {
+        "groupId": "com.google.auto",
+        "artifactId": "auto-common",
+        "version": "1.2.2",
+        "sha256": "f50b1ce8a41fad31a8a819c052f8ffa362ea0a3dbe9ef8f7c7dc9a36d4738a59"
+      },
+      {
+        "groupId": "com.google.errorprone",
+        "artifactId": "error_prone_annotation",
+        "version": "2.52.0",
+        "sha256": "c589eb0a20d60487658dc181552737009a677de4f9520b607c3b62bfe5f25d98"
+      },
+      {
+        "groupId": "com.google.errorprone",
+        "artifactId": "error_prone_annotations",
+        "version": "2.52.0",
+        "sha256": "24822b246a2da324006fc5a1c940b1d2cf9cd716e530155c39fea695d5ab01c4"
+      },
+      {
+        "groupId": "com.google.errorprone",
+        "artifactId": "error_prone_check_api",
+        "version": "2.52.0",
+        "sha256": "9fc840921aeca38e6e66dac2a6a2cde64c508771d61445a07fdc21f470244fb1"
+      },
+      {
+        "groupId": "com.google.errorprone",
+        "artifactId": "error_prone_core",
+        "version": "2.52.0",
+        "sha256": "f7135c869ab224ec4253a79d58be000773134cebe03bf9d702a878a42c2be35c"
+      },
+      {
+        "groupId": "com.google.googlejavaformat",
+        "artifactId": "google-java-format",
+        "version": "1.37.0",
+        "sha256": "49874ad1d6b1006d2f8660482135609eb124888e0046c3dbfefc706a0387c700"
+      },
+      {
+        "groupId": "com.google.guava",
+        "artifactId": "failureaccess",
+        "version": "1.0.3",
+        "sha256": "cbfc3906b19b8f55dd7cfd6dfe0aa4532e834250d7f080bd8d211a3e246b59cb"
+      },
+      {
+        "groupId": "com.google.guava",
+        "artifactId": "guava",
+        "version": "33.7.2-jre",
+        "sha256": "b530942257fb935f8b2cfaa5f8eb5bd59c555fd8e8d01b8ce98912e077ea606c"
+      },
+      {
+        "groupId": "com.google.guava",
+        "artifactId": "listenablefuture",
+        "version": "9999.0-empty-to-avoid-conflict-with-guava",
+        "sha256": "b372a037d4230aa57fbeffdef30fd6123f9c0c2db85d0aced00c91b974f33f99"
+      },
+      {
+        "groupId": "com.google.j2objc",
+        "artifactId": "j2objc-annotations",
+        "version": "3.1",
+        "sha256": "84d3a150518485f8140ea99b8a985656749629f6433c92b80c75b36aba3b099b"
+      },
+      {
+        "groupId": "com.google.protobuf",
+        "artifactId": "protobuf-java",
+        "version": "4.36.2",
+        "sha256": "0773e72eaf375e1285df330575bfec5bda5da674d544d0e142a17f89c8f754da"
+      },
+      {
+        "groupId": "com.uber.nullaway",
+        "artifactId": "nullaway",
+        "version": "0.14.3",
+        "sha256": "440d3217f6a74d3b8dab766b0c63dbfbb87bea36d798879865218249dc3f1604"
+      },
+      {
+        "groupId": "io.github.eisop",
+        "artifactId": "dataflow-errorprone",
+        "version": "3.41.0-eisop1",
+        "sha256": "10434fba4e53f55fa9c76904cde414b918932548c9dfc4e2d634ac05ff7a7d10"
+      },
+      {
+        "groupId": "io.github.java-diff-utils",
+        "artifactId": "java-diff-utils",
+        "version": "4.18",
+        "sha256": "a20d8f538a1254dde49370cc06466aff7df7e8cbc75d1077e14f5c951d2f8bfa"
+      },
+      {
+        "groupId": "javax.inject",
+        "artifactId": "javax.inject",
+        "version": "1",
+        "sha256": "91c77044a50c481636c32d916fd89c9118a72195390452c81065080f957de7ff"
+      },
+      {
+        "groupId": "org.checkerframework",
+        "artifactId": "checker-qual",
+        "version": "4.3.1",
+        "sha256": "66c061a19e20fb005c173169534aba7bf78e904a8a6da6fe8c6e97d277f6d347"
+      },
+      {
+        "groupId": "org.checkerframework",
+        "artifactId": "dataflow-nullaway",
+        "version": "4.3.1",
+        "sha256": "dc7b9ceddc9a68a1ffa9d66b5d62967ca3843712a671127c5a6c184f23a4f940"
+      },
+      {
+        "groupId": "org.commonmark",
+        "artifactId": "commonmark-ext-gfm-tables",
+        "version": "0.29.0",
+        "sha256": "f263d284c0795b0ddd6071d4fa969f67d460644c20828e51957ad5aec0d75612"
+      },
+      {
+        "groupId": "org.commonmark",
+        "artifactId": "commonmark",
+        "version": "0.29.0",
+        "sha256": "4c9b0fa481e36d7176f38e572c134656424cf9601bc190855d0f89478df901c6"
+      },
+      {
+        "groupId": "org.jspecify",
+        "artifactId": "jspecify",
+        "version": "1.0.1",
+        "sha256": "070d75f261fe4c5b8202508366715f7f2d4660f88c8ef7e6d3575e48c9683b66"
+      },
+      {
+        "groupId": "org.pcollections",
+        "artifactId": "pcollections",
+        "version": "5.0.0",
+        "sha256": "d42da212e052cbeedfea5eb20641b74ee574bc02302c584a16718db5376fa92c"
+      },
+      {
+        "groupId": "org.safere",
+        "artifactId": "safere",
+        "version": "1.1.0",
+        "sha256": "2e5cdb15a1ada9927b5d520ec99d3f3e52a7f65d1984b7254832216330db6359"
+      },
+      {
+        "groupId": "org.yaml",
+        "artifactId": "snakeyaml",
+        "version": "2.7",
+        "sha256": "2e194eba45a67dee19a4e272f4a04b18de8054e9f598b094382f6dae0b0e4b5e"
+      }
+    ],
+    "archunit": [
+      {
+        "groupId": "com.tngtech.archunit",
+        "artifactId": "archunit",
+        "version": "1.5.1",
+        "sha256": "a4dbfc51c90005ad6ac9967672a7efb43aa6928287a57238b28e60e0a75c5c6f"
+      },
+      {
+        "groupId": "org.slf4j",
+        "artifactId": "slf4j-api",
+        "version": "2.0.19",
+        "sha256": "e91ff6d720609e7a194ffe758c3ed5c84e798617ae07b0a0f6a4fe229741b4bb"
+      },
+      {
+        "groupId": "org.slf4j",
+        "artifactId": "slf4j-nop",
+        "version": "2.0.19",
+        "sha256": "d0226062f9b3a2793f62002f892a8e624eb07f396130fc949e01b1d5f4888cba"
+      }
+    ],
+    "lombok": [
+      {
+        "groupId": "org.projectlombok",
+        "artifactId": "lombok",
+        "version": "1.18.48",
+        "sha256": "85477a4655ebb2c074a9099cfb749be454449fee564d4282610df1b85f7c508b"
+      }
+    ]
+  }
+}

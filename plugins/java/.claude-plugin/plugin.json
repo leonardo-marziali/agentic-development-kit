@@ -1,0 +1,23 @@
+{
+  "$schema": "https://www.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "java",
+  "version": "0.2.0",
+  "description": "Java standards for Claude Code: Eclipse JDT formatting, source rules, NullAway and ArchUnit checks at Stop, and standards skills — opt-in per project.",
+  "author": {
+    "name": "Leonardo Marziali",
+    "url": "https://github.com/leonardo-marziali"
+  },
+  "homepage": "https://github.com/leonardo-marziali/agentic-development-kit",
+  "repository": "https://github.com/leonardo-marziali/agentic-development-kit.git",
+  "license": "Apache-2.0",
+  "keywords": ["java", "spring-boot", "formatting", "nullaway", "archunit", "jspecify"],
+  "dependencies": ["jdtls-lsp@claude-plugins-official"],
+  "userConfig": {
+    "jdk_homes": {
+      "type": "string",
+      "multiple": true,
+      "title": "JDK homes for project builds",
+      "description": "JDKs the plugin may use to run your projects' own Maven or Gradle, e.g. a Java 8 and a Java 11 home. Picked by the module's Java version."
+    }
+  }
+}

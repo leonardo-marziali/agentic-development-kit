@@ -1,3 +1,10 @@
+# [2.13.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.12.0...v2.13.0) (2026-11-12)
+
+
+### Features
+
+* **java:** add the java plugin for the Java/Spring Boot standard ([#48](https://github.com/leonardo-marziali/agentic-development-kit/issues/48)) ([b05a4ba](https://github.com/leonardo-marziali/agentic-development-kit/commit/b05a4bac0d05f1cc278ff4714f4712701fa04aa2))
+
 # [2.12.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.11.0...v2.12.0) (2026-11-01)
 
 
