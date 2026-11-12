@@ -71,7 +71,7 @@ justified exception with `// java-rules:allow <ID> <reason>`.
 - S8–S9 Controller orchestrates (DTO → domain, `If-Match` → version, call
   service, `ETag` back), no business decisions.
 - S10–S12 `<Entity>Service` is small CRUD; a multi-step process is a use
-  case `<Entity><Process>Service` with one `handle` method.
+  case `<Entity><Process>UseCase` with one public `handle` method.
 - S13 Models: `*ReadDto`, `*WriteDto`, `*FilterDto`, domain, `*Filter`,
   `*Entity` — only those needed.
 - S14 Read DTOs `@Value @Builder`; write/filter DTOs `@Data`.
@@ -122,7 +122,7 @@ justified exception with `// java-rules:allow <ID> <reason>`.
 
 ## Testing
 
-- T1–T4 Test every branch; `shouldXWhenY` names, `@Nested`,
+- T1–T4 Test every branch; classes `*Test`, `shouldXWhenY` names, `@Nested`,
   `@DisplayName`, AssertJ; parameterize; unit-test domain and services.
 - T5–T6 `@WebMvcTest` for controllers; data-store slices and WireMock for
   integrations.

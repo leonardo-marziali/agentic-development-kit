@@ -22,8 +22,9 @@ justified exception with `// java-rules:allow <ID> <reason>`.
 
 **T1. Test every branch.** All code branches are tested.
 
-**T2. Readable tests.** Name tests `shouldXWhenY`, group them with `@Nested` and
-`@DisplayName`, and assert with AssertJ.
+**T2. Readable tests.** Name test classes `<Subject>Test` (not `*Tests` or
+`*IT`), name tests `shouldXWhenY`, group them with `@Nested` and `@DisplayName`,
+and assert with AssertJ.
 
 **T3. Parameterize.** When several tests share the same logic and differ only in
 their data, write one parameterized test instead.

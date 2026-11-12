@@ -7,11 +7,13 @@ import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.sli
 
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaMethod;
+import com.tngtech.archunit.core.domain.JavaModifier;
 import com.tngtech.archunit.lang.ArchCondition;
 import com.tngtech.archunit.lang.ArchRule;
 import com.tngtech.archunit.lang.ConditionEvents;
 import com.tngtech.archunit.lang.SimpleConditionEvent;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -36,6 +38,9 @@ public final class StandardRules {
         rules.put("S24-mapper", methods().that().areDeclaredInClassesThat().areAnnotatedWith("org.mapstruct.Mapper")
             .and().arePublic().should().haveNameMatching("to[A-Z]\\w*|update[A-Z]\\w*")
             .because("mapper methods are toDomain, toEntity, toReadDto, toWriteDto, toFilter or update* (S24)"));
+        rules.put("S24-usecase", classes().that().haveSimpleNameEndingWith("UseCase").and().areNotInterfaces()
+            .should(haveOnlyPublicHandle())
+            .because("a use case exposes exactly one public method, handle (S24)"));
         rules.put("S7", methods().that().areDeclaredInClassesThat().resideInAnyPackage("..service..", "..persistence..")
             .and().areDeclaredInClassesThat().areInterfaces().and().arePublic()
             .should(speakOnlyDomainObjects())
@@ -81,6 +86,27 @@ public final class StandardRules {
                 if (name.endsWith("Dto") || name.endsWith("Entity")) {
                     events.add(SimpleConditionEvent.violated(method, method.getDescription() + " uses " + name
                         + " in " + method.getSourceCodeLocation()));
+                }
+            }
+        };
+    }
+
+    // Compiler-generated members (bridge methods, lambdas) aren't the author's API.
+    private static ArchCondition<JavaClass> haveOnlyPublicHandle() {
+        return new ArchCondition<>("have exactly one public method, handle") {
+            @Override
+            public void check(JavaClass javaClass, ConditionEvents events) {
+                List<String> publicMethods = javaClass.getMethods().stream()
+                    .filter(method -> method.getModifiers().contains(JavaModifier.PUBLIC))
+                    .filter(method -> !method.getModifiers().contains(JavaModifier.SYNTHETIC)
+                        && !method.getModifiers().contains(JavaModifier.BRIDGE))
+                    .map(JavaMethod::getName)
+                    .sorted()
+                    .toList();
+                if (!publicMethods.equals(List.of("handle"))) {
+                    events.add(SimpleConditionEvent.violated(javaClass, "Class <" + javaClass.getName()
+                        + "> has public methods " + publicMethods + " instead of only handle in "
+                        + javaClass.getSourceCodeLocation()));
                 }
             }
         };

@@ -76,6 +76,33 @@ test('reports the standard rules a project breaks', { skip: SKIP_WITHOUT_JDK }, 
 });
 
 test(
+  'a *UseCase class has exactly one public method, handle (S24)',
+  { skip: SKIP_WITHOUT_JDK },
+  async (t) => {
+    const { manifest, dir } = await setup(t);
+    const classes = path.join(dir, 'usecase-classes');
+    compile(manifest, classes, path.join(FIXTURES, 'usecase'));
+
+    const findings = runner(manifest, ['--classes', classes, '--packages', 'com.acme..']);
+
+    const flagged = findings
+      .filter((f) => f.rule === 'S24')
+      .map((f) => path.basename(f.file))
+      .sort();
+    // ArchiveProjectUseCase: Consumer's accept is an extra public method; Ship: notify; Rename: no handle.
+    assert.deepEqual(flagged, [
+      'ArchiveProjectUseCase.java',
+      'RenameProjectUseCase.java',
+      'ShipProjectUseCase.java',
+    ]);
+    assert.match(
+      findings.find((f) => f.file.endsWith('ShipProjectUseCase.java')).message,
+      /notify/,
+    );
+  },
+);
+
+test(
   'skips disabled rules and classes outside the packages',
   { skip: SKIP_WITHOUT_JDK },
   async (t) => {

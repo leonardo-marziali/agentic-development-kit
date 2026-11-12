@@ -144,10 +144,10 @@ large services with many methods.
 **S11. One service per use case.** A business process with many steps gets its
 own class, following the Use Case or Interactor pattern from Robert Martin's
 _Clean Architecture_: one class per use case, orchestrating entities and
-gateways. Name it `<DomainEntity><Process>Service`, for example
-`OrderPreparationService`. It exposes a single public method, always named
+gateways. Name it `<DomainEntity><Process>UseCase`, for example
+`OrderPreparationUseCase`. It exposes a single public method, always named
 `handle`, so every use case is invoked the same way:
-`orderPreparationService.handle(order)`.
+`orderPreparationUseCase.handle(order)`.
 
 **S12. Services work on the domain.** Entity and use case services alike
 handle only domain objects. They pass those objects to the repository layer,

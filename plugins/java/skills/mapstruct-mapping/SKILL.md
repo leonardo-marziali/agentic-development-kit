@@ -255,7 +255,7 @@ classes use a fixed vocabulary, as J6 and the examples above show: `save`,
 with ArchUnit rather than generic base interfaces such as `CrudService<T, ID>`.
 Those interfaces pollute every signature with type parameters and force each
 implementation to carry the same set of methods, while an ArchUnit test
-constrains names and nothing else. Use case services (see S11) expose only
+constrains names and nothing else. Use cases (`*UseCase`, see S11) expose only
 `handle`, and a new verb is added to the list deliberately.
 
 ```java

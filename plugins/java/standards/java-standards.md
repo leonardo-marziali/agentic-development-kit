@@ -406,10 +406,10 @@ large services with many methods.
 **S11. One service per use case.** A business process with many steps gets its
 own class, following the Use Case or Interactor pattern from Robert Martin's
 _Clean Architecture_: one class per use case, orchestrating entities and
-gateways. Name it `<DomainEntity><Process>Service`, for example
-`OrderPreparationService`. It exposes a single public method, always named
+gateways. Name it `<DomainEntity><Process>UseCase`, for example
+`OrderPreparationUseCase`. It exposes a single public method, always named
 `handle`, so every use case is invoked the same way:
-`orderPreparationService.handle(order)`.
+`orderPreparationUseCase.handle(order)`.
 
 **S12. Services work on the domain.** Entity and use case services alike
 handle only domain objects. They pass those objects to the repository layer,
@@ -652,7 +652,7 @@ classes use a fixed vocabulary, as J6 and the examples above show: `save`,
 with ArchUnit rather than generic base interfaces such as `CrudService<T, ID>`.
 Those interfaces pollute every signature with type parameters and force each
 implementation to carry the same set of methods, while an ArchUnit test
-constrains names and nothing else. Use case services (see S11) expose only
+constrains names and nothing else. Use cases (`*UseCase`, see S11) expose only
 `handle`, and a new verb is added to the list deliberately.
 
 ```java
@@ -1491,8 +1491,9 @@ lock, and each job has its own on/off switch.
 
 **T1. Test every branch.** All code branches are tested.
 
-**T2. Readable tests.** Name tests `shouldXWhenY`, group them with `@Nested` and
-`@DisplayName`, and assert with AssertJ.
+**T2. Readable tests.** Name test classes `<Subject>Test` (not `*Tests` or
+`*IT`), name tests `shouldXWhenY`, group them with `@Nested` and `@DisplayName`,
+and assert with AssertJ.
 
 **T3. Parameterize.** When several tests share the same logic and differ only in
 their data, write one parameterized test instead.
