@@ -46,7 +46,7 @@ plugins/                          Individual plugins hosted by this marketplace
   sonarqube/                      Local SonarLint analysis hooks, `sonar api` skills
   git/                            Safety-checked branching and Conventional Commits
   github/                         Pull request lifecycle: open, watch checks, merge
-  java/                           Reserved for a future Java plugin
+  java/                           JDT formatting, Java standard, NullAway, ArchUnit
 ```
 
 Each plugin under `plugins/` is self-contained with its own `plugin.json`,
@@ -237,6 +237,7 @@ cd plugins/markdown && pnpm test
 cd plugins/prettier && pnpm test
 cd plugins/editorconfig && pnpm test
 cd plugins/python && pnpm test
+cd plugins/java && pnpm test
 cd plugins/sonarqube && pnpm test
 ```
 
@@ -246,6 +247,7 @@ own README ([markdown](plugins/markdown/README.md),
 [prettier](plugins/prettier/README.md),
 [editorconfig](plugins/editorconfig/README.md),
 [python](plugins/python/README.md),
+[java](plugins/java/README.md),
 [sonarqube](plugins/sonarqube/README.md))
 for what its suite covers.
 
