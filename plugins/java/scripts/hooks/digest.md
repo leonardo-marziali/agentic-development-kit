@@ -120,8 +120,9 @@ justified exception with `// java-rules:allow <ID> <reason>`.
   file such as `paypal-api.properties` via `@PropertySource` when many).
 - S61 Property keys: dotted hierarchy, general to specific, kebab-case
   (`paypal.api.payments.path`); shared values via `${…}`.
-- S62 Controller paths are keys in `api-paths.properties`; mappings use one
-  placeholder: `@GetMapping("${api.v1.projects.id.path}")`.
+- S62 Controller paths are keys in `api-paths.properties` (public, `api.`)
+  or `internal-api-paths.properties` (`@Hidden`, `internal.api.`); mappings
+  use one placeholder: `@GetMapping("${api.v1.projects.id.path}")`.
 
 ## Domain and events
 

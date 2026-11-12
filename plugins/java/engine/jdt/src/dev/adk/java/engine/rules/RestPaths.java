@@ -27,8 +27,10 @@ import org.eclipse.jdt.core.dom.StringLiteral;
  * contract, and may use a verb. A `${…}` path is checked as Spring resolves it
  * from the module's `.properties` files; one that doesn't resolve is skipped.
  *
- * S62: every path is a single placeholder whose value lives in
- * `api-paths.properties`, so no literal, constant or concatenation.
+ * S62: every path is a single placeholder, so no literal, constant or
+ * concatenation. Public paths are keys of `api-paths.properties`, internal
+ * (`@Hidden`) ones of `internal-api-paths.properties`, so the two API
+ * surfaces stay apart. A key no file defines is left to Spring to report.
  */
 final class RestPaths {
 
@@ -36,6 +38,10 @@ final class RestPaths {
         "PatchMapping", "DeleteMapping");
 
     private static final Pattern PLACEHOLDER = Pattern.compile("^\\$\\{[^}]+}$");
+
+    private static final String PUBLIC_PATHS = "api-paths.properties";
+
+    private static final String INTERNAL_PATHS = "internal-api-paths.properties";
 
     private static final Pattern VERB = Pattern.compile(
         "^(get|create|update|delete|add|remove|fetch|list|find|save|archive|do)([A-Z_-].*)?$");
@@ -213,13 +219,27 @@ final class RestPaths {
                     if (!isMapping(annotation)) {
                         return;
                     }
+                    boolean hidden = isHidden(annotation);
+                    String expected = hidden ? INTERNAL_PATHS : PUBLIC_PATHS;
                     for (Expression expression : pathExpressions(annotation)) {
-                        if (!(expression instanceof StringLiteral literal
-                            && PLACEHOLDER.matcher(literal.getLiteralValue()).matches())) {
+                        if (expression instanceof StringLiteral literal
+                            && PLACEHOLDER.matcher(literal.getLiteralValue()).matches()) {
+                            String value = literal.getLiteralValue();
+                            String key = value.substring(2, value.length() - 1).split(":", 2)[0];
+                            String actual = ProjectProperties.forSource(file.path()).fileOf(key);
+                            if (actual != null && !actual.equals(expected)) {
+                                findings.add(file.finding(annotation, id(), "`" + key + "` is defined in `" + actual
+                                    + "`, but " + (hidden ? "an internal (`@Hidden`)" : "a public") + " endpoint's path "
+                                    + "belongs in `" + expected + "`" + (hidden ? " (keys under `internal.api.`)." : ".")));
+                                return;
+                            }
+                        } else {
+                            String example = hidden ? "internal.api.v1.callbacks.order-paid.path" : "api.v1.projects.id.path";
+                            String value = hidden ? "${api.v1.base-path}/internal/callbacks/order-paid"
+                                : "${api.v1.base-path}/projects/{projectId}";
                             findings.add(file.finding(annotation, id(), "Put the path `"
-                                + Ast.text(file.source(), expression) + "` in `api-paths.properties` (for example "
-                                + "`api.v1.projects.id.path=${api.v1.base-path}/projects/{projectId}`) and map it as "
-                                + "`\"${api.v1.projects.id.path}\"`."));
+                                + Ast.text(file.source(), expression) + "` in `" + expected + "` (for example `" + example
+                                + "=" + value + "`) and map it as `\"${" + example + "}\"`."));
                             return;
                         }
                     }

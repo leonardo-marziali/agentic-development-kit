@@ -6,6 +6,7 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -26,18 +27,26 @@ public final class ProjectProperties {
 
     private static final Map<Path, ProjectProperties> CACHE = new ConcurrentHashMap<>();
 
-    private static final ProjectProperties NONE = new ProjectProperties(new Properties());
+    private static final ProjectProperties NONE = new ProjectProperties(new Properties(), Map.of());
 
     private final Properties values;
 
-    private ProjectProperties(Properties values) {
+    private final Map<String, String> origins;
+
+    private ProjectProperties(Properties values, Map<String, String> origins) {
         this.values = values;
+        this.origins = origins;
     }
 
     /** The properties next to the `src/main/java` or `src/test/java` tree holding this file, or none. */
     public static ProjectProperties forSource(Path source) {
         Path resources = resourcesOf(source.toAbsolutePath().normalize());
         return resources == null ? NONE : CACHE.computeIfAbsent(resources, ProjectProperties::load);
+    }
+
+    /** The file name (`api-paths.properties`) whose definition of the key wins, or null. */
+    public String fileOf(String key) {
+        return origins.get(key);
     }
 
     /** The value with every placeholder resolved, or null when one has no value and no default. */
@@ -78,6 +87,7 @@ public final class ProjectProperties {
     // Sorted, so a key defined twice resolves the same way on every machine.
     private static ProjectProperties load(Path resources) {
         Properties values = new Properties();
+        Map<String, String> origins = new HashMap<>();
         if (!Files.isDirectory(resources)) {
             return NONE;
         }
@@ -86,14 +96,17 @@ public final class ProjectProperties {
             files.forEach(sorted::add);
             sorted.sort(null);
             for (Path file : sorted) {
+                Properties own = new Properties();
                 try (InputStream in = Files.newInputStream(file)) {
-                    values.load(in);
+                    own.load(in);
                 }
+                values.putAll(own);
+                own.stringPropertyNames().forEach(key -> origins.put(key, file.getFileName().toString()));
             }
         } catch (IOException e) {
             return NONE;
         }
-        return new ProjectProperties(values);
+        return new ProjectProperties(values, origins);
     }
 
 }

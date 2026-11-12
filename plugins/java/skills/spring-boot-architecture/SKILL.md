@@ -217,12 +217,21 @@ and referenced with `${…}`, so a base path or a host changes in one place, and
 keys under one prefix bind to one `@ConfigurationProperties` record (see S4).
 Related keys sit together under a comment heading, such as `### PAYPAL ###`.
 
-**S62. Endpoint paths live in `api-paths.properties`.** Every controller path
-is a key in `src/main/resources/api-paths.properties`, loaded by one
+**S62. Endpoint paths live in properties files.** Every controller path is a
+key in a properties file under `src/main/resources`, loaded by one
 `@PropertySource` configuration class, and each mapping annotation references
 its key as a single placeholder: no literal paths and no class-level prefix.
-The file lists the whole API surface in one place, the version prefix composes
-from one base path, and S28 to S30 apply to the resolved paths.
+Public and internal APIs are kept apart:
+
+- **Public paths** go in `api-paths.properties`, under `api.`. That file lists
+  the whole public contract in one place, and S28 to S30 apply to the
+  resolved paths.
+- **Internal paths**, such as event callbacks and cluster HTTP RPCs (the
+  `@Hidden` endpoints of S37), go in `internal-api-paths.properties`, under
+  `internal.api.`. They may use verbs, but they're still listed in one place,
+  so the internal surface is reviewed and secured as a whole.
+
+The version prefix composes from one base path, which both files share.
 
 ```properties
 api.v1.version=v1
@@ -233,13 +242,23 @@ api.v1.projects.id.path=${api.v1.projects.path}/{projectId}
 api.v1.projects.id.tasks.path=${api.v1.projects.id.path}/tasks
 ```
 
+```properties
+# internal-api-paths.properties
+internal.api.v1.callbacks.path=${api.v1.base-path}/internal/callbacks
+internal.api.v1.callbacks.order-paid.path=${internal.api.v1.callbacks.path}/order-paid
+```
+
 ```java
 @Configuration
-@PropertySource("classpath:api-paths.properties")
+@PropertySource({"classpath:api-paths.properties", "classpath:internal-api-paths.properties"})
 class ApiPathsConfig {
     // Loads the controller paths that the mappings reference as ${…} placeholders.
 }
 
 @GetMapping("${api.v1.projects.id.path}")
 ResponseEntity<ProjectReadDto> findById(@PathVariable UUID projectId);
+
+@Hidden
+@PostMapping("${internal.api.v1.callbacks.order-paid.path}")
+ResponseEntity<Void> onOrderPaid(@RequestBody OrderPaidEventDto event);
 ```

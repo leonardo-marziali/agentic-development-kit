@@ -20,7 +20,7 @@ class Good {
     }
 
     @Hidden
-    @PostMapping("${api.v1.callbacks.refresh.path}")
+    @PostMapping("${internal.api.v1.callbacks.refresh.path}")
     void d() {
     }
 

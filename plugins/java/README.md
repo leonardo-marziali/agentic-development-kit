@@ -46,7 +46,8 @@ report with these sections, capped at 3 attempts per session:
   `@Autowired` (S3), `@Value("${…}")` (S4), `@Data` on entities (S15),
   `expression = "java(…)"` in mappers (S21), verbs in paths (S28), URLs in
   production code (S60), controller paths not taken from
-  `api-paths.properties` (S62), three or more fields that share a prefix in
+  `api-paths.properties` (public) or `internal-api-paths.properties`
+  (`@Hidden`) (S62), three or more fields that share a prefix in
   an entity, DTO or domain class (D12, a heuristic), and the JSpecify
   annotation rules for J20 (`@NullMarked` packages, one nullness library,
   `return null` only from `@Nullable` methods). REST path rules skip
