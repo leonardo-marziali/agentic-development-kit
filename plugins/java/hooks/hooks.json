@@ -1,6 +1,28 @@
 {
-  "description": "Tracks the Java and build files a session touches — through Edit/Write or through Bash, PowerShell and MCP tools, in the main conversation or a subagent — then formats them with the plugin's Eclipse JDT engine and, in projects with .claude/java-standards.json, checks them against the Java standard (syntax-tree rules, NullAway, ArchUnit) when the session or subagent tries to stop.",
+  "description": "Tracks the Java and build files a session touches \u2014 through Edit/Write or through Bash, PowerShell and MCP tools, in the main conversation or a subagent \u2014 then formats them with the plugin's Eclipse JDT engine and, in projects with .claude/java-standards.json, checks them against the Java standard (syntax-tree rules, NullAway, ArchUnit) when the session or subagent tries to stop.",
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/inject-digest.js\"",
+            "async": false
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/inject-digest.js\"",
+            "async": false
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Bash|PowerShell|mcp__.*",
