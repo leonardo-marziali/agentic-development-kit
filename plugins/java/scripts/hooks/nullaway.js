@@ -111,6 +111,7 @@ function buildJavacArgs({
   mode,
   basePackage,
   javaLevel,
+  encoding = 'UTF-8',
   outDir,
 }) {
   const options =
@@ -128,7 +129,7 @@ function buildJavacArgs({
     '-nowarn',
     '-Xlint:-options',
     '-encoding',
-    'UTF-8',
+    encoding,
     '--release',
     String(javaLevel),
     '-processorpath',
@@ -168,6 +169,7 @@ function runNullAway({
   mode,
   basePackage,
   javaLevel,
+  encoding,
 }) {
   const { jars, notes } = processorJars(classpath, processorPath, manifest);
   const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'java-plugin-nullaway-'));
@@ -182,6 +184,7 @@ function runNullAway({
       mode,
       basePackage,
       javaLevel,
+      encoding,
       outDir,
     });
     const result = spawnSync(manifest.javac, args, {
@@ -258,6 +261,7 @@ function runSection({ config, modules, manifest, warn }) {
       mode,
       basePackage,
       javaLevel: level,
+      encoding: module.info.encoding,
     });
     for (const note of result.notes) warn(note);
     findings.push(...result.findings);

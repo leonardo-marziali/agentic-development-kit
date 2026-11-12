@@ -156,20 +156,21 @@ function conventionScripts(dir) {
 }
 
 /*
- * A Gradle module's level: its own build file, then each enclosing build up
- * to the repository root (a root `subprojects {}` / `allprojects {}`), then
- * the root's convention plugins in buildSrc/ or build-logic/.
+ * The first value `find` reads from a Gradle module's build: its own build
+ * file, then each enclosing build up to the repository root (a root
+ * `subprojects {}` / `allprojects {}`), then the root's convention plugins
+ * in buildSrc/ or build-logic/.
  */
-function gradleLevel(moduleRoot) {
+function searchGradle(moduleRoot, find) {
   if (gradleText(moduleRoot) === null) return null;
   let dir = moduleRoot;
   while (true) {
     const text = gradleText(dir);
-    const level = text === null ? null : levelIn(text);
-    if (level !== null) return level;
+    const value = text === null ? null : find(text);
+    if (value !== null) return value;
     for (const plugins of ['buildSrc', 'build-logic']) {
       for (const script of conventionScripts(path.join(dir, plugins))) {
-        const fromPlugin = levelIn(read(script) || '');
+        const fromPlugin = find(read(script) || '');
         if (fromPlugin !== null) return fromPlugin;
       }
     }
@@ -177,6 +178,41 @@ function gradleLevel(moduleRoot) {
     if (fs.existsSync(path.join(dir, '.git')) || parent === dir) return null;
     dir = parent;
   }
+}
+
+function gradleLevel(moduleRoot) {
+  return searchGradle(moduleRoot, levelIn);
+}
+
+function mavenEncoding(moduleRoot) {
+  const chain = pomChain(moduleRoot);
+  if (chain.length === 0) return null;
+  const properties = chainProperties(chain);
+  const declared = resolveProperties(
+    properties['project.build.sourceEncoding'] ?? null,
+    properties,
+  );
+  if (declared) return declared;
+  for (const { text } of chain) {
+    for (const plugin of blocks(text, 'plugin')) {
+      if (tagValue(plugin, 'artifactId') !== 'maven-compiler-plugin') continue;
+      const encoding = resolveProperties(tagValue(plugin, 'encoding'), properties);
+      if (encoding) return encoding;
+    }
+  }
+  return null;
+}
+
+function gradleEncoding(moduleRoot) {
+  return searchGradle(moduleRoot, (text) => {
+    const match = /options\.encoding(?:\.set\(\s*|\s*=\s*)['"]([\w.:-]+)['"]/.exec(text);
+    return match ? match[1] : null;
+  });
+}
+
+// The charset the module's sources are written in; UTF-8 unless the build says otherwise.
+function detectEncoding(moduleRoot) {
+  return mavenEncoding(moduleRoot) ?? gradleEncoding(moduleRoot) ?? 'UTF-8';
 }
 
 function detectJavaLevel(moduleRoot) {
@@ -227,7 +263,7 @@ function moduleInfo(moduleRoot, config) {
     );
     javaLevel = FALLBACK_LEVEL;
   }
-  return { javaLevel, boot: detectSpringBoot(moduleRoot) };
+  return { javaLevel, boot: detectSpringBoot(moduleRoot), encoding: detectEncoding(moduleRoot) };
 }
 
 // A JDK home's major version, from its `release` file ("1.8.0_402" → 8).
@@ -316,4 +352,11 @@ function buildJavaHome(level, { searchRoots = defaultSearchRoots(), warn } = {})
   return home;
 }
 
-module.exports = { detectJavaLevel, detectSpringBoot, moduleInfo, buildJavaHome, toLevel };
+module.exports = {
+  detectJavaLevel,
+  detectSpringBoot,
+  detectEncoding,
+  moduleInfo,
+  buildJavaHome,
+  toLevel,
+};

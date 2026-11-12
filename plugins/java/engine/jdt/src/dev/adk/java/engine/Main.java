@@ -1,6 +1,7 @@
 package dev.adk.java.engine;
 
 import java.io.PrintStream;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -55,7 +56,7 @@ public final class Main {
     private void process(Request request, Arguments arguments) {
         Path path = request.path();
         try {
-            String source = Files.readString(path, StandardCharsets.UTF_8);
+            String source = Files.readString(path, arguments.encoding());
             if (hasSyntaxErrors(source)) {
                 error(path, "has syntax errors; not formatted or checked");
                 return;
@@ -65,7 +66,7 @@ public final class Main {
                 if (formatted == null) {
                     error(path, "could not be formatted");
                 } else if (!formatted.equals(source)) {
-                    Files.writeString(path, formatted, StandardCharsets.UTF_8);
+                    Files.writeString(path, formatted, arguments.encoding());
                     out.println("FORMATTED\t" + path);
                     source = formatted;
                 }
@@ -110,7 +111,7 @@ public final class Main {
      * or 0 when the module doesn't use Spring Boot.
      */
     record Arguments(Path request, Path profile, boolean rules, Set<String> disabled, int source,
-        int bootVersion, String nullness) {
+        int bootVersion, String nullness, Charset encoding) {
 
         static Arguments parse(String[] args) {
             Path request = null;
@@ -120,6 +121,7 @@ public final class Main {
             int source = 17;
             int boot = 0;
             String nullness = "auto";
+            Charset encoding = StandardCharsets.UTF_8;
             for (int i = 0; i < args.length; i++) {
                 String value = i + 1 < args.length ? args[i + 1] : "";
                 switch (args[i]) {
@@ -130,6 +132,7 @@ public final class Main {
                     case "--source" -> source = Integer.parseInt(value);
                     case "--boot" -> boot = bootVersion(value);
                     case "--nullness" -> nullness = value;
+                    case "--encoding" -> encoding = Charset.isSupported(value) ? Charset.forName(value) : StandardCharsets.UTF_8;
                     default -> {
                         continue;
                     }
@@ -139,7 +142,7 @@ public final class Main {
             if (request == null) {
                 throw new IllegalArgumentException("--request is required");
             }
-            return new Arguments(request, profile, rules, disabled, source, boot, nullness);
+            return new Arguments(request, profile, rules, disabled, source, boot, nullness, encoding);
         }
 
         private static int bootVersion(String value) {

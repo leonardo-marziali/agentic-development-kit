@@ -127,6 +127,7 @@ function engineFindings(repo, manifest) {
       source: module.info.javaLevel,
       boot: module.info.boot,
       nullness: nullnessMode(repo.config),
+      encoding: module.info.encoding,
     });
     for (const error of result.errors) {
       warnOnce(

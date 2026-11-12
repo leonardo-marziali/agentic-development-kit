@@ -5,7 +5,13 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { mkScratchDir, rmScratchDir, writeTree } = require('./helpers');
-const { detectJavaLevel, detectSpringBoot, moduleInfo, buildJavaHome } = require('../module');
+const {
+  detectJavaLevel,
+  detectSpringBoot,
+  detectEncoding,
+  moduleInfo,
+  buildJavaHome,
+} = require('../module');
 
 function pom(body, { parent = '' } = {}) {
   return `<?xml version="1.0"?>
@@ -196,6 +202,46 @@ describe('detectSpringBoot', () => {
   it('returns null without Spring Boot', () => {
     writeTree(root, { 'pom.xml': pom('') });
     assert.equal(detectSpringBoot(root), null);
+  });
+});
+
+describe('detectEncoding', () => {
+  let root;
+  beforeEach(() => {
+    root = mkScratchDir();
+    fs.mkdirSync(path.join(root, '.git'));
+  });
+  afterEach(() => rmScratchDir(root));
+
+  it('reads project.build.sourceEncoding, also from the parent POM', () => {
+    writeTree(root, {
+      'pom.xml': pom(
+        '<properties><project.build.sourceEncoding>ISO-8859-1</project.build.sourceEncoding></properties>',
+      ),
+      'service/pom.xml': pom('', { parent: '<parent><artifactId>root</artifactId></parent>' }),
+    });
+    assert.equal(detectEncoding(path.join(root, 'service')), 'ISO-8859-1');
+  });
+
+  it("reads the compiler plugin's <encoding>", () => {
+    writeTree(root, {
+      'pom.xml': pom(
+        '<build><plugins><plugin><artifactId>maven-compiler-plugin</artifactId><configuration><encoding>windows-1252</encoding></configuration></plugin></plugins></build>',
+      ),
+    });
+    assert.equal(detectEncoding(root), 'windows-1252');
+  });
+
+  it('reads options.encoding from a Gradle build', () => {
+    writeTree(root, {
+      'build.gradle': "tasks.withType(JavaCompile) { options.encoding = 'ISO-8859-1' }",
+    });
+    assert.equal(detectEncoding(root), 'ISO-8859-1');
+  });
+
+  it('defaults to UTF-8', () => {
+    writeTree(root, { 'pom.xml': pom('') });
+    assert.equal(detectEncoding(root), 'UTF-8');
   });
 });
 

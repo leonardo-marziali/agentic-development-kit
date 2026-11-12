@@ -60,6 +60,7 @@ test('format formats whole files with the project profile', (t) => {
   const [call] = log(ctx.env.FAKE_ENGINE_LOG);
   assert.match(call.request, /A\.java\t\*\n/);
   assert.equal(flag(call.args, '--rules'), 'off');
+  assert.equal(flag(call.args, '--encoding'), 'UTF-8');
   assert.match(res.stdout, /formatted src\/main\/java\/demo\/A\.java/);
 });
 

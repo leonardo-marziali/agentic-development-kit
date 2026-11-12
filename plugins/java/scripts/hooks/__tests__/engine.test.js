@@ -205,6 +205,29 @@ test(
   },
 );
 
+test(
+  'real engine: reads and writes the source encoding it is given',
+  { skip: SKIP_WITHOUT_JDK },
+  async (t) => {
+    const manifest = await installedEngine();
+    const file = path.join(scratch(t), 'Latin.java');
+    fs.writeFileSync(file, Buffer.from('class Latin {\nString s = "caf\u00e9";\n}\n', 'latin1'));
+
+    const result = runEngine({
+      manifest,
+      files: [{ path: file, ranges: '*' }],
+      profile: DEFAULT_PROFILE,
+      source: 21,
+      encoding: 'ISO-8859-1',
+    });
+
+    assert.deepEqual(result.errors, []);
+    const bytes = fs.readFileSync(file);
+    assert.ok(bytes.includes(Buffer.from([0xe9])), 'é kept as one ISO-8859-1 byte');
+    assert.match(bytes.toString('latin1'), /String s = "caf\u00e9";/);
+  },
+);
+
 test('real engine: keeps CRLF line endings', { skip: SKIP_WITHOUT_JDK }, async (t) => {
   const manifest = await installedEngine();
   const dir = scratch(t);

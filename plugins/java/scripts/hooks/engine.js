@@ -29,7 +29,7 @@ function rangesField(ranges) {
   return ranges.map(([start, end]) => `${start}-${end}`).join(',');
 }
 
-function engineArgs({ requestFile, profile, rules, disabled, source, boot, nullness }) {
+function engineArgs({ requestFile, profile, rules, disabled, source, boot, nullness, encoding }) {
   const args = [
     '--request',
     requestFile,
@@ -42,6 +42,7 @@ function engineArgs({ requestFile, profile, rules, disabled, source, boot, nulln
   if (profile) args.push('--profile', profile);
   if (disabled && disabled.length > 0) args.push('--disabled', disabled.join(','));
   if (nullness) args.push('--nullness', nullness);
+  if (encoding) args.push('--encoding', encoding);
   return args;
 }
 
@@ -81,6 +82,7 @@ function runEngine({
   source = 17,
   boot = null,
   nullness = null,
+  encoding = null,
   env = process.env,
 }) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'java-plugin-engine-'));
@@ -93,7 +95,10 @@ function runEngine({
     const { bin, prefix } = command(manifest, env);
     const result = spawnSync(
       bin,
-      [...prefix, ...engineArgs({ requestFile, profile, rules, disabled, source, boot, nullness })],
+      [
+        ...prefix,
+        ...engineArgs({ requestFile, profile, rules, disabled, source, boot, nullness, encoding }),
+      ],
       {
         encoding: 'utf8',
         timeout: timeoutFor(ENGINE_TIMEOUT_MS),

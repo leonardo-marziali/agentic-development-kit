@@ -52,6 +52,7 @@ function main() {
         profile,
         source: module.info.javaLevel,
         boot: module.info.boot,
+        encoding: module.info.encoding,
       });
       for (const error of result.errors)
         process.stderr.write(`java plugin: ${error.path}: ${error.message}\n`);

@@ -33,6 +33,7 @@ test('builds the proven javac invocation for JSpecify', () => {
     files: ['/p/src/main/java/A.java'],
     mode: 'jspecify',
     javaLevel: 8,
+    encoding: 'ISO-8859-1',
     outDir: '/tmp/out',
   });
 
@@ -49,6 +50,7 @@ test('builds the proven javac invocation for JSpecify', () => {
     assert.ok(args.includes(flag), flag);
   }
   assert.equal(args[args.indexOf('--release') + 1], '8');
+  assert.equal(args[args.indexOf('-encoding') + 1], 'ISO-8859-1');
   assert.equal(
     args[args.indexOf('-processorpath') + 1],
     ['/m2/lombok-1.18.36.jar', '/e/error_prone_core.jar', '/e/nullaway.jar'].join(path.delimiter),
