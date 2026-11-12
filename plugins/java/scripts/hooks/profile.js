@@ -33,7 +33,9 @@ function isFormatterProfile(file) {
  */
 function isFormatterPrefs(repoRoot, file) {
   if (!fs.existsSync(file)) return false;
-  const tracked = spawnSync('git', ['ls-files', '--cached', '--error-unmatch', '--', PREFS], { cwd: repoRoot });
+  const tracked = spawnSync('git', ['ls-files', '--cached', '--error-unmatch', '--', PREFS], {
+    cwd: repoRoot,
+  });
   if (tracked.error || tracked.status !== 0) return false;
   return /^org\.eclipse\.jdt\.core\.formatter\./m.test(fs.readFileSync(file, 'utf8'));
 }

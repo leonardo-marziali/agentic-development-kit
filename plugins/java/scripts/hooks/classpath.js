@@ -123,6 +123,7 @@ function gradle(moduleRoot, javaHome) {
     [
       '-q',
       '--console=plain',
+      '--no-configuration-cache',
       '-I',
       INIT_SCRIPT,
       `-PjavaPluginModule=${moduleRoot}`,

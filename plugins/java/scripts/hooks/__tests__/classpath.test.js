@@ -75,6 +75,8 @@ test('reads a Gradle module classpath and processor path through an init script'
   assert.deepEqual(result.processorPath, ['/g/lombok-1.18.36.jar']);
   assert.deepEqual(result.outputDirs, [path.join(root, 'build/classes/java/main')]);
   assert.match(calls(root)[0], /-I .*print-classpath\.gradle/);
+  // The init script's task reads the project at execution time, which the configuration cache forbids.
+  assert.match(calls(root)[0], /--no-configuration-cache/);
 });
 
 test('serves the second call from the cache and re-resolves after the build file changes', (t) => {
