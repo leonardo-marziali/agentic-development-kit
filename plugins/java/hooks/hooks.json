@@ -8,6 +8,12 @@
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/inject-digest.js\"",
             "async": false
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/install-engine.js\" --if-missing --quiet",
+            "async": true,
+            "timeout": 300
           }
         ]
       }
