@@ -362,3 +362,40 @@ test('recompiles project rules a killed compile left half-written', (t) => {
   const again = compileProjectRules(root, manifest, () => {});
   assert.ok(fs.existsSync(path.join(again, 'TeamRules.class')));
 });
+
+test("doesn't start a second build while another session compiles the module", (t) => {
+  const ctx = setup(t, { classesAge: 'stale' });
+  touch(ctx, SOURCE);
+  const lock = withPluginData(ctx, () => require('../archunit').buildLockFile(ctx.root));
+  fs.mkdirSync(path.dirname(lock), { recursive: true });
+  fs.writeFileSync(lock, String(process.pid));
+
+  const res = stop(ctx);
+
+  assert.deepEqual(compiles(ctx), []);
+  assert.match(res.stderr, /another session is compiling/);
+});
+
+test('takes over the build lock of a session that died', (t) => {
+  const ctx = setup(t, { classesAge: 'stale' });
+  touch(ctx, SOURCE);
+  const lock = withPluginData(ctx, () => require('../archunit').buildLockFile(ctx.root));
+  fs.mkdirSync(path.dirname(lock), { recursive: true });
+  fs.writeFileSync(lock, '2147483646');
+
+  stop(ctx);
+
+  assert.match(compiles(ctx)[0], /compile/);
+  assert.equal(fs.existsSync(lock), false);
+});
+
+function withPluginData(ctx, fn) {
+  const saved = process.env.CLAUDE_PLUGIN_DATA;
+  process.env.CLAUDE_PLUGIN_DATA = ctx.pluginData;
+  try {
+    return fn();
+  } finally {
+    if (saved === undefined) delete process.env.CLAUDE_PLUGIN_DATA;
+    else process.env.CLAUDE_PLUGIN_DATA = saved;
+  }
+}

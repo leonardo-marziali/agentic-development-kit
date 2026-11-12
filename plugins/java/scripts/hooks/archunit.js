@@ -108,6 +108,45 @@ function compileFailureFile(moduleRoot, trackedSources, javaHome) {
  * when a tracked source is newer than every class, `always` compiles every
  * time, `never` skips a module whose classes are missing or stale.
  */
+/*
+ * One build per module at a time: parallel subagent stops would otherwise run
+ * two Maven or Gradle builds into the same target/. The lock holds the
+ * owner's pid, and a lock whose owner is gone is taken over.
+ */
+function buildLockFile(moduleRoot) {
+  const base =
+    process.env.CLAUDE_PLUGIN_DATA || path.join(os.homedir(), '.cache', 'claude-java-plugin');
+  const key = crypto.createHash('sha256').update(path.resolve(moduleRoot)).digest('hex');
+  return path.join(base, 'build-locks', `${key.slice(0, 16)}.lock`);
+}
+
+function isAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return err.code === 'EPERM';
+  }
+}
+
+// A release function, or null while a live session holds the lock.
+function acquireBuildLock(moduleRoot) {
+  const lock = buildLockFile(moduleRoot);
+  fs.mkdirSync(path.dirname(lock), { recursive: true });
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      fs.writeFileSync(lock, String(process.pid), { flag: 'wx' });
+      return () => fs.rmSync(lock, { force: true });
+    } catch (err) {
+      if (err.code !== 'EEXIST') throw err;
+      const owner = Number(fs.readFileSync(lock, 'utf8'));
+      if (Number.isInteger(owner) && owner > 0 && isAlive(owner)) return null;
+      fs.rmSync(lock, { force: true });
+    }
+  }
+  return null;
+}
+
 function ensureCompiled({ moduleRoot, trackedSources, mode, javaHome, warn }) {
   const outputDirs = outputDirsOf(moduleRoot);
   const newest = outputDirs.length > 0 ? newestClass(outputDirs) : 0;
@@ -126,7 +165,17 @@ function ensureCompiled({ moduleRoot, trackedSources, mode, javaHome, warn }) {
     );
     return 'skipped';
   }
-  const result = compileModule(moduleRoot, javaHome);
+  const release = acquireBuildLock(moduleRoot);
+  if (!release) {
+    warn(`another session is compiling ${moduleRoot}; skipping ArchUnit there this time.`);
+    return 'skipped';
+  }
+  let result;
+  try {
+    result = compileModule(moduleRoot, javaHome);
+  } finally {
+    release();
+  }
   if (result.error || result.status !== 0) {
     fs.mkdirSync(path.dirname(failFile), { recursive: true });
     fs.writeFileSync(failFile, String(result.status));
@@ -291,4 +340,11 @@ function runSection({ repoRoot, config, modules, manifest, warn, createStore = f
 
 registerSection({ name: 'ArchUnit', partition: 'files', run: runSection });
 
-module.exports = { runSection, ensureCompiled, compileProjectRules, parseRunner, RUNNER_CLASS };
+module.exports = {
+  runSection,
+  ensureCompiled,
+  compileProjectRules,
+  buildLockFile,
+  parseRunner,
+  RUNNER_CLASS,
+};
