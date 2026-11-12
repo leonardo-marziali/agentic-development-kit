@@ -44,12 +44,32 @@ FENCE_RE = re.compile(
 )
 
 
+def confine(path):
+    """Resolve *path* and require it to sit under the working directory.
+
+    The arguments of this script are usually supplied by an agent, so a
+    crafted path must not be able to read or write outside the project
+    (e.g. exfiltrate ~/.ssh/id_rsa to a remote renderer). Symlinks are
+    resolved before the check. A trailing slash (directory intent) is kept.
+    """
+    root = os.path.realpath(os.getcwd())
+    real = os.path.realpath(path)
+    if os.path.commonpath([root, real]) != root:
+        sys.exit(
+            f"error: {path!r} is outside the working directory ({root}); "
+            "run from the target project and use a path inside it"
+        )
+    if path.endswith(("/", os.sep)) and not real.endswith(os.sep):
+        real += os.sep
+    return real
+
+
 def read_diagrams(path):
     """Return a list of Mermaid sources. Markdown files yield every ```mermaid block."""
     if path == "-":
         text = sys.stdin.read()
     else:
-        with open(path, encoding="utf-8") as f:
+        with open(confine(path), encoding="utf-8") as f:
             text = f.read()
     blocks = [m.group(2).strip() for m in FENCE_RE.finditer(text)]
     if blocks:
@@ -152,7 +172,7 @@ def fetch(url, out):
         raise RuntimeError(
             f"HTTP {e.code} from {urllib.parse.urlsplit(url).netloc}: {body}"
         )
-    except (urllib.error.URLError, TimeoutError, OSError) as e:
+    except OSError as e:  # also covers URLError and TimeoutError
         raise RuntimeError(f"network error: {e}")
     with open(out, "wb") as f:
         f.write(data)
@@ -361,6 +381,8 @@ def main():
         a.size = "auto"
     if a.scale is not None and not (1 <= a.scale <= 3):
         sys.exit("error: --scale must be between 1 and 3")
+    if a.output:
+        a.output = confine(a.output)
 
     diagrams = read_diagrams(a.input)
     stem = (

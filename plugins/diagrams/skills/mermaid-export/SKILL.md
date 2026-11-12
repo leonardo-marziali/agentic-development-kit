@@ -39,6 +39,8 @@ Size semantics, matching the Live Editor:
 
    Each success prints one JSON line: `{"output": ..., "backend": ..., "size": "1080x436"}`. Check `size` against what the user asked for and report it.
 
+   Input and output paths must resolve inside the **current working directory** (symlinks are resolved first); anything outside is refused with an error. Run the script from the target project, and use stdin (`-`) for source that lives elsewhere.
+
 4. **Tell the user where the files are** and mention the final pixel size for PNGs.
 
 ## Backends
