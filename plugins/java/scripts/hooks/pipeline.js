@@ -31,7 +31,6 @@ require('./nullaway');
 require('./archunit');
 
 const warned = new Set();
-let scopeToChanges = true;
 function warnOnce(message) {
   if (warned.has(message)) return;
   warned.add(message);
@@ -156,7 +155,7 @@ function formatFindings(repoRoot, findings) {
  */
 function section(name, repoRoot, findings, { partition = true, touched = [] } = {}) {
   if (findings.length === 0) return null;
-  if (!partition || !scopeToChanges) return { name, repoRoot, blocking: findings, existing: [] };
+  if (!partition) return { name, repoRoot, blocking: findings, existing: [] };
   if (partition === 'files') {
     const touchedSet = new Set(touched.map((file) => path.resolve(file)));
     const blocking = findings.filter((f) => touchedSet.has(path.resolve(f.file)));
@@ -168,16 +167,17 @@ function section(name, repoRoot, findings, { partition = true, touched = [] } = 
 }
 
 function check(repos, manifest, { changedLinesOnly = true } = {}) {
-  scopeToChanges = changedLinesOnly;
   const sections = [];
   for (const repo of repos) {
     const engine = engineFindings(repo, manifest);
     if (!repo.config) continue;
-    sections.push(section('Source rules', repo.repoRoot, engine));
+    sections.push(section('Source rules', repo.repoRoot, engine, { partition: changedLinesOnly }));
     const buildFindings = repo.config.checks.enabled
       ? repo.buildFiles.flatMap((file) => checkBuildFile(file, fs.readFileSync(file, 'utf8')))
       : [];
-    sections.push(section('Build files', repo.repoRoot, buildFindings));
+    sections.push(
+      section('Build files', repo.repoRoot, buildFindings, { partition: changedLinesOnly }),
+    );
     for (const extra of registeredSections()) {
       if (timeLeft() < SECTION_MIN_MS) {
         warnOnce(
@@ -188,7 +188,7 @@ function check(repos, manifest, { changedLinesOnly = true } = {}) {
       const { findings } = extra.run({ ...repo, manifest, warn: warnOnce });
       sections.push(
         section(extra.name, repo.repoRoot, findings, {
-          partition: extra.partition ?? true,
+          partition: changedLinesOnly && (extra.partition ?? true),
           touched: repo.javaFiles,
         }),
       );
