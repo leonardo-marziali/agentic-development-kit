@@ -1,0 +1,41 @@
+{
+  "description": "Tracks the Java and build files a session touches — through Edit/Write or through Bash, PowerShell and MCP tools, in the main conversation or a subagent — then formats them with the plugin's Eclipse JDT engine and, in projects with .claude/java-standards.json, checks them against the Java standard (syntax-tree rules, NullAway, ArchUnit) when the session or subagent tries to stop.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell|mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/track-touched.js\"",
+            "async": false
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell|mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/track-touched.js\"",
+            "async": false
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Bash|PowerShell|mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/track-touched.js\"",
+            "async": false
+          }
+        ]
+      }
+    ]
+  }
+}
