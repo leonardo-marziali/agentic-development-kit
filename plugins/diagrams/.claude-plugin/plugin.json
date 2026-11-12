@@ -1,0 +1,10 @@
+{
+  "name": "diagrams",
+  "version": "0.1.0",
+  "description": "Diagram and charting helpers for Claude Code. Exports Mermaid diagrams to PNG or SVG with Live Editor-style sizing, using a local mermaid-cli when available and falling back to mermaid.ink or Kroki.",
+  "author": {
+    "name": "Leonardo Marziali",
+    "email": "marzialileonardo862@gmail.com"
+  },
+  "keywords": ["diagrams", "charts", "mermaid", "svg", "png"]
+}

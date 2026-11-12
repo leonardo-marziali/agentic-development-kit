@@ -70,6 +70,13 @@
       "description": "Opens the pull request for the current branch with a Conventional Commits title and an evidence-derived description, watches its checks, resolves failures, and merges on confirmation.",
       "category": "workflow",
       "keywords": ["github", "pull-request", "ci", "conventional-commits", "workflow"]
+    },
+    {
+      "name": "diagrams",
+      "source": "./plugins/diagrams",
+      "description": "Diagram and charting helpers, starting with Mermaid export to PNG or SVG via a local mermaid-cli with mermaid.ink and Kroki fallbacks.",
+      "category": "documentation",
+      "keywords": ["diagrams", "charts", "mermaid", "svg", "png"]
     }
   ]
 }

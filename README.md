@@ -46,6 +46,7 @@ plugins/                          Individual plugins hosted by this marketplace
   sonarqube/                      Local SonarLint analysis hooks, `sonar api` skills
   git/                            Safety-checked branching and Conventional Commits
   github/                         Pull request lifecycle: open, watch checks, merge
+  diagrams/                       Diagram and charting skills (Mermaid export)
   java/                           JDT formatting, Java standard, NullAway, ArchUnit
 ```
 
