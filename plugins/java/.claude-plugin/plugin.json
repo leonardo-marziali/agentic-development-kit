@@ -1,7 +1,7 @@
 {
   "$schema": "https://www.schemastore.org/claude-code-plugin-manifest.json",
   "name": "java",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Java standards for Claude Code: Eclipse JDT formatting, source rules, NullAway and ArchUnit checks at Stop, and standards skills — opt-in per project.",
   "author": {
     "name": "Leonardo Marziali",
