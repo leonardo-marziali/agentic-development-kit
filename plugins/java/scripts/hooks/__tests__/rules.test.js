@@ -21,7 +21,7 @@ const { installedEngine, SKIP_WITHOUT_JDK } = require('./helpers');
 const { runEngine } = require('../engine');
 
 const ROOT = path.join(__dirname, 'fixtures', 'rules');
-const DEFAULTS = { source: 21, boot: '3.4', nullness: 'jspecify' };
+const DEFAULTS = { source: 21, boot: '3.4', nullness: 'off' };
 
 function readJson(file) {
   return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
@@ -40,12 +40,14 @@ function expectations(file) {
   return expected.sort();
 }
 
-function optionsFor(dir, file) {
-  return {
-    ...DEFAULTS,
-    ...readJson(path.join(dir, 'fixture.json')),
-    ...readJson(file.replace(/\.java$/, '.json')),
-  };
+// fixture.json files from the rule directory down to the file's own directory, then <File>.json.
+function optionsFor(file) {
+  let options = { ...DEFAULTS };
+  const parts = path.relative(ROOT, path.dirname(file)).split(path.sep);
+  for (let i = 1; i <= parts.length; i += 1) {
+    options = { ...options, ...readJson(path.join(ROOT, ...parts.slice(0, i), 'fixture.json')) };
+  }
+  return { ...options, ...readJson(file.replace(/\.java$/, '.json')) };
 }
 
 function toBoot(value) {
@@ -54,28 +56,57 @@ function toBoot(value) {
   return { major, minor };
 }
 
-for (const rule of fs.readdirSync(ROOT).sort()) {
-  const dir = path.join(ROOT, rule);
-  for (const name of fs
-    .readdirSync(dir)
-    .filter((f) => f.endsWith('.java'))
-    .sort()) {
-    const file = path.join(dir, name);
-    test(`${rule}/${name}`, { skip: SKIP_WITHOUT_JDK }, async () => {
-      const manifest = await installedEngine();
-      const options = optionsFor(dir, file);
-      const result = runEngine({
-        manifest,
-        files: [{ path: file, ranges: null }],
-        rules: true,
-        source: options.source,
-        boot: toBoot(options.boot),
-        nullness: options.nullness,
-      });
+function javaFiles(dir) {
+  return fs
+    .readdirSync(dir, { withFileTypes: true })
+    .flatMap((entry) => {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) return javaFiles(full);
+      return entry.name.endsWith('.java') ? [full] : [];
+    })
+    .sort();
+}
 
-      assert.deepEqual(result.errors, []);
-      const actual = result.findings.map((f) => `${f.line} ${f.rule}`).sort();
-      assert.deepEqual(actual, expectations(file), JSON.stringify(result.findings, null, 2));
-    });
+/*
+One engine run per distinct option set, shared by the tests that need it:
+starting a JVM per fixture would make the suite crawl.
+*/
+const FILES = javaFiles(ROOT);
+const runs = new Map();
+
+async function findingsFor(file) {
+  const options = optionsFor(file);
+  const key = JSON.stringify(options);
+  if (!runs.has(key)) {
+    runs.set(
+      key,
+      installedEngine().then((manifest) =>
+        runEngine({
+          manifest,
+          files: FILES.filter((f) => JSON.stringify(optionsFor(f)) === key).map((f) => ({
+            path: f,
+            ranges: null,
+          })),
+          rules: true,
+          source: options.source,
+          boot: toBoot(options.boot),
+          nullness: options.nullness,
+        }),
+      ),
+    );
   }
+  const result = await runs.get(key);
+  return {
+    errors: result.errors.filter((e) => e.path === file || e.path === '-'),
+    findings: result.findings.filter((f) => f.file === file),
+  };
+}
+
+for (const file of FILES) {
+  test(path.relative(ROOT, file), { skip: SKIP_WITHOUT_JDK }, async () => {
+    const { errors, findings } = await findingsFor(file);
+    assert.deepEqual(errors, []);
+    const actual = findings.map((f) => `${f.line} ${f.rule}`).sort();
+    assert.deepEqual(actual, expectations(file), JSON.stringify(findings, null, 2));
+  });
 }

@@ -31,7 +31,8 @@ public final class RuleRegistry {
         new RestPaths.Nouns(),
         new RestPaths.VariableNames(),
         new ProblemDetails(),
-        new NativeQueries());
+        new NativeQueries(),
+        new Nullness());
 
     private RuleRegistry() {
     }
