@@ -8,6 +8,32 @@ const { spawnSync } = require('node:child_process');
 
 const HOOKS_DIR = path.join(__dirname, '..');
 
+/*
+The engine suites need the real JDT / Error Prone / ArchUnit tools. They are
+installed once into a per-user test cache (about 40 MB, kept across runs).
+Without a JDK 21+ the engine-dependent tests skip on a dev machine and fail
+in CI, where one is always set up.
+*/
+const TEST_ENGINE_DIR = path.join(os.homedir(), '.cache', 'claude-java-plugin-test', 'engine');
+
+async function installedEngine() {
+  const provision = require('../../provision');
+  const java = provision.findJava();
+  if (!java || java.major < 21) {
+    if (process.env.CI) throw new Error('CI must provide a JDK 21+ for the engine tests');
+    return null;
+  }
+  return (
+    provision.readInstall(TEST_ENGINE_DIR) || provision.install({ dataDir: TEST_ENGINE_DIR, java })
+  );
+}
+
+const SKIP_WITHOUT_JDK = (() => {
+  if (process.env.CI) return false;
+  const java = require('../../provision').findJava();
+  return java && java.major >= 21 ? false : 'needs a JDK 21+ (JAVA_HOME or PATH)';
+})();
+
 function mkScratchDir(prefix = 'java-plugin-test-') {
   /*
   realpath: on macOS os.tmpdir() sits behind a /var -> /private/var
@@ -99,5 +125,8 @@ module.exports = {
   track,
   writeTree,
   initRepo,
+  installedEngine,
+  SKIP_WITHOUT_JDK,
+  TEST_ENGINE_DIR,
   HOOKS_DIR,
 };
