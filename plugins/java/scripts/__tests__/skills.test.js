@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { SKILLS, renderSkills } = require('../build-skills');
+const { SKILLS, renderSkills, extract } = require('../build-skills');
 
 const PLUGIN = path.join(__dirname, '..', '..');
 const SKILLS_DIR = path.join(PLUGIN, 'skills');
@@ -66,6 +66,21 @@ test('each skill has its frontmatter, Java paths and the scope preamble', () => 
     assert.equal(meta.paths, '**/*.java, **/pom.xml, **/build.gradle*');
     assert.ok(text.replaceAll(/\s+/g, ' ').includes(PREAMBLE), `${name} preamble`);
   }
+});
+
+test('a heading-like line inside a code block does not end a section', () => {
+  const lines = [
+    '### Config',
+    'Text.',
+    '```properties',
+    '### PAYPAL ###',
+    'a=b',
+    '```',
+    'More.',
+    '### Next',
+  ];
+
+  assert.deepEqual(extract(lines, '### Config'), lines.slice(0, 7));
 });
 
 test('the committed skills match what the standard generates', () => {

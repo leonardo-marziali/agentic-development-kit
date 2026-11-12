@@ -110,8 +110,11 @@ function extract(lines, heading) {
   if (start < 0) throw new Error(`heading not found in the standard: ${heading}`);
   const level = heading.indexOf(' ');
   let end = lines.length;
+  let inFence = false;
   for (let i = start + 1; i < lines.length; i += 1) {
-    const match = /^(#+) /.exec(lines[i]);
+    if (/^\s*```/.test(lines[i])) inFence = !inFence;
+    // A `### PAYPAL ###` comment in a properties block is not a heading.
+    const match = !inFence && /^(#+) /.exec(lines[i]);
     if (match && match[1].length <= level) {
       end = i;
       break;
@@ -180,4 +183,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { SKILLS, renderSkills };
+module.exports = { SKILLS, renderSkills, extract };
