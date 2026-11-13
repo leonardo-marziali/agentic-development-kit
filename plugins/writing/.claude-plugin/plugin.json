@@ -1,0 +1,10 @@
+{
+  "name": "writing",
+  "version": "0.1.0",
+  "description": "Writing-style skills for Claude Code. Makes Italian software-development text (docs, wiki pages, ADRs, technical emails) read like an Italian engineer wrote it instead of translated English, with a checker for calques and AI tics.",
+  "author": {
+    "name": "Leonardo Marziali",
+    "email": "marzialileonardo862@gmail.com"
+  },
+  "keywords": ["writing", "italian", "documentation", "style", "translationese"]
+}

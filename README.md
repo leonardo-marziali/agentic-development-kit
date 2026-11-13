@@ -47,6 +47,7 @@ plugins/                          Individual plugins hosted by this marketplace
   git/                            Safety-checked branching and Conventional Commits
   github/                         Pull request lifecycle: open, watch checks, merge
   diagrams/                       Diagram and charting skills (Mermaid export)
+  writing/                        Writing-style skills (Italian technical writing)
   java/                           JDT formatting, Java standard, NullAway, ArchUnit
 ```
 
