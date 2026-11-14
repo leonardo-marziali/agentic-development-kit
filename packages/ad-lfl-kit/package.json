@@ -29,7 +29,9 @@
     "state.js",
     "changes.js",
     "track.js",
+    "base.js",
     "scope.js",
+    "guard.js",
     "loop.js"
   ],
   "engines": {

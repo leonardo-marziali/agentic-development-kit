@@ -68,7 +68,12 @@ calls too, with the parent's `session_id` and their own `agent_id`.
 'use strict';
 
 const path = require('node:path');
-const { readHookInput, stateDir, trackSessionChanges } = require('@leonardo-marziali/ad-lfl-kit');
+const {
+  readHookInput,
+  stateDir,
+  guardCommit,
+  trackSessionChanges,
+} = require('@leonardo-marziali/ad-lfl-kit');
 
 const input = readHookInput();
 if (input) {
@@ -76,11 +81,12 @@ if (input) {
     sessionId: input.session_id,
     namespace: 'my-plugin-session-scope',
   });
-  trackSessionChanges({
-    input,
-    listFile: path.join(dir, 'touched-files.txt'),
-    matches: (absPath) => /\.md$/i.test(absPath),
-  });
+  const listFile = path.join(dir, 'touched-files.txt');
+  const matches = (absPath) => /\.md$/i.test(absPath);
+  // No commits while touched files are still waiting on the Stop hook.
+  if (!guardCommit({ input, listFile, matches, label: 'my-plugin' }).denied) {
+    trackSessionChanges({ input, listFile, matches });
+  }
 }
 ```
 
@@ -173,6 +179,38 @@ the verdict is reproducible from a shell (`git diff HEAD`), it survives
 context compaction and session restarts, and it sees every write —
 including the ones no `PostToolUse` hook ever hears about, like a `sed -i`,
 a formatter run from another hook, or the user's own editor.
+
+**Commits made mid-session.** `HEAD` is only the last known-clean state
+while the session hasn't committed its own work. A session that commits
+before its `Stop` hook runs moves `HEAD` past its own edits, `git diff HEAD`
+comes back empty, and every finding on those lines reads as pre-existing —
+the check passes having checked nothing. Two pieces close that gap, and a
+consumer should use both:
+
+- **A session base.** `trackSessionChanges` records, per repository, the
+  `HEAD` the session's first tracked file there was edited on top of (for a
+  shell call, the `HEAD` from its `PreToolUse` snapshot, so
+  `edit && git commit` in one command is covered). Pass it to `scopesFor`:
+
+  ```js
+  const { readSessionBases, SESSION_BASE_FILE } = require('@leonardo-marziali/ad-lfl-kit');
+
+  const scopes = scopesFor(files, { bases: readSessionBases(sessionDir) });
+  // …and list SESSION_BASE_FILE among the main Stop hook's stateFiles.
+  ```
+
+  Each repo with a base is then diffed against it, so committed and
+  uncommitted session lines are both in scope. `sessionDir` is the session's
+  directory, not `loopStateDir`'s — a subagent's lines are diffed against
+  the same base. Cleaning `SESSION_BASE_FILE` up when the loop passes means
+  the next turn starts a fresh base from whatever `HEAD` is then. A pull or
+  rebase mid-session widens the scope to whatever it brought into the
+  touched files — the fail-open direction.
+
+- **A commit guard.** `guardCommit`, called from the `PreToolUse` hook,
+  denies a `git commit` while the session's list still holds files no check
+  has passed yet, so commits only happen after the `Stop` hook has run. See
+  [Commit guard](#commit-guard-guardjs).
 
 **Ordering.** Because `fixableFiles` needs to know what's out of scope, an
 auto-fixing consumer runs check → fix → re-check rather than fix → check:
@@ -291,10 +329,57 @@ How `toolChangedFiles` answers for tools that don't name their files.
   it decides which files a session becomes answerable for.
 - **`MTIME_SLACK_MS`** / **`PRUNED_DIR_NAMES`** — the mtime tolerance for
   coarse filesystems, and the directories skipped.
+- **`repoRoot(dir)`** / **`headOf(root)`** — the git root containing `dir`
+  and the `HEAD` commit of a repo, or `null`.
 
 What it can't see: writes outside both the snapshot's and the current
 cwd's repository, and a background command's writes more than
 `BACKGROUND_WINDOW_MS` after it started.
+
+### Session base (`base.js`)
+
+- **`SESSION_BASE_FILE`** — `'session-base.json'`, written beside the
+  tracked-file list.
+- **`readSessionBases(dir)`** — `{ [repoRoot]: sha }` for a session state
+  directory, `{}` when nothing was recorded or the file is unreadable.
+- **`recordSessionBase(dir, root, head)`** — records `head` as `root`'s base
+  unless one is already recorded (first sighting wins). Returns whether it
+  wrote anything. `trackSessionChanges` and `trackTouchedFile` call it for
+  you.
+- **`knownRootFor(bases, absPath)`** — the deepest recorded root containing
+  `absPath`, or `null`.
+
+### Commit guard (`guard.js`)
+
+- **`guardCommit({ input, listFile, matches, label, buildReason, write })`**
+  — on a `PreToolUse` event for a commit call, while `listFile` still holds
+  files (filtered by `matches`, if given), prints a `permissionDecision:
+"deny"` payload and returns `{ denied: true, files }`; otherwise prints
+  nothing and returns `{ denied: false }`. `label` names the plugin in the
+  message, and `buildReason({ label, files })` replaces it. Call it before
+  `trackSessionChanges` in the `PreToolUse` hook and skip tracking when it
+  denies — a denied call never runs, so no `Post*` event would consume its
+  snapshot:
+
+  ```js
+  if (guardCommit({ input, listFile, matches, label: 'my-plugin' }).denied) return;
+  trackSessionChanges({ input, listFile, matches });
+  ```
+
+  The list is cleared when `runFixLoop` passes or gives up at the cap, so
+  "edit and commit" becomes two turns: the edit ends the turn and the
+  checks run, then a commit asked for afterwards goes through. While a
+  `check` keeps throwing (`reason: 'error'`) the list stays and so does the
+  block; the deny message tells Claude to say so, and the user can still
+  commit from their own terminal — only Claude's tool calls reach a hook.
+
+- **`isCommitCall(input)`** — whether a call creates a commit: a `Bash` or
+  `PowerShell` command running `git [global options] commit` (not
+  `commit-tree` or `commit-graph`), or an MCP tool named `…__commit` or
+  `…__git_commit`. It matches command text, so it catches accidents, not a
+  determined workaround (`sh -c`, a git alias, a script that commits).
+- **`commitDenyPayload(reason)`** — the deny payload, for hooks that gate a
+  call outside `guardCommit`.
 
 ### Execution (`exec.js`)
 
@@ -318,14 +403,17 @@ a git ref_, so a one-line edit to a long, already-messy document doesn't hand
 Claude every pre-existing violation in it. See
 [Scoping to changes against HEAD](#scoping-to-changes-against-head).
 
-- **`scopesFor(files, { ref, context })`** — the entry point: a `Map` of
-  absolute path → scope, with the context margin already applied. `ref`
-  defaults to `HEAD`, `context` to `DEFAULT_CONTEXT_LINES` (2). A scope is
+- **`scopesFor(files, { ref, bases, context })`** — the entry point: a `Map`
+  of absolute path → scope, with the context margin already applied. `ref`
+  defaults to `HEAD`, `context` to `DEFAULT_CONTEXT_LINES` (2). `bases` (an
+  object or `Map` of repo root → commit, normally `readSessionBases()`)
+  overrides `ref` per repository; a base that no longer names a commit falls
+  back to `ref`. A scope is
   `{ file, all, ranges, includes(line) }`, where `all` means the whole file
   is in scope and `ranges` are inclusive, 1-based `[start, end]` pairs in
   current-file coordinates. `includes()` called without a line number
   returns `all`.
-- **`changedRangesByFile(files, { ref })`** — the same answer before the
+- **`changedRangesByFile(files, { ref, bases })`** — the same answer before the
   margin is applied, as `{ all, ranges }`. Exposed for callers that want to
   do their own widening.
 - **`partitionByScope(items, { scopes, getFile, getLine })`** — splits a

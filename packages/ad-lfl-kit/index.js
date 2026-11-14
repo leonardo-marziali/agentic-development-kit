@@ -12,6 +12,8 @@ module.exports = {
   ...require('./state'),
   ...require('./changes'),
   ...require('./track'),
+  ...require('./base'),
   ...require('./scope'),
+  ...require('./guard'),
   ...require('./loop'),
 };
