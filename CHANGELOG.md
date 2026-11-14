@@ -1,3 +1,10 @@
+## [2.15.1](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.15.0...v2.15.1) (2026-11-14)
+
+
+### Bug Fixes
+
+* **sonarqube:** resolve SonarQube Cloud findings and PATH hotspots ([#52](https://github.com/leonardo-marziali/agentic-development-kit/issues/52)) ([5c32150](https://github.com/leonardo-marziali/agentic-development-kit/commit/5c3215043c5b9a18c5e5b3dd9de7077a0ffbd020))
+
 # [2.15.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.14.1...v2.15.0) (2026-11-14)
 
 
