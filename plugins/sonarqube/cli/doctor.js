@@ -40,88 +40,109 @@ async function runDoctor({ dataDir, root }) {
   const manifest = readInstall(dataDir, lock);
 
   if (!manifest) {
-    const stale = fs.existsSync(path.join(dataDir, MANIFEST));
-    checks.push({
-      name: 'install',
-      ok: false,
-      detail: stale
-        ? `${dataDir} holds an install that doesn't match sloop.lock.json (plugin updated?). Re-run setup.`
-        : `SLOOP is not installed in ${dataDir}. Run /sonarqube:setup.`,
-    });
+    checks.push(missingInstallCheck(dataDir));
     return checks;
   }
-  checks.push({
+  checks.push(
+    {
+      name: 'install',
+      ok: true,
+      detail: `sonarlint-backend-cli ${manifest.backendVersion} (${manifest.distribution}) in ${dataDir}`,
+    },
+    javaCheck(manifest),
+    backendJarCheck(manifest, lock),
+    ...(await Promise.all(manifest.analyzers.map(analyzerCheck))),
+    await daemonCheck({ root, dataDir }),
+  );
+  return checks;
+}
+
+function missingInstallCheck(dataDir) {
+  const stale = fs.existsSync(path.join(dataDir, MANIFEST));
+  return {
     name: 'install',
-    ok: true,
-    detail: `sonarlint-backend-cli ${manifest.backendVersion} (${manifest.distribution}) in ${dataDir}`,
-  });
+    ok: false,
+    detail: stale
+      ? `${dataDir} holds an install that doesn't match sloop.lock.json (plugin updated?). Re-run setup.`
+      : `SLOOP is not installed in ${dataDir}. Run /sonarqube:setup.`,
+  };
+}
 
+function javaCheck(manifest) {
   const major = javaMajorVersion(manifest.javaPath);
-  checks.push({
+  if (!major) return { name: 'java', ok: false, detail: `${manifest.javaPath} cannot be run` };
+  const bundled = manifest.bundledJre ? ' (bundled)' : '';
+  return {
     name: 'java',
-    ok: Boolean(major && major >= MIN_JAVA),
-    detail: major
-      ? `Java ${major} at ${manifest.javaPath}${manifest.bundledJre ? ' (bundled)' : ''}`
-      : `${manifest.javaPath} cannot be run`,
-  });
+    ok: major >= MIN_JAVA,
+    detail: `Java ${major} at ${manifest.javaPath}${bundled}`,
+  };
+}
 
+function backendJarCheck(manifest, lock) {
   const mainJar = path.join(
     manifest.backendDir,
     'lib',
     `${lock.backend.artifactId}-${lock.backend.version}.jar`,
   );
-  checks.push({
-    name: 'backend jar',
-    ok: fs.existsSync(mainJar),
-    detail: fs.existsSync(mainJar) ? mainJar : `${mainJar} is missing; re-run setup`,
-  });
+  const ok = fs.existsSync(mainJar);
+  return { name: 'backend jar', ok, detail: ok ? mainJar : `${mainJar} is missing; re-run setup` };
+}
 
-  for (const analyzer of manifest.analyzers) {
-    let ok = false;
-    let detail;
-    if (!fs.existsSync(analyzer.path)) {
-      detail = `${analyzer.path} is missing; re-run setup`;
-    } else {
-      const actual = await sha256File(analyzer.path);
-      ok = actual === analyzer.sha256;
-      detail = ok
-        ? `${path.basename(analyzer.path)} sha256 ok`
-        : `${path.basename(analyzer.path)} checksum mismatch; re-run setup`;
-    }
-    checks.push({ name: `analyzer ${analyzer.key}`, ok, detail });
+async function analyzerCheck(analyzer) {
+  const name = `analyzer ${analyzer.key}`;
+  if (!fs.existsSync(analyzer.path)) {
+    return { name, ok: false, detail: `${analyzer.path} is missing; re-run setup` };
   }
+  const ok = (await sha256File(analyzer.path)) === analyzer.sha256;
+  const file = path.basename(analyzer.path);
+  return { name, ok, detail: ok ? `${file} sha256 ok` : `${file} checksum mismatch; re-run setup` };
+}
 
+// `ready` is ok, `starting` is informational, anything else is a failure.
+function daemonStateOk(state) {
+  if (state === 'ready') return true;
+  if (state === 'starting') return null;
+  return false;
+}
+
+async function daemonCheck({ root, dataDir }) {
   try {
     const status = await request(
       { op: 'status' },
       { root, dataDir, noStart: true, timeoutMs: 5000 },
     );
     const skipped = status.skippedLanguages.map((s) => `${s.language} (${s.reason})`).join(', ');
-    checks.push({
+    return {
       name: 'daemon',
-      ok: status.state === 'ready' ? true : status.state === 'starting' ? null : false,
+      ok: daemonStateOk(status.state),
       detail:
         `pid ${status.pid}, ${status.state}, ${status.analyses} analyses, ${status.restarts} restarts` +
         (status.error ? `, error: ${status.error}` : '') +
         (skipped ? `, skipped analyzers: ${skipped}` : '') +
         `; log: ${status.log}`,
-    });
+    };
   } catch (error) {
-    checks.push({
+    const notRunning = error instanceof DaemonNotRunning;
+    return {
       name: 'daemon',
-      ok: error instanceof DaemonNotRunning ? null : false,
-      detail:
-        error instanceof DaemonNotRunning
-          ? `not running for ${root} (starts on first analysis)`
-          : `not answering: ${error.message}`,
-    });
+      ok: notRunning ? null : false,
+      detail: notRunning
+        ? `not running for ${root} (starts on first analysis)`
+        : `not answering: ${error.message}`,
+    };
   }
-  return checks;
+}
+
+function mark(ok) {
+  if (ok === true) return 'ok  ';
+  if (ok === false) return 'FAIL';
+  return '--  ';
 }
 
 function renderChecks(checks) {
-  const mark = (ok) => (ok === true ? 'ok  ' : ok === false ? 'FAIL' : '--  ');
-  return `${checks.map((c) => `${mark(c.ok)} ${c.name}: ${c.detail}`).join('\n')}\n`;
+  const lines = checks.map((c) => `${mark(c.ok)} ${c.name}: ${c.detail}`);
+  return `${lines.join('\n')}\n`;
 }
 
 module.exports = { runDoctor, renderChecks, nodeCheck };

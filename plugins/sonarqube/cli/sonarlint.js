@@ -93,23 +93,26 @@ function groupByRoot(files) {
 async function analyzeFiles(parsed, ctx) {
   const { files, skipped } = collectFiles(parsed.paths, ctx.cwd);
   const merged = { issues: [], analyzed: [], skipped, failed: [], logs: [] };
-  for (const [root, group] of groupByRoot(files)) {
-    const reply = await request(
-      {
-        op: 'analyze',
-        files: group,
-        timeoutMs: parsed.options.timeoutMs,
-        verbose: parsed.options.verbose,
-      },
-      {
-        root,
-        dataDir: ctx.dataDir,
-        noStart: parsed.options.noStart,
-        timeoutMs: parsed.options.timeoutMs + 60_000,
-      },
-    );
-    mergeReply(merged, reply);
-  }
+  // Each root has its own daemon, so the groups can be analyzed concurrently.
+  const replies = await Promise.all(
+    [...groupByRoot(files)].map(([root, group]) =>
+      request(
+        {
+          op: 'analyze',
+          files: group,
+          timeoutMs: parsed.options.timeoutMs,
+          verbose: parsed.options.verbose,
+        },
+        {
+          root,
+          dataDir: ctx.dataDir,
+          noStart: parsed.options.noStart,
+          timeoutMs: parsed.options.timeoutMs + 60_000,
+        },
+      ),
+    ),
+  );
+  for (const reply of replies) mergeReply(merged, reply);
   return finish(merged, parsed, ctx);
 }
 
@@ -189,13 +192,13 @@ function htmlToText(html) {
     .replace(/<\s*br\s*\/?>/gi, '\n')
     .replace(/<\/(p|h\d|li|pre|div|tr)>/gi, '\n')
     .replace(/<li[^>]*>/gi, '- ')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
+    .replace(/<[^<>]+>/g, '')
+    .replaceAll('&lt;', '<')
+    .replaceAll('&gt;', '>')
+    .replaceAll('&quot;', '"')
     .replace(/&#39;|&apos;/g, "'")
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
+    .replaceAll('&nbsp;', ' ')
+    .replaceAll('&amp;', '&')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
@@ -253,10 +256,11 @@ async function daemon(parsed, ctx) {
   if (parsed.action === 'status' || parsed.action === 'stop') {
     try {
       const reply = await request({ op: parsed.action }, { ...opts, noStart: true });
+      const indent = parsed.options.format === 'json' ? 0 : 2;
       process.stdout.write(
         parsed.action === 'stop'
           ? `stopping daemon ${readPid(root) || ''} for ${root}\n`
-          : `${JSON.stringify(reply, null, parsed.options.format === 'json' ? 0 : 2)}\n`,
+          : `${JSON.stringify(reply, null, indent)}\n`,
       );
       return EXIT_CLEAN;
     } catch (error) {

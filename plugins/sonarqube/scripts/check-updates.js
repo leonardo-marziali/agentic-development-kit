@@ -13,17 +13,17 @@
  * unless metadata can't be fetched (2).
  */
 
-const { loadLock, baseUrlFromEnv } = require('../cli/provision');
+const { loadLock, baseUrlFromEnv, trimTrailingSlashes } = require('../cli/provision');
 
 function latestFrom(xml) {
   const release = /<release>([^<]+)<\/release>/.exec(xml);
   if (release) return release[1];
   const versions = [...xml.matchAll(/<version>([^<]+)<\/version>/g)].map((m) => m[1]);
-  return versions[versions.length - 1] || null;
+  return versions.at(-1) || null;
 }
 
 async function latestVersion(baseUrl, { groupId, artifactId }) {
-  const url = `${baseUrl.replace(/\/+$/, '')}/${groupId.replace(/\./g, '/')}/${artifactId}/maven-metadata.xml`;
+  const url = `${trimTrailingSlashes(baseUrl)}/${groupId.replaceAll('.', '/')}/${artifactId}/maven-metadata.xml`;
   const response = await fetch(url);
   if (!response.ok) throw new Error(`${url} → HTTP ${response.status}`);
   return latestFrom(await response.text());
@@ -34,14 +34,16 @@ async function main() {
   const baseUrl = baseUrlFromEnv();
   const entries = [lock.backend, ...lock.analyzers];
   let outdated = 0;
-  for (const entry of entries) {
-    const latest = await latestVersion(baseUrl, entry);
-    const same = latest === entry.version;
-    if (!same) outdated += 1;
-    process.stdout.write(
-      `${same ? '=' : '↑'} ${entry.artifactId}: ${entry.version}${same ? '' : ` → ${latest}`}\n`,
-    );
-  }
+  const latests = await Promise.all(entries.map((entry) => latestVersion(baseUrl, entry)));
+  entries.forEach((entry, i) => {
+    const latest = latests[i];
+    if (latest === entry.version) {
+      process.stdout.write(`= ${entry.artifactId}: ${entry.version}\n`);
+    } else {
+      outdated += 1;
+      process.stdout.write(`↑ ${entry.artifactId}: ${entry.version} → ${latest}\n`);
+    }
+  });
   process.stdout.write(
     outdated
       ? `${outdated} pin(s) behind. Bump them in sloop.lock.json, re-pin each sha256, and run the integration test.\n`

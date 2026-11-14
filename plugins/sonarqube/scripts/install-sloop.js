@@ -40,9 +40,10 @@ async function main() {
     ...(options.noArch ? { distributionKey: 'no-arch' } : {}),
     log: (line) => process.stdout.write(`  ${line}\n`),
   });
+  const java = manifest.bundledJre ? 'bundled JRE' : `system Java: ${manifest.javaPath}`;
   process.stdout.write(
     `installed sonarlint-backend-cli ${manifest.backendVersion} (${manifest.distribution}, ` +
-      `${manifest.bundledJre ? 'bundled JRE' : `system Java: ${manifest.javaPath}`}) ` +
+      `${java}) ` +
       `with ${manifest.analyzers.length} analyzers\n`,
   );
 }

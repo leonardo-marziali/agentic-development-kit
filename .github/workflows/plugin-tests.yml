@@ -66,7 +66,8 @@ jobs:
         run: |
           entries='[]'
           add() {
-            entries=$(echo "$entries" | jq -c --arg n "$1" --arg d "$2" --arg f "$3" \
+            local name="$1" dir="$2" flag="$3"
+            entries=$(echo "$entries" | jq -c --arg n "$name" --arg d "$dir" --arg f "$flag" \
               '. + [{"name": $n, "dir": $d, "flag": $f}]')
           }
           # A change to the workflow itself is validated against every

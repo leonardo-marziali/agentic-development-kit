@@ -121,7 +121,7 @@ function daemonPaths(root) {
     hash,
     socket:
       process.platform === 'win32'
-        ? `\\\\.\\pipe\\sonarlint-${userTag()}-${hash}`
+        ? String.raw`\\.\pipe\sonarlint-${userTag()}-${hash}`
         : path.join(dir, `${hash}.sock`),
     pid: path.join(dir, `${hash}.pid`),
     log: path.join(dir, `${hash}.log`),

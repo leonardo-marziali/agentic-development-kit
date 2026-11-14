@@ -52,12 +52,20 @@ function selectDistribution(lock, key = platformKey()) {
 }
 
 function artifactFileName({ artifactId, version, classifier, extension = 'jar' }) {
-  return `${artifactId}-${version}${classifier ? `-${classifier}` : ''}.${extension}`;
+  const suffix = classifier ? `-${classifier}` : '';
+  return `${artifactId}-${version}${suffix}.${extension}`;
+}
+
+// Strips trailing slashes without a `/\/+$/` regex, which backtracks quadratically.
+function trimTrailingSlashes(url) {
+  let end = url.length;
+  while (end > 0 && url[end - 1] === '/') end -= 1;
+  return url.slice(0, end);
 }
 
 function artifactUrl(baseUrl, coords) {
-  const base = baseUrl.replace(/\/+$/, '');
-  return `${base}/${coords.groupId.replace(/\./g, '/')}/${coords.artifactId}/${coords.version}/${artifactFileName(coords)}`;
+  const base = trimTrailingSlashes(baseUrl);
+  return `${base}/${coords.groupId.replaceAll('.', '/')}/${coords.artifactId}/${coords.version}/${artifactFileName(coords)}`;
 }
 
 function baseUrlFromEnv() {
@@ -201,8 +209,9 @@ async function install({
     javaPath = systemJava();
     const major = javaMajorVersion(javaPath);
     if (!major || major < MIN_JAVA) {
+      const found = major ? `Java ${major}` : 'not runnable';
       throw new ProvisionError(
-        `no bundled JRE for this platform, and ${javaPath} is ${major ? `Java ${major}` : 'not runnable'}; ` +
+        `no bundled JRE for this platform, and ${javaPath} is ${found}; ` +
           `SLOOP needs Java ${MIN_JAVA}+. Set SONARLINT_JAVA or JAVA_HOME.`,
       );
     }
@@ -237,17 +246,18 @@ async function install({
   }
   if (dist.bundledJre) javaPath = javaExecutable(backendDir);
 
-  const analyzers = [];
-  for (const analyzer of lock.analyzers) {
-    const dest = path.join(dataDir, 'analyzers', artifactFileName(analyzer));
-    await obtain(analyzer, dest, { baseUrl, fromDir, log });
-    analyzers.push({
-      key: analyzer.key,
-      path: dest,
-      sha256: analyzer.sha256,
-      languages: analyzer.languages,
-    });
-  }
+  const analyzers = await Promise.all(
+    lock.analyzers.map(async (analyzer) => {
+      const dest = path.join(dataDir, 'analyzers', artifactFileName(analyzer));
+      await obtain(analyzer, dest, { baseUrl, fromDir, log });
+      return {
+        key: analyzer.key,
+        path: dest,
+        sha256: analyzer.sha256,
+        languages: analyzer.languages,
+      };
+    }),
+  );
 
   const manifest = {
     backendVersion: backend.version,
@@ -293,6 +303,7 @@ module.exports = {
   selectDistribution,
   artifactFileName,
   artifactUrl,
+  trimTrailingSlashes,
   baseUrlFromEnv,
   sha256File,
   verifyChecksum,

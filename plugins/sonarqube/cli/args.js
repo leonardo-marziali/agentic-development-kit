@@ -55,6 +55,33 @@ const FLAG_OPTIONS = new Set(['--no-start', '--verbose', '--warm', '--help', '-h
 class UsageError extends Error {}
 
 function parseArgs(argv) {
+  const { options, positional, help } = tokenize(argv);
+
+  const command = help ? 'help' : positional.shift();
+  if (!command) throw new UsageError('no command given');
+  if (!COMMANDS.has(command)) throw new UsageError(`unknown command "${command}"`);
+
+  const parsed = { command, options, paths: [], action: null };
+  if (command === 'help') return parsed;
+  if (command === 'files' || command === 'server') {
+    if (positional.length === 0) throw new UsageError(`${command} needs at least one path`);
+    if (options.branch && options.pullRequest)
+      throw new UsageError('--branch and --pull-request are mutually exclusive');
+    parsed.paths = positional;
+    return parsed;
+  }
+  if (command === 'stdin' && !options.path)
+    throw new UsageError('stdin needs --path <virtual-path>');
+  if (command === 'daemon') parsed.action = daemonAction(positional);
+  rejectExtra(command, positional);
+  return parsed;
+}
+
+/*
+ * Splits argv into options and positional arguments without interpreting the
+ * command; `--` ends option parsing.
+ */
+function tokenize(argv) {
   const options = {
     format: 'text',
     minSeverity: 'HIGH',
@@ -81,47 +108,43 @@ function parseArgs(argv) {
       break;
     }
     if (FLAG_OPTIONS.has(arg)) {
-      if (arg === '--no-start') options.noStart = true;
-      else if (arg === '--verbose') options.verbose = true;
-      else if (arg === '--warm') options.warm = true;
-      else help = true;
-      continue;
+      if (setFlag(options, arg)) help = true;
+    } else if (arg.startsWith('-') && arg !== '-') {
+      i += readValueOption(options, arg, argv[i + 1]);
+    } else {
+      positional.push(arg);
     }
-    const eq = arg.startsWith('--') ? arg.indexOf('=') : -1;
-    const name = eq > 0 ? arg.slice(0, eq) : arg;
-    if (VALUE_OPTIONS.has(name)) {
-      const value = eq > 0 ? arg.slice(eq + 1) : argv[++i];
-      if (value === undefined || value === '') throw new UsageError(`${name} needs a value`);
-      assign(options, name, value);
-      continue;
-    }
-    if (arg.startsWith('-') && arg !== '-') throw new UsageError(`unknown option ${arg}`);
-    positional.push(arg);
   }
+  return { options, positional, help };
+}
 
-  const command = help ? 'help' : positional.shift();
-  if (!command) throw new UsageError('no command given');
-  if (!COMMANDS.has(command)) throw new UsageError(`unknown command "${command}"`);
+/*
+ * Reads `--name=value` or `--name value` into options. Returns how many extra
+ * argv entries it consumed (1 when the value was the next argument).
+ */
+function readValueOption(options, arg, next) {
+  const eq = arg.startsWith('--') ? arg.indexOf('=') : -1;
+  const name = eq > 0 ? arg.slice(0, eq) : arg;
+  if (!VALUE_OPTIONS.has(name)) throw new UsageError(`unknown option ${arg}`);
+  const value = eq > 0 ? arg.slice(eq + 1) : next;
+  if (value === undefined || value === '') throw new UsageError(`${name} needs a value`);
+  assign(options, name, value);
+  return eq > 0 ? 0 : 1;
+}
 
-  const parsed = { command, options, paths: [], action: null };
-  if (command === 'help') return parsed;
-  if (command === 'files' || command === 'server') {
-    if (positional.length === 0) throw new UsageError(`${command} needs at least one path`);
-    if (options.branch && options.pullRequest)
-      throw new UsageError('--branch and --pull-request are mutually exclusive');
-    parsed.paths = positional;
-  } else if (command === 'stdin') {
-    if (!options.path) throw new UsageError('stdin needs --path <virtual-path>');
-    rejectExtra(command, positional);
-  } else if (command === 'daemon') {
-    const action = positional.shift();
-    if (!DAEMON_ACTIONS.has(action)) throw new UsageError('daemon needs start, stop or status');
-    parsed.action = action;
-    rejectExtra(command, positional);
-  } else {
-    rejectExtra(command, positional);
-  }
-  return parsed;
+// Sets a boolean option; returns true when the flag asks for help instead.
+function setFlag(options, arg) {
+  if (arg === '--no-start') options.noStart = true;
+  else if (arg === '--verbose') options.verbose = true;
+  else if (arg === '--warm') options.warm = true;
+  else return true;
+  return false;
+}
+
+function daemonAction(positional) {
+  const action = positional.shift();
+  if (!DAEMON_ACTIONS.has(action)) throw new UsageError('daemon needs start, stop or status');
+  return action;
 }
 
 function assign(options, name, value) {
