@@ -11,9 +11,8 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
 const { parseArgs, UsageError, USAGE } = require('./args');
-const { dataDir: resolveDataDir, projectRoot } = require('./paths');
+const { dataDir: resolveDataDir, projectRoot, spawnSystem } = require('./paths');
 const { buildResult, render, exitCodeFor } = require('./format');
 const { request, readPid, DaemonNotRunning, NotInstalled } = require('./client');
 const { runDoctor, renderChecks } = require('./doctor');
@@ -30,7 +29,7 @@ const EXIT_ERROR = 2;
  * a plain walk that skips dot-directories and node_modules.
  */
 function expandDirectory(dir) {
-  const git = spawnSync('git', ['ls-files', '-co', '--exclude-standard', '-z', '--', '.'], {
+  const git = spawnSystem('git', ['ls-files', '-co', '--exclude-standard', '-z', '--', '.'], {
     cwd: dir,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,

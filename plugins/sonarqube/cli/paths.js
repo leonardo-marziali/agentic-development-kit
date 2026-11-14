@@ -56,13 +56,57 @@ function dataDir(explicit) {
 }
 
 /*
+ * External tools (git, tar, unzip) are looked up in fixed system directories
+ * rather than through PATH, so a writable directory early in PATH can't
+ * substitute its own `git`. System locations come first; the package-manager
+ * prefixes after them only matter where the OS ships no copy of its own.
+ */
+function systemCommandDirs() {
+  if (process.platform === 'win32') {
+    const systemRoot = process.env.SystemRoot || String.raw`C:\Windows`;
+    const programFiles = process.env.ProgramFiles || String.raw`C:\Program Files`;
+    return [path.join(systemRoot, 'System32'), path.join(programFiles, 'Git', 'cmd')];
+  }
+  return ['/usr/bin', '/bin', '/usr/local/bin', '/opt/homebrew/bin', '/run/current-system/sw/bin'];
+}
+
+// Absolute path of `name` in the system directories, or null if none has it.
+function systemCommand(name) {
+  const file = process.platform === 'win32' ? `${name}.exe` : name;
+  for (const dir of systemCommandDirs()) {
+    const candidate = path.join(dir, file);
+    try {
+      fs.accessSync(candidate, fs.constants.X_OK);
+      return candidate;
+    } catch {
+      // not here; try the next directory
+    }
+  }
+  return null;
+}
+
+/*
+ * spawnSync for a system command. A command that isn't found comes back as an
+ * ENOENT `error`, the same shape spawnSync gives for a missing executable.
+ */
+function spawnSystem(name, args, options) {
+  const bin = systemCommand(name);
+  if (!bin) {
+    const error = new Error(`${name} not found in ${systemCommandDirs().join(', ')}`);
+    error.code = 'ENOENT';
+    return { error, status: null, stdout: '', stderr: '' };
+  }
+  return spawnSync(bin, args, options);
+}
+
+/*
  * The project root is what SLOOP calls the configuration scope's base dir:
  * the git toplevel when there is one (the same boundary SonarQube for IDE
  * uses), otherwise the directory the caller pointed at.
  */
 function projectRoot(startDir) {
   const dir = path.resolve(startDir);
-  const result = spawnSync('git', ['rev-parse', '--show-toplevel'], {
+  const result = spawnSystem('git', ['rev-parse', '--show-toplevel'], {
     cwd: dir,
     encoding: 'utf8',
   });
@@ -141,6 +185,8 @@ module.exports = {
   dataDir,
   defaultCacheDir,
   projectRoot,
+  systemCommand,
+  spawnSystem,
   rootHash,
   runtimeDir,
   ensurePrivateDir,

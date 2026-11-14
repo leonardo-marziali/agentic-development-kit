@@ -14,7 +14,8 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const { execFileSync, spawnSync } = require('node:child_process');
+const { spawnSync } = require('node:child_process');
+const { spawnSystem } = require('./paths');
 
 const LOCK_FILE = path.join(__dirname, '..', 'sloop.lock.json');
 const MANIFEST = 'install.json';
@@ -154,12 +155,18 @@ async function obtain(
 function extract(archive, destDir) {
   fs.mkdirSync(destDir, { recursive: true });
   if (archive.endsWith('.tar.gz')) {
-    execFileSync('tar', ['-xzf', archive, '-C', destDir], { stdio: 'pipe' });
+    const tar = spawnSystem('tar', ['-xzf', archive, '-C', destDir], { stdio: 'pipe' });
+    if (tar.error) throw tar.error;
+    if (tar.status !== 0) {
+      throw new ProvisionError(
+        `tar could not unpack ${path.basename(archive)}: ${String(tar.stderr).trim()}`,
+      );
+    }
     return;
   }
-  const bsdtar = spawnSync('tar', ['-xf', archive, '-C', destDir], { stdio: 'pipe' });
+  const bsdtar = spawnSystem('tar', ['-xf', archive, '-C', destDir], { stdio: 'pipe' });
   if (!bsdtar.error && bsdtar.status === 0) return;
-  const unzip = spawnSync('unzip', ['-q', '-o', archive, '-d', destDir], { stdio: 'pipe' });
+  const unzip = spawnSystem('unzip', ['-q', '-o', archive, '-d', destDir], { stdio: 'pipe' });
   if (unzip.error || unzip.status !== 0) {
     throw new ProvisionError(
       `could not unpack ${path.basename(archive)}: neither bsdtar nor unzip worked. Install unzip and retry.`,
