@@ -1,3 +1,10 @@
+# [2.15.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.14.1...v2.15.0) (2026-11-14)
+
+
+### Features
+
+* **writing:** add writing plugin with italian-technical-writing skill ([#51](https://github.com/leonardo-marziali/agentic-development-kit/issues/51)) ([2b01e82](https://github.com/leonardo-marziali/agentic-development-kit/commit/2b01e82f2be774b0fcaa526010a97171717c46cd))
+
 ## [2.14.1](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.14.0...v2.14.1) (2026-11-12)
 
 
