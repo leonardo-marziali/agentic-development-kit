@@ -11,9 +11,8 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
 const { parseArgs, UsageError, USAGE } = require('./args');
-const { dataDir: resolveDataDir, projectRoot } = require('./paths');
+const { dataDir: resolveDataDir, projectRoot, spawnSystem } = require('./paths');
 const { buildResult, render, exitCodeFor } = require('./format');
 const { request, readPid, DaemonNotRunning, NotInstalled } = require('./client');
 const { runDoctor, renderChecks } = require('./doctor');
@@ -30,7 +29,7 @@ const EXIT_ERROR = 2;
  * a plain walk that skips dot-directories and node_modules.
  */
 function expandDirectory(dir) {
-  const git = spawnSync('git', ['ls-files', '-co', '--exclude-standard', '-z', '--', '.'], {
+  const git = spawnSystem('git', ['ls-files', '-co', '--exclude-standard', '-z', '--', '.'], {
     cwd: dir,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
@@ -93,23 +92,26 @@ function groupByRoot(files) {
 async function analyzeFiles(parsed, ctx) {
   const { files, skipped } = collectFiles(parsed.paths, ctx.cwd);
   const merged = { issues: [], analyzed: [], skipped, failed: [], logs: [] };
-  for (const [root, group] of groupByRoot(files)) {
-    const reply = await request(
-      {
-        op: 'analyze',
-        files: group,
-        timeoutMs: parsed.options.timeoutMs,
-        verbose: parsed.options.verbose,
-      },
-      {
-        root,
-        dataDir: ctx.dataDir,
-        noStart: parsed.options.noStart,
-        timeoutMs: parsed.options.timeoutMs + 60_000,
-      },
-    );
-    mergeReply(merged, reply);
-  }
+  // Each root has its own daemon, so the groups can be analyzed concurrently.
+  const replies = await Promise.all(
+    [...groupByRoot(files)].map(([root, group]) =>
+      request(
+        {
+          op: 'analyze',
+          files: group,
+          timeoutMs: parsed.options.timeoutMs,
+          verbose: parsed.options.verbose,
+        },
+        {
+          root,
+          dataDir: ctx.dataDir,
+          noStart: parsed.options.noStart,
+          timeoutMs: parsed.options.timeoutMs + 60_000,
+        },
+      ),
+    ),
+  );
+  for (const reply of replies) mergeReply(merged, reply);
   return finish(merged, parsed, ctx);
 }
 
@@ -189,13 +191,13 @@ function htmlToText(html) {
     .replace(/<\s*br\s*\/?>/gi, '\n')
     .replace(/<\/(p|h\d|li|pre|div|tr)>/gi, '\n')
     .replace(/<li[^>]*>/gi, '- ')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
+    .replace(/<[^<>]+>/g, '')
+    .replaceAll('&lt;', '<')
+    .replaceAll('&gt;', '>')
+    .replaceAll('&quot;', '"')
     .replace(/&#39;|&apos;/g, "'")
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
+    .replaceAll('&nbsp;', ' ')
+    .replaceAll('&amp;', '&')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
@@ -253,10 +255,11 @@ async function daemon(parsed, ctx) {
   if (parsed.action === 'status' || parsed.action === 'stop') {
     try {
       const reply = await request({ op: parsed.action }, { ...opts, noStart: true });
+      const indent = parsed.options.format === 'json' ? 0 : 2;
       process.stdout.write(
         parsed.action === 'stop'
           ? `stopping daemon ${readPid(root) || ''} for ${root}\n`
-          : `${JSON.stringify(reply, null, parsed.options.format === 'json' ? 0 : 2)}\n`,
+          : `${JSON.stringify(reply, null, indent)}\n`,
       );
       return EXIT_CLEAN;
     } catch (error) {

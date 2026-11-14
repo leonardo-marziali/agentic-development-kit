@@ -261,3 +261,12 @@ test('check-updates reads <release>, falling back to the last <version>', () => 
   );
   assert.equal(latestFrom('<metadata/>'), null);
 });
+
+test('extract fails with a ProvisionError on an archive tar or unzip cannot read', (t) => {
+  const dir = scratch(t);
+  for (const name of ['broken.tar.gz', 'broken.zip']) {
+    const archive = path.join(dir, name);
+    fs.writeFileSync(archive, 'not an archive');
+    assert.throws(() => p.extract(archive, path.join(dir, 'out')), p.ProvisionError);
+  }
+});

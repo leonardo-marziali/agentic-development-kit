@@ -11,6 +11,8 @@ const {
   projectRoot,
   rootHash,
   daemonPaths,
+  systemCommand,
+  spawnSystem,
   MAX_SOCKET_PATH,
 } = require('../paths');
 
@@ -65,4 +67,13 @@ test('each root gets its own short socket/pid/log names', () => {
     assert.ok(a.socket.length <= MAX_SOCKET_PATH + 24, a.socket);
     assert.ok(a.socket.endsWith('.sock'));
   }
+});
+
+test('system commands resolve outside PATH, and a missing one is ENOENT', (t) => {
+  withEnv(t, { PATH: '' });
+  assert.ok(path.isAbsolute(systemCommand('git')), 'git should be in a system directory');
+  assert.equal(systemCommand('sonarlint-no-such-tool'), null);
+  const result = spawnSystem('sonarlint-no-such-tool', [], {});
+  assert.equal(result.error.code, 'ENOENT');
+  assert.equal(result.status, null);
 });

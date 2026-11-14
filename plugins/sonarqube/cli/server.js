@@ -22,6 +22,7 @@ const { spawnSync } = require('node:child_process');
 const { groupByBinding, describeGroup } = require('../scripts/hooks/connected-mode');
 const { toRecord, compareRecords, displayPathFrom } = require('./format');
 const { rank } = require('./severity');
+const { spawnSystem } = require('./paths');
 
 // The issues endpoint's own limits: 500 per page, and never past result 10,000.
 const PAGE_SIZE = 500;
@@ -141,7 +142,7 @@ function latestAnalysis(scope, get) {
 }
 
 function git(args, cwd) {
-  const result = spawnSync('git', args, { cwd, encoding: 'utf8' });
+  const result = spawnSystem('git', args, { cwd, encoding: 'utf8' });
   return !result.error && result.status === 0 ? result.stdout.trim() : null;
 }
 
