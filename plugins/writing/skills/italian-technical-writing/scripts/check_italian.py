@@ -22,8 +22,10 @@ from __future__ import annotations
 import argparse
 import re
 import sys
+import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 
 # --------------------------------------------------------------------------
 # Phrase catalogue: (rule id, regex, message, suggestion)
@@ -456,6 +458,19 @@ def check(raw: str) -> list[Finding]:
     return found
 
 
+def allowed_path(arg: str) -> Path | None:
+    """Resolve a CLI path, accepting it only under the cwd or the temp dir.
+
+    Drafts live in the project or in a scratch directory; refusing anything
+    else keeps a mistyped or injected argument from reading arbitrary files.
+    """
+    path = Path(arg).resolve()
+    roots = (Path.cwd().resolve(), Path(tempfile.gettempdir()).resolve())
+    if any(path.is_relative_to(root) for root in roots) and path.is_file():
+        return path
+    return None
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     parser.add_argument("paths", nargs="+", help="files to check, or - for stdin")
@@ -469,8 +484,13 @@ def main(argv: list[str] | None = None) -> int:
         if path == "-":
             raw, label = sys.stdin.read(), "<stdin>"
         else:
-            with open(path, encoding="utf-8") as fh:
-                raw, label = fh.read(), path
+            safe = allowed_path(path)
+            if safe is None:
+                parser.error(
+                    f"{path}: not a file under the working directory or the "
+                    "temp directory (pipe it on stdin with - instead)"
+                )
+            raw, label = safe.read_text(encoding="utf-8"), path
         for f in check(raw):
             total += 1
             print(f"{label}:{f.line}:{f.col} [{f.rule}] {f.message}")
