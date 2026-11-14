@@ -1,3 +1,10 @@
+# [2.16.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.15.1...v2.16.0) (2026-11-14)
+
+
+### Features
+
+* **ad-lfl-kit:** guard commits and scope changes against the session base ([#54](https://github.com/leonardo-marziali/agentic-development-kit/issues/54)) ([a8651fd](https://github.com/leonardo-marziali/agentic-development-kit/commit/a8651fd8822a5887dbf3515139fbf65608a31f3f))
+
 ## [2.15.1](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.15.0...v2.15.1) (2026-11-14)
 
 
