@@ -79,3 +79,11 @@ test('invalid input is a UsageError naming the problem', () => {
     );
   }
 });
+
+test('boolean flags set their options without taking a value', () => {
+  const { options, paths } = parseArgs(['files', '--no-start', 'a.js', '--verbose', '--warm']);
+  assert.deepEqual(paths, ['a.js']);
+  assert.equal(options.noStart, true);
+  assert.equal(options.verbose, true);
+  assert.equal(options.warm, true);
+});
