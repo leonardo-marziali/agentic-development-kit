@@ -261,6 +261,8 @@ function filesChangedSince(snapshot, { cwd } = {}) {
 
 module.exports = {
   MTIME_SLACK_MS,
+  repoRoot,
+  headOf,
   PRUNED_DIR_NAMES,
   snapshotWorkspace,
   advanceSnapshot,

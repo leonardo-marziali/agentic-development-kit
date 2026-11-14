@@ -15,6 +15,11 @@
  * including the ones no PostToolUse hook ever hears about, like a `sed -i`,
  * a formatter run from another hook, or the user's own editor.
  *
+ * One exception: a session that commits its own work before its Stop hook
+ * runs would move HEAD past those lines and hide them. Callers that record
+ * a session base (base.js) pass it as `bases`, and each repo with a base is
+ * diffed against that commit instead of `ref`.
+ *
  * Everything here fails OPEN. No repo, no git, an untracked path, a diff we
  * can't parse — each resolves to "the whole file is in scope", which is
  * exactly the behaviour callers had before this module existed. A scope we
@@ -149,6 +154,18 @@ function scopeWholeFile() {
  * exotically quoted path, a binary file) is caught and scoped whole rather
  * than mistaken for unchanged.
  */
+/*
+ * The ref to diff `root` against: its session base when one was recorded
+ * and still names a commit, `ref` otherwise. A base that no longer resolves
+ * (the repo was re-created, the commit garbage-collected) falls back to
+ * `ref`, which is the behaviour from before bases existed.
+ */
+function refFor(root, ref, bases) {
+  const base = bases instanceof Map ? bases.get(root) : bases?.[root];
+  if (typeof base !== 'string' || !base) return ref;
+  return ok(git(['cat-file', '-e', `${base}^{commit}`], root)) ? base : ref;
+}
+
 function resolveRepoGroup(root, files, ref, into) {
   const tracked = readPathSet(git(['ls-files', '-z', '--', ...files], root), root);
   const trackedFiles = [];
@@ -202,13 +219,15 @@ function resolveRepoGroup(root, files, ref, into) {
  * is in scope.
  */
 function changedRangesByFile(files, options = {}) {
-  const { ref = 'HEAD' } = options;
+  const { ref = 'HEAD', bases } = options;
   const result = new Map();
   if (!files || files.length === 0) return result;
 
   const { groups, outsideRepo } = groupByRepo(files);
   for (const file of outsideRepo) result.set(file, scopeWholeFile());
-  for (const [root, group] of groups) resolveRepoGroup(root, group, ref, result);
+  for (const [root, group] of groups) {
+    resolveRepoGroup(root, group, refFor(root, ref, bases), result);
+  }
 
   return result;
 }
@@ -270,10 +289,10 @@ function makeScope(file, changed, context) {
  * already applied.
  */
 function scopesFor(files, options = {}) {
-  const { ref = 'HEAD', context = DEFAULT_CONTEXT_LINES } = options;
+  const { ref = 'HEAD', bases, context = DEFAULT_CONTEXT_LINES } = options;
   const scopes = new Map();
 
-  for (const [file, changed] of changedRangesByFile(files, { ref })) {
+  for (const [file, changed] of changedRangesByFile(files, { ref, bases })) {
     scopes.set(file, makeScope(file, changed, context));
   }
 

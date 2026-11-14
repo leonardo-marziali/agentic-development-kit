@@ -3,7 +3,14 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { appendTrackedFile, agentStateDir } = require('./state');
-const { snapshotWorkspace, advanceSnapshot, filesChangedSince } = require('./changes');
+const {
+  snapshotWorkspace,
+  advanceSnapshot,
+  filesChangedSince,
+  repoRoot,
+  headOf,
+} = require('./changes');
+const { readSessionBases, recordSessionBase, knownRootFor } = require('./base');
 
 /*
  * The PostToolUse half of the loop: records the files a tool just wrote, so
@@ -84,6 +91,7 @@ function trackTouchedFile({ input, listFile, matches }) {
   if (typeof matches === 'function' && !matches(absPath)) return null;
 
   record(listFile, absPath, input.agent_id);
+  noteSessionBase(path.dirname(listFile), absPath);
   return absPath;
 }
 
@@ -162,7 +170,7 @@ function sweepBackgroundWindows(stateDir, now) {
     const expired = now - window.openedAt >= BACKGROUND_WINDOW_MS;
     const next = expired ? null : advanceSnapshot(window.snapshot, { now });
     for (const changed of filesChangedSince(window.snapshot, { cwd: window.cwd })) {
-      changes.push({ file: changed, agentId: window.agentId });
+      changes.push({ file: changed, agentId: window.agentId, snapshot: window.snapshot });
     }
     try {
       if (expired) fs.rmSync(file, { force: true });
@@ -237,7 +245,8 @@ function takeMarker(file) {
 function toolChangedEntries({ input, stateDir, now }) {
   const tool = input.tool_name || '';
   const event = input.hook_event_name || 'PostToolUse';
-  const own = (files) => files.map((file) => ({ file, agentId: input.agent_id }));
+  const own = (files, snapshot) =>
+    files.map((file) => ({ file, agentId: input.agent_id, snapshot }));
 
   if (event === 'PreToolUse') {
     if (SHELL_TOOL.test(tool) && input.tool_use_id) {
@@ -262,7 +271,7 @@ function toolChangedEntries({ input, stateDir, now }) {
   if (!snapshot) return changes;
 
   const next = isBackgrounded(input) ? advanceSnapshot(snapshot, { now }) : null;
-  changes.push(...own(filesChangedSince(snapshot, { cwd: input.cwd })));
+  changes.push(...own(filesChangedSince(snapshot, { cwd: input.cwd }), snapshot));
   if (next) openBackgroundWindow(stateDir, input, next, now);
   return changes;
 }
@@ -270,6 +279,30 @@ function toolChangedEntries({ input, stateDir, now }) {
 function toolChangedFiles({ input, stateDir, now = Date.now() }) {
   if (!input) return [];
   return [...new Set(toolChangedEntries({ input, stateDir, now }).map(({ file }) => file))];
+}
+
+/*
+ * Records the session base (see base.js) for the repo holding `file`, if it
+ * has none yet. A shell call's own snapshot knows the HEAD from before the
+ * call ran, which matters for `edit && git commit` in one command: by the
+ * time its Post event fires HEAD already includes the edit. Anything else —
+ * an Edit-family call, which never commits, or a file in a repo the call
+ * only cd'd into — takes that repo's HEAD as it is now.
+ */
+function noteSessionBase(dir, file, snapshot) {
+  try {
+    const bases = readSessionBases(dir);
+    if (knownRootFor(bases, file)) return;
+
+    if (snapshot?.root && snapshot.head && knownRootFor({ [snapshot.root]: true }, file)) {
+      recordSessionBase(dir, snapshot.root, snapshot.head);
+      return;
+    }
+    const root = repoRoot(path.dirname(file));
+    if (root) recordSessionBase(dir, root, headOf(root));
+  } catch {
+    // No base means scoping falls back to HEAD, as before bases existed.
+  }
 }
 
 /*
@@ -283,17 +316,18 @@ function toolChangedFiles({ input, stateDir, now = Date.now() }) {
  * background command's file goes in its subagent's list only when that
  * subagent is the one sweeping: one that has already stopped has no loop
  * left to read it, and the session's list still gets it.
+ *
+ * It also records, beside `listFile`, the session base of each repo a
+ * tracked file sits in (see base.js), for scopesFor's `bases` option.
  */
 function trackSessionChanges({ input, listFile, matches, now = Date.now() }) {
   if (!input) return [];
   const tracked = [];
-  for (const { file, agentId } of toolChangedEntries({
-    input,
-    stateDir: path.dirname(listFile),
-    now,
-  })) {
+  const dir = path.dirname(listFile);
+  for (const { file, agentId, snapshot } of toolChangedEntries({ input, stateDir: dir, now })) {
     if (typeof matches === 'function' && !matches(file)) continue;
     record(listFile, file, agentId && agentId === input.agent_id ? agentId : undefined);
+    noteSessionBase(dir, file, snapshot);
     if (!tracked.includes(file)) tracked.push(file);
   }
   return tracked;
