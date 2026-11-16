@@ -21,6 +21,12 @@ Claude edits, in any language.
   on stderr and left alone. Because a fix rewrites the whole file, a file with
   any such violation skips auto-fix, and Claude fixes the changed lines by hand.
   Outside a git repository, and for new files, the whole file counts.
+  Lines the session already committed still count as changed: they are
+  compared with the commit the session started from.
+- **No commits before the check.** While files touched this session are
+  still waiting on the `Stop` hook, Claude's `git commit` is denied, so
+  unchecked work never reaches history. Ask for the commit again once the
+  turn has ended cleanly; your own terminal is never blocked.
 - Files with no `.editorconfig` at or above them are skipped, and the plugin
   never creates one. Paths under `node_modules/` or `.git/` are always skipped.
 - Non-blocking on failure: if the tool can't run (offline, download blocked),

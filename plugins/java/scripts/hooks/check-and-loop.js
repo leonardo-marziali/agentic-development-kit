@@ -26,12 +26,18 @@ const {
   readTrackedFiles,
   trackSessionChanges,
   runFixLoop,
+  readSessionBases,
+  SESSION_BASE_FILE,
 } = require('@leonardo-marziali/ad-lfl-kit');
 const { STATE_NAMESPACE, TOUCHED_FILES, isTrackable } = require('./lib');
 const { findRepoRoot } = require('./config');
 const { engineManifest, groupBy, planRepo, check } = require('./pipeline');
 
-const OWN_STATE_FILES = [TOUCHED_FILES, 'attempts.json'];
+/*
+ * SESSION_BASE_FILE is written by tracking (see ad-lfl-kit's base.js);
+ * clearing it once the loop passes starts the next turn from a fresh base.
+ */
+const OWN_STATE_FILES = [TOUCHED_FILES, 'attempts.json', SESSION_BASE_FILE];
 
 const INTRO =
   "Fix the findings above in the code you changed, following the project's Java standard " +
@@ -98,7 +104,11 @@ function main() {
     stateFiles: OWN_STATE_FILES,
     files,
     check: () => {
-      repos ??= [...byRepo].map(([repoRoot, repoFiles]) => planRepo(repoRoot, repoFiles));
+      // Diff against the session base, so lines already committed stay in scope.
+      const bases = readSessionBases(sessionDir);
+      repos ??= [...byRepo].map(([repoRoot, repoFiles]) =>
+        planRepo(repoRoot, repoFiles, { bases }),
+      );
       if (repos.some((repo) => repo.javaFiles.length > 0 && (repo.config || repo.profile))) {
         manifest ??= engineManifest();
       }

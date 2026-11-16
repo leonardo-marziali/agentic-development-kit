@@ -32,6 +32,8 @@ const {
   scopesFor,
   partitionByScope,
   fixableFiles,
+  readSessionBases,
+  SESSION_BASE_FILE,
 } = require('@leonardo-marziali/ad-lfl-kit');
 const {
   STATE_NAMESPACE,
@@ -50,7 +52,11 @@ const PREFIX = 'editorconfig plugin:';
  * hooks, so cleanup removes only these files and then drops the directory
  * only if that leaves it empty.
  */
-const OWN_STATE_FILES = [TOUCHED_FILES, 'attempts.json'];
+/*
+ * SESSION_BASE_FILE is written by tracking (see ad-lfl-kit's base.js);
+ * clearing it once the loop passes starts the next turn from a fresh base.
+ */
+const OWN_STATE_FILES = [TOUCHED_FILES, 'attempts.json', SESSION_BASE_FILE];
 
 function fallBackToChecker(group, reason, notes) {
   notes.add(`${group.kind} in ${group.root}: ${reason}; falling back to editorconfig-checker.`);
@@ -90,10 +96,10 @@ function formatFinding({ file, line, message }, cwd) {
   return `${location}: ${message}`;
 }
 
-function analyze(groups, files, { cwd, notes }) {
+function analyze(groups, files, { cwd, notes, bases }) {
   const findings = groups.flatMap((group) => checkGroup(group, { cwd, notes }));
   const scoped = partitionByScope(findings, {
-    scopes: scopesFor(files),
+    scopes: scopesFor(files, { bases }),
     getFile: (finding) => finding.file,
     getLine: findingLine,
   });
@@ -155,7 +161,8 @@ function main() {
     .filter((file) => fs.existsSync(file))
     .filter(hasEditorconfig);
   const groups = groupByBackend(files);
-  const ctx = { cwd, notes: new Set() };
+  // Diff against the session base, so lines already committed stay in scope.
+  const ctx = { cwd, notes: new Set(), bases: readSessionBases(sessionDir) };
 
   // Set when nothing was fixed, so `check` needn't start a JVM to repeat it.
   let current = null;

@@ -34,6 +34,7 @@ const {
   trackSessionChanges,
   runBin,
   runFixLoop,
+  SESSION_BASE_FILE,
 } = require('@leonardo-marziali/ad-lfl-kit');
 const {
   STATE_NAMESPACE,
@@ -50,7 +51,11 @@ const {
  * hooks, so cleanup removes only these files and then drops the directory
  * only if that leaves it empty.
  */
-const OWN_STATE_FILES = [TOUCHED_FILES, 'attempts.json'];
+/*
+ * SESSION_BASE_FILE is written by tracking (see ad-lfl-kit's base.js);
+ * clearing it once the loop passes starts the next turn from a fresh base.
+ */
+const OWN_STATE_FILES = [TOUCHED_FILES, 'attempts.json', SESSION_BASE_FILE];
 
 function lintGroups(groups, extraArgs) {
   let report = '';

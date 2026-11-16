@@ -25,8 +25,15 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { readHookInput, scopesFor, partitionByScope } = require('@leonardo-marziali/ad-lfl-kit');
 const {
+  readHookInput,
+  stateDir,
+  readSessionBases,
+  scopesFor,
+  partitionByScope,
+} = require('@leonardo-marziali/ad-lfl-kit');
+const {
+  STATE_NAMESPACE,
   isAnalyzable,
   isSecret,
   perEditFeedbackEnabled,
@@ -71,9 +78,13 @@ function main() {
   const relevant = parsed.result.issues
     .map((issue) => ({ ...issue, abs }))
     .filter((issue) => isSecret(issue) || rank(issue.severity) >= rank(FEEDBACK_THRESHOLD));
+  // The session base, so lines this session already committed stay in scope.
+  const bases = readSessionBases(
+    stateDir({ sessionId: input.session_id, namespace: STATE_NAMESPACE }),
+  );
   const { inScope } = partitionByScope(
     relevant.filter((issue) => !isSecret(issue)),
-    { scopes: scopesFor([abs]), getFile: (i) => i.abs, getLine: (i) => i.line },
+    { scopes: scopesFor([abs], { bases }), getFile: (i) => i.abs, getLine: (i) => i.line },
   );
   const report = [...relevant.filter(isSecret), ...inScope];
   if (report.length === 0) return;

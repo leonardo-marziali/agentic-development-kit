@@ -25,6 +25,10 @@ linting via markdownlint.
   findings, so it keeps fixing them itself. This repeats up to 3 attempts
   per session before giving up, so a violation nothing can resolve can't
   loop forever.
+- **No commits before the check.** While files touched this session are
+  still waiting on the `Stop` hook, Claude's `git commit` is denied, so
+  unchecked work never reaches history. Ask for the commit again once the
+  turn has ended cleanly; your own terminal is never blocked.
 - **At the cap, nothing is written to your files by default.** Whatever is
   still failing is reported and the loop stops. Opting into
   [`auto_suppress`](#options) instead has the hook write inline

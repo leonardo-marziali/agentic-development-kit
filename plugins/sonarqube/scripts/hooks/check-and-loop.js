@@ -45,6 +45,7 @@ const {
   runFixLoop,
   scopesFor,
   partitionByScope,
+  readSessionBases,
 } = require('@leonardo-marziali/ad-lfl-kit');
 const {
   STATE_NAMESPACE,
@@ -96,7 +97,7 @@ function sections(issues, cwd) {
  * the analysis could not run at all (runFixLoop then neither blocks nor
  * discards state).
  */
-function analyze(files, { cwd, notes }) {
+function analyze(files, { cwd, notes, bases }) {
   const run = runSonarlint(
     [
       'files',
@@ -131,7 +132,7 @@ function analyze(files, { cwd, notes }) {
   const secrets = candidates.filter(isSecret);
   const scoped = partitionByScope(
     candidates.filter((issue) => !isSecret(issue)),
-    { scopes: scopesFor(files), getFile: (i) => i.abs, getLine: (i) => i.line },
+    { scopes: scopesFor(files, { bases }), getFile: (i) => i.abs, getLine: (i) => i.line },
   );
 
   if (scoped.outOfScope.length) {
@@ -215,7 +216,8 @@ function main() {
     dir,
     stateFiles: OWN_STATE_FILES,
     files,
-    check: () => analyze(files, { cwd, notes }),
+    // Diff against the session base, so lines already committed stay in scope.
+    check: () => analyze(files, { cwd, notes, bases: readSessionBases(sessionDir) }),
     onCap: giveUp,
     buildMessage,
   });
