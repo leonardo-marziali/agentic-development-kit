@@ -1,3 +1,10 @@
+# [2.17.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.16.0...v2.17.0) (2026-11-16)
+
+
+### Features
+
+* **plugins:** enforce checks before commits via ad-lfl-kit 2.16.0 ([#55](https://github.com/leonardo-marziali/agentic-development-kit/issues/55)) ([155d375](https://github.com/leonardo-marziali/agentic-development-kit/commit/155d37515a0001fe0dc61ea5d5a36cd87414d4f5))
+
 # [2.16.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.15.1...v2.16.0) (2026-11-14)
 
 
