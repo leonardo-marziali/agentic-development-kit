@@ -3,7 +3,7 @@
   "private": true,
   "description": "Runtime dependencies and test tooling for the java plugin's hooks. Claude Code installs `dependencies` from package-lock.json when it caches the plugin; the hooks themselves run the plugin's JDT, Error Prone and ArchUnit jars on a local JDK.",
   "dependencies": {
-    "@leonardo-marziali/ad-lfl-kit": "2.12.0"
+    "@leonardo-marziali/ad-lfl-kit": "2.16.0"
   },
   "scripts": {
     "test": "node --test \"scripts/**/__tests__/*.test.js\"",

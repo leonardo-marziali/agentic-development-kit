@@ -79,7 +79,13 @@ How the Stop gate decides:
 - **Other issues block only on lines the working tree changed vs `HEAD`**
   (plus two lines of context). A one-line edit to an old file doesn't make
   its existing debt the session's problem. Pre-existing findings at the
-  blocking level are reported once on stderr and let through.
+  blocking level are reported once on stderr and let through. If the
+  session has committed since it started, its lines are compared with the
+  commit it started from instead, so a commit can't hide them.
+- **No commits before the check.** While files touched this session are
+  still waiting on the `Stop` hook, Claude's `git commit` is denied, so
+  unchecked work never reaches history. Ask for the commit again once the
+  turn has ended cleanly; your own terminal is never blocked.
 - **Scope follows git**, the way SonarQube for IDE does: a file the
   repository ignores is not analyzed. Outside git, a short list of
   well-known generated/vendored directory names stands in.

@@ -84,7 +84,7 @@ function nullnessMode(config) {
  * What a repository's share of the session needs: its config and profile,
  * and its in-scope files grouped by module.
  */
-function planRepo(repoRoot, files, { config = loadConfig(repoRoot), format = true } = {}) {
+function planRepo(repoRoot, files, { config = loadConfig(repoRoot), format = true, bases } = {}) {
   const inScope = config ? files.filter((file) => isInScope(file, config, repoRoot)) : files;
   const formatterOn = format && (!config || config.formatter.enabled);
   const profile = formatterOn ? resolveProfile({ repoRoot, config }) : null;
@@ -98,13 +98,25 @@ function planRepo(repoRoot, files, { config = loadConfig(repoRoot), format = tru
       info: config || profile ? moduleInfo(moduleRoot, config) : null,
     });
   }
-  return { repoRoot, config, profile, javaFiles, buildFiles: inScope.filter(isBuildFile), modules };
+  return {
+    repoRoot,
+    config,
+    profile,
+    javaFiles,
+    buildFiles: inScope.filter(isBuildFile),
+    modules,
+    bases,
+  };
 }
 
-function formatRanges(files, config) {
+/*
+ * `bases` are the session bases (see ad-lfl-kit's base.js): with them, lines
+ * the session already committed still count as changed.
+ */
+function formatRanges(files, config, bases) {
   if (config?.formatter.scope === 'file') return new Map(files.map((file) => [file, '*']));
   const ranges = new Map();
-  for (const [file, changed] of changedRangesByFile(files)) {
+  for (const [file, changed] of changedRangesByFile(files, { bases })) {
     ranges.set(file, changed.all ? '*' : changed.ranges);
   }
   return ranges;
@@ -116,7 +128,7 @@ function engineFindings(repo, manifest) {
   if (!manifest || (!repo.profile && !checking)) return [];
   const findings = [];
   for (const [, module] of repo.modules) {
-    const ranges = repo.profile ? formatRanges(module.files, repo.config) : new Map();
+    const ranges = repo.profile ? formatRanges(module.files, repo.config, repo.bases) : new Map();
     const result = runEngine({
       manifest,
       files: module.files.map((file) => ({ path: file, ranges: ranges.get(file) ?? null })),
@@ -154,7 +166,7 @@ function formatFindings(repoRoot, findings) {
  * ArchUnit, whose findings carry no reliable line) on the files it touched,
  * `'all'` on every finding.
  */
-function section(name, repoRoot, findings, { scope = 'lines', touched = [] } = {}) {
+function section(name, repoRoot, findings, { scope = 'lines', touched = [], bases } = {}) {
   if (findings.length === 0) return null;
   if (scope === 'all') return { name, repoRoot, blocking: findings, existing: [] };
   if (scope === 'files') {
@@ -162,7 +174,7 @@ function section(name, repoRoot, findings, { scope = 'lines', touched = [] } = {
     const blocking = findings.filter((f) => touchedSet.has(path.resolve(f.file)));
     return { name, repoRoot, blocking, existing: findings.filter((f) => !blocking.includes(f)) };
   }
-  const scopes = scopesFor([...new Set(findings.map((f) => f.file))]);
+  const scopes = scopesFor([...new Set(findings.map((f) => f.file))], { bases });
   const { inScope, outOfScope } = partitionByScope(findings, { scopes });
   return { name, repoRoot, blocking: inScope, existing: outOfScope };
 }
@@ -173,11 +185,18 @@ function check(repos, manifest, { changedLinesOnly = true } = {}) {
   for (const repo of repos) {
     const engine = engineFindings(repo, manifest);
     if (!repo.config) continue;
-    sections.push(section('Source rules', repo.repoRoot, engine, { scope: lines }));
+    sections.push(
+      section('Source rules', repo.repoRoot, engine, { scope: lines, bases: repo.bases }),
+    );
     const buildFindings = repo.config.checks.enabled
       ? repo.buildFiles.flatMap((file) => checkBuildFile(file, fs.readFileSync(file, 'utf8')))
       : [];
-    sections.push(section('Build files', repo.repoRoot, buildFindings, { scope: lines }));
+    sections.push(
+      section('Build files', repo.repoRoot, buildFindings, {
+        scope: lines,
+        bases: repo.bases,
+      }),
+    );
     for (const extra of registeredSections()) {
       if (timeLeft() < SECTION_MIN_MS) {
         warnOnce(
@@ -190,6 +209,7 @@ function check(repos, manifest, { changedLinesOnly = true } = {}) {
         section(extra.name, repo.repoRoot, findings, {
           scope: changedLinesOnly ? (extra.scope ?? 'lines') : 'all',
           touched: repo.javaFiles,
+          bases: repo.bases,
         }),
       );
     }

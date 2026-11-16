@@ -320,3 +320,66 @@ test('a checker that cannot run warns without blocking and keeps state', (t) => 
   assert.match(res.stderr, /could not run.*NOT checked/s);
   assert.match(res.stderr, /cannot download/);
 });
+
+function commitMore(project) {
+  git(project, 'add', '-A');
+  git(project, '-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-qm', 'more');
+}
+
+function preToolUse(ctx, command) {
+  return runHook('track-touched.js', ctx, {
+    hook_event_name: 'PreToolUse',
+    tool_name: 'Bash',
+    tool_input: { command },
+    tool_use_id: 'toolu_guard',
+  });
+}
+
+function baseFile(ctx) {
+  return path.join(
+    ctx.pluginData,
+    'editorconfig-session-scope',
+    ctx.sessionId,
+    'session-base.json',
+  );
+}
+
+test('a violation the session committed before stopping still blocks', (t) => {
+  const ctx = setup(t);
+  const file = path.join(ctx.project, 'a.txt');
+  const padding = Array.from({ length: 10 }, (_, i) => `line ${i}`).join('\n');
+  fs.writeFileSync(file, `old trailing  \n${padding}\nlast\n`);
+  commitAll(ctx.project);
+  fs.writeFileSync(file, `old trailing  \n${padding}\nnew trailing  \n`);
+  touch(ctx, file);
+  // Committed behind the guard's back: HEAD now holds the session's line.
+  commitMore(ctx.project);
+
+  const res = stop(ctx);
+
+  assert.equal(res.json.decision, 'block');
+  assert.match(res.json.reason, /a\.txt:12: trailing whitespace/);
+  assert.doesNotMatch(res.json.reason, /a\.txt:1:/);
+});
+
+test('a commit is denied until the Stop hook has passed the touched files', (t) => {
+  const ctx = setup(t);
+  const file = path.join(ctx.project, 'a.txt');
+  fs.writeFileSync(file, 'ok\n');
+  commitAll(ctx.project);
+  fs.writeFileSync(file, 'still ok\n');
+  touch(ctx, file);
+  assert.ok(fs.existsSync(baseFile(ctx)), 'tracking records the session base');
+
+  const denied = preToolUse(ctx, 'git commit -am wip');
+  assert.equal(denied.status, 0, denied.stderr);
+  const output = denied.json.hookSpecificOutput;
+  assert.equal(output.permissionDecision, 'deny');
+  assert.match(output.permissionDecisionReason, /^editorconfig plugin: /);
+  assert.ok(output.permissionDecisionReason.includes(file));
+  assert.equal(preToolUse(ctx, 'git status').json, undefined);
+
+  assert.equal(stop(ctx).json, undefined);
+  assert.equal(fs.existsSync(baseFile(ctx)), false, 'a clean stop clears the session base');
+  assert.equal(preToolUse(ctx, 'git commit -am done').json, undefined);
+});

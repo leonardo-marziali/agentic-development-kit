@@ -39,6 +39,10 @@ covers.
   reports in one message, so it keeps fixing them itself. Both tools share
   one attempt counter, capped at 3 per session, so a finding nothing can
   resolve can't loop forever. Pyright warnings and information never block.
+- **No commits before the check.** While files touched this session are
+  still waiting on the `Stop` hook, Claude's `git commit` is denied, so
+  unchecked work never reaches history. Ask for the commit again once the
+  turn has ended cleanly; your own terminal is never blocked.
 - **At the cap, nothing is written to your files by default.** Whatever is
   still failing is reported and the loop stops. If you opt into
   [`auto_suppress`](#options), the hook instead writes

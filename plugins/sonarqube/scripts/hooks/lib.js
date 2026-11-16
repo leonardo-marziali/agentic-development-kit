@@ -10,7 +10,7 @@
 
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { runBin } = require('@leonardo-marziali/ad-lfl-kit');
+const { runBin, SESSION_BASE_FILE } = require('@leonardo-marziali/ad-lfl-kit');
 const { rank } = require('../../cli/severity');
 
 /*
@@ -19,7 +19,11 @@ const { rank } = require('../../cli/severity');
  */
 const STATE_NAMESPACE = 'sonarqube-session-scope';
 const TOUCHED_FILES = 'touched-files.txt';
-const OWN_STATE_FILES = [TOUCHED_FILES, 'attempts.json'];
+/*
+ * SESSION_BASE_FILE is written by tracking (see ad-lfl-kit's base.js);
+ * clearing it once the loop passes starts the next turn from a fresh base.
+ */
+const OWN_STATE_FILES = [TOUCHED_FILES, 'attempts.json', SESSION_BASE_FILE];
 
 /*
  * Deliberately not a language or extension filter. Sonar supports a long and

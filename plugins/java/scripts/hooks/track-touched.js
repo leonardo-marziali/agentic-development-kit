@@ -12,7 +12,12 @@ tracks whatever changed since (see ad-lfl-kit's trackSessionChanges).
 */
 
 const path = require('node:path');
-const { readHookInput, stateDir, trackSessionChanges } = require('@leonardo-marziali/ad-lfl-kit');
+const {
+  readHookInput,
+  stateDir,
+  guardCommit,
+  trackSessionChanges,
+} = require('@leonardo-marziali/ad-lfl-kit');
 const { STATE_NAMESPACE, TOUCHED_FILES, isTrackable } = require('./lib');
 
 function main() {
@@ -20,7 +25,14 @@ function main() {
   if (!input) return;
 
   const dir = stateDir({ sessionId: input.session_id, namespace: STATE_NAMESPACE });
-  trackSessionChanges({ input, listFile: path.join(dir, TOUCHED_FILES), matches: isTrackable });
+  const listFile = path.join(dir, TOUCHED_FILES);
+  /*
+   * A commit while touched files are still waiting on the Stop hook would put
+   * unchecked work into history, so it is denied until that hook has run. A
+   * denied call never runs, so there is nothing to track for it either.
+   */
+  if (guardCommit({ input, listFile, matches: isTrackable, label: 'java plugin' }).denied) return;
+  trackSessionChanges({ input, listFile, matches: isTrackable });
 }
 
 main();

@@ -37,7 +37,9 @@ in an opted-in project — the plugin's [default profile](engine/default-formatt
 
 In an opted-in project, the same Stop hook checks the touched files and
 blocks the stop while findings remain **on lines the session changed**
-(findings on older lines are listed but never block). Claude gets one
+(findings on older lines are listed but never block). Lines the session
+already committed still count as changed, and Claude's `git commit` is
+denied while touched files are waiting on this check. Claude gets one
 report with these sections, capped at 3 attempts per session:
 
 - **Source rules**: about 45 checks on JDT's syntax tree (no compilation),
