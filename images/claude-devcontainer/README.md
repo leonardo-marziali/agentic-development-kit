@@ -159,11 +159,13 @@ uses it:
 ### Plugins (user scope, enabled)
 
 - `leonardo-marziali/agentic-development-kit`: `markdown`, `prettier`,
-  `python`, `sonarqube`, `git`, `github`
+  `editorconfig`, `python`, `java`, `sonarqube`, `git`, `github`,
+  `diagrams`, `writing`
 - `anthropics/claude-plugins-official`: `jdtls-lsp`, `pyright-lsp`,
   `typescript-lsp`, `skill-creator`, `claude-code-setup`, plus `github`
-  (a dependency of `github@agentic-development-kit`; `pyright-lsp` is
-  likewise a dependency of `python@agentic-development-kit`)
+  (a dependency of `github@agentic-development-kit`; `pyright-lsp` and
+  `jdtls-lsp` are likewise dependencies of `python@agentic-development-kit`
+  and `java@agentic-development-kit`)
 - `obra/superpowers-marketplace`: `superpowers`
 - `upstash/context7`: `context7`
 
@@ -180,10 +182,15 @@ works inside the container. The list lives in
 | ------------------------------------------ | ----------------------- |
 | Node.js 24 (base image)                    | every plugin with hooks |
 | `marksman`, `markdownlint-cli`             | `markdown`              |
+| `editorconfig-checker`                     | `editorconfig`          |
 | `prettier`                                 | `prettier`              |
 | `ruff`, `pyright`                          | `python`                |
 | `sonar` CLI, `docker` CLI (host socket)    | `sonarqube`             |
 | `gh`                                       | `github`                |
+| OpenJDK 21                                 | `java`                  |
+| `mmdc` (`@mermaid-js/mermaid-cli`)         | `diagrams`              |
+| Chromium, Liberation fonts                 | `mmdc`                  |
+| Python 3                                   | `diagrams`, `writing`   |
 | OpenJDK 21, `jdtls`                        | `jdtls-lsp`             |
 | `pyright`                                  | `pyright-lsp`           |
 | `typescript`, `typescript-language-server` | `typescript-lsp`        |
@@ -192,6 +199,18 @@ works inside the container. The list lives in
 
 The `docker` CLI talks to the host's Docker daemon (docker-outside-of-docker),
 which is what the SonarQube MCP server container runs on.
+
+`mmdc` renders through Debian's `chromium`: the image sets
+`PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium` and never downloads
+Puppeteer's own browser. Where the host's seccomp profile or user-namespace
+settings keep Chromium's sandbox from starting, pass `mmdc` a Puppeteer
+config with `"args": ["--no-sandbox"]` (`-p`); the `diagrams` plugin's
+export script retries with one by itself. With
+`mmdc` present, Mermaid diagrams render locally instead of being sent to
+mermaid.ink or Kroki.
+
+The java plugin's NullAway and ArchUnit checks run the project's own
+`mvnw` / `gradlew`; the image ships no system `mvn` or `gradle`.
 
 ## Building locally
 
@@ -210,13 +229,16 @@ each downloaded tool (all default to the newest release):
 - `SONAR_CLI_VERSION` — a SonarQube CLI version such as `1.10.0.16040`
 - `RUFF_VERSION` — a ruff release on PyPI such as `0.17.1`
 - `LLM_WIKI_VERSION` — an `llm-wiki-tool` release on PyPI such as `0.1.1`
+- `EDITORCONFIG_CHECKER_VERSION` — an editorconfig-checker release such as
+  `4.0.2`
 - `MARKETPLACE_REF` — the git ref of this repository's marketplace to
   install plugins from (empty: the default branch). Pull request builds
   set it to the PR's branch, so a newly added plugin can be installed
   before it is merged.
 
 Every download is HTTPS-only and verified before it is installed or run:
-Claude Code against the sha256 in its release manifest, ruff and
+Claude Code against the sha256 in its release manifest, editorconfig-checker
+against the release's `checksums.txt`, ruff and
 `llm-wiki-tool` (with its dependencies) against the sha256 PyPI's index
 publishes for each wheel, the SonarQube CLI
 against SonarSource's OpenPGP signature (key in
