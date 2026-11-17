@@ -1,3 +1,15 @@
+# [4.0.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v3.1.1...v4.0.0) (2026-11-17)
+
+
+* feat(sonarqube)!: install the local engine automatically at session start ([#60](https://github.com/leonardo-marziali/agentic-development-kit/issues/60)) ([7496ded](https://github.com/leonardo-marziali/agentic-development-kit/commit/7496ded44d8ae7d9745c7f8ed4a273f80c30eae7))
+
+
+### BREAKING CHANGES
+
+* the /sonarqube:setup skill is removed. The engine
+installs itself at the first session start; run
+`node scripts/install-sloop.js` to install or repair it by hand.
+
 ## [3.1.1](https://github.com/leonardo-marziali/agentic-development-kit/compare/v3.1.0...v3.1.1) (2026-11-17)
 
 
