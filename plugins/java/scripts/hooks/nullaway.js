@@ -116,7 +116,12 @@ function buildJavacArgs({
 }) {
   const options =
     mode === 'jspecify'
-      ? ['-XepOpt:NullAway:OnlyNullMarked=true', '-XepOpt:NullAway:JSpecifyMode=true']
+      ? [
+          '-XepOpt:NullAway:OnlyNullMarked=true',
+          '-XepOpt:NullAway:JSpecifyMode=true',
+          // MapStruct implementations and OpenAPI Generator output (J20).
+          '-XepOpt:NullAway:TreatGeneratedAsUnannotated=true',
+        ]
       : [`-XepOpt:NullAway:AnnotatedPackages=${basePackage}`];
   return [
     ...EXPORTED.map((pkg) => `-J--add-exports=jdk.compiler/com.sun.tools.javac.${pkg}=ALL-UNNAMED`),

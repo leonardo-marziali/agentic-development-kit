@@ -12,7 +12,8 @@ import org.eclipse.jdt.core.dom.TypeDeclaration;
 
 /*
  * Class-level rules keyed by a type's annotations and name:
- *   S6  @Configuration / @RestController / @Controller classes aren't public;
+ *   S6  @Configuration / @RestController / @Controller classes and @Service
+ *       implementations (the port's implementation) aren't public;
  *   S14 read DTOs are immutable (@Value @Builder), never @Data;
  *   S22 MapStruct mappers are abstract classes, not interfaces.
  */
@@ -35,7 +36,7 @@ final class TypeAnnotations {
 
     static final class NotPublic implements Rule {
 
-        private static final List<String> MANAGED = List.of("Configuration", "RestController", "Controller");
+        private static final List<String> MANAGED = List.of("Configuration", "RestController", "Controller", "Service");
 
         @Override
         public String id() {
@@ -48,7 +49,8 @@ final class TypeAnnotations {
                 String annotation = MANAGED.stream().filter(a -> Ast.hasAnnotation(type, a)).findFirst().orElse(null);
                 if (annotation != null && Modifier.isPublic(type.getModifiers())) {
                     findings.add(new Finding(file.line(type.getName()), id(),
-                        "Make `@" + annotation + "` class `" + type.getName() + "` package-private: nothing outside its package uses it directly."));
+                        "Make `@" + annotation + "` class `" + type.getName() + "` package-private: nothing outside its package uses it directly"
+                        + (annotation.equals("Service") ? ", callers depend on its port." : ".")));
                 }
             });
         }

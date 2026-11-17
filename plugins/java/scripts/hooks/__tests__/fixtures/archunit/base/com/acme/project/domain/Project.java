@@ -5,7 +5,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class Project {
 
-    public static Project rehydrate(Long id) {
+    public static Project reconstitute(Long id) {
         return new Project();
     }
 

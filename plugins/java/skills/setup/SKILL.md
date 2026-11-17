@@ -51,7 +51,7 @@ optional; omit what keeps its default.
     "scope": "changed-lines"
   },
   "checks": { "enabled": true, "disabledRules": [] },
-  "nullaway": { "enabled": true, "annotations": "auto" },
+  "nullaway": { "enabled": true, "annotations": "jspecify" },
   "archunit": {
     "enabled": true,
     "basePackage": "com.acme.orders",

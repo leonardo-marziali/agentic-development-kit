@@ -5,7 +5,7 @@ import com.acme.project.domain.Project;
 class ProjectController {
 
     Project load() {
-        return Project.rehydrate(1L);
+        return Project.reconstitute(1L);
     }
 
 }

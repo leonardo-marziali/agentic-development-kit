@@ -1,6 +1,6 @@
 ---
 name: java-language-standards
-description: 'Use when writing or reviewing Java code in a project that follows the java-standards opt-in. Covers Javadoc and comments, naming, member, field and argument order, var, text blocks, records and sealed types, imports, visibility, overloads for optional arguments, null-safety with JSpecify and NullAway, Optional, reuse, utility classes, explained empty bodies and builders for long argument lists (rules J1 to J26).'
+description: 'Use when writing or reviewing Java code in a project that follows the java-standards opt-in. Covers Javadoc and comments, naming, member, field and argument order, var, text blocks, records and sealed types, imports, visibility, overloads for optional arguments, null-safety with JSpecify and NullAway on every framework version, Optional, not repeating knowledge, utility classes, explained empty bodies and builders for long argument lists (rules J1 to J26).'
 paths: '**/*.java, **/pom.xml, **/build.gradle*'
 ---
 
@@ -48,11 +48,11 @@ comment that only restates the code adds nothing.
 
 **J5. Descriptive names.** Class and variable names are descriptive, even when
 that makes them long. Domain names match the domain term exactly. Technical
-names follow the type, as in `RestTemplate restTemplate`.
+names follow the type, as in `RestClient restClient`.
 
 **J6. No redundant object in method names.** A method doesn't repeat the object
 it belongs to, so the whole invocation reads cleanly:
-`projectService.save(project)`, not `projectService.saveProject(project)`.
+`projectRepository.save(project)`, not `projectRepository.saveProject(project)`.
 
 **J7. Names tell the truth.** A `void` method that throws is
 `assertProjectExists`, not `doesProjectExist`. A `Duration` field isn't named
@@ -64,9 +64,10 @@ for example `*Config` and never a mix of `*Conf` and `*Configuration`.
 ### Code organization
 
 **J9. Fixed member order.** Classes always follow the same order: constants,
-fields, constructors, public methods, private methods, nested types. Lombok
-replaces hand-written accessors, `equals`, `hashCode` and `toString`, except on
-JPA entities (see S15).
+fields, constructors, public methods, protected and package-private methods,
+private methods, nested types. Lombok replaces hand-written accessors, `equals`,
+`hashCode` and `toString`. On JPA entities it generates only accessors and
+constructors (see S15).
 
 **J10. Meaningful field order.** Fields run from most to least important, top to
 bottom, in the same order across the project: identifier, mandatory business
@@ -75,12 +76,12 @@ version. Injected dependencies also follow one order: services, repositories,
 mappers, then infrastructure clients.
 
 **J11. Meaningful argument order.** Arguments run from most to least important,
-left to right, and this order stays coherent across the project. In an update
-method, the identifier comes first, then the body, then everything else.
-Optional arguments always come last.
+left to right, and this order stays coherent across the project. In a method
+that changes something, the identifier comes first, then the new values, then
+everything else. Optional arguments always come last.
 
 ```java
-Project update(Long id, Project project, @Nullable String reason);
+void reschedule(BookingId id, DateRange period, @Nullable String reason);
 ```
 
 **J12. Readable method bodies.** Declare local variables near their first use
@@ -90,10 +91,10 @@ blank line between them. A log statement has a blank line on each side.
 
 ### Language features
 
-**J13. `var` only when the type is obvious.** Use `var` only when the
-right-hand side names the type, as with a constructor call or a literal:
-`var usersById = new HashMap<Long, UserSummary>()`. Everywhere else, write the
-type so it stays visible, in particular for method results.
+**J13. `var` only when the type is obvious.** Use `var` only when the right-hand
+side names the type, as with a constructor call or a literal:
+`var projectsById = new HashMap<ProjectId, ProjectSummary>()`. Everywhere else,
+write the type so it stays visible, in particular for method results.
 
 **J14. Text blocks.** Multi-line text always uses a text block.
 
@@ -121,14 +122,14 @@ with the additional ones. The interface does the routing, through a `default`
 method.
 
 ```java
-public interface ProjectService {
+public interface ProjectQueries {
 
-    default Page<Project> findAll(Pageable pageable) {
+    default Page<ProjectReadModel> findAll(Pageable pageable) {
 
         return findAll(pageable, null);
     }
 
-    Page<Project> findAll(Pageable pageable, @Nullable ProjectFilter filter);
+    Page<ProjectReadModel> findAll(Pageable pageable, @Nullable ProjectFilter filter);
 
 }
 ```
@@ -136,19 +137,32 @@ public interface ProjectService {
 **J20. Null-safety as a compile-time guarantee.**
 
 - Annotate nullability on every public signature.
-- Use one library per project: the one your framework version uses (Spring's on
-  Boot 3.x, JSpecify on Boot 4+), otherwise JSpecify.
-- Make non-null the default at package level and annotate only the nullable
-  exceptions.
-- Enforce it at build time with a checker such as NullAway.
+- Use JSpecify on every framework version. Spring's own `@Nullable` would put
+  Spring into the domain (see D15), and NullAway, Lombok and Spring Framework 7
+  all understand JSpecify.
+- Make non-null the default at package level with `@NullMarked` in
+  `package-info.java`, and annotate only the nullable exceptions.
+- Enforce it at build time with NullAway on all main code, with
+  `-XepOpt:NullAway:OnlyNullMarked=true`:
+  - Lombok: set `lombok.addLombokGeneratedAnnotation = true`, which NullAway
+    needs to recognize generated code, and
+    `lombok.addNullAnnotations = jspecify`, so generated accessors and builders
+    copy the field's nullability (see B10).
+  - Generated code, such as MapStruct implementations and OpenAPI Generator
+    output: set `-XepOpt:NullAway:TreatGeneratedAsUnannotated=true`.
+  - JPA entities: suppress only the initialization check on their constructors
+    (see S15).
 - Lombok's `@NonNull` and Bean Validation's `@NotNull` are runtime checks and
   don't replace this.
 - Use `Optional` only for return values.
 
 ### Reuse
 
-**J21. Don't repeat yourself.** If the same logic appears twice, extract it into
-one method.
+**J21. Don't repeat knowledge.** Every rule, limit or decision has one home in
+the code: if the same knowledge appears twice, extract it into one method,
+constant or type. Code that only looks alike, but can change for different
+reasons, stays apart: two commands with the same fields today are two commands
+(see S11).
 
 **J22. Don't reinvent the wheel.** If a library on the classpath already does
 something (`StringUtils`, `NumberUtils`, and so on), use it rather than writing
@@ -160,7 +174,10 @@ Lombok's `@UtilityClass` does exactly this, so prefer it.
 
 **J24. Consistent types across models.** POJOs of the same kind (DTOs, domain
 objects, entities) use the same type and format for the same concept. All
-identifiers share one format, all dates share one format, and so on.
+identifiers share one format, all dates share one format, and so on. In the
+core, identifiers of the module's own aggregates are typed value objects (see
+D22). DTOs and entities carry the one underlying type they wrap, and a reference
+to another module's aggregate carries that type everywhere (see D10).
 
 **J25. Explain empty bodies.** An empty method or constructor body holds a
 comment saying why it does nothing, for example a no-op hook, a framework
@@ -170,13 +187,13 @@ them empty.
 
 **J26. Builders for long argument lists.** A method with more than seven
 parameters takes one parameter object instead, built with a fluent builder, so
-every value is named at the call site. Better still, also accept a `Consumer`
-of that builder, the way the AWS SDK v2 configures its requests: the caller
-fills in only what it needs inside a lambda, and the method builds the object.
-A constructor with that many parameters needs a builder too (a step builder
-for mandatory values, see D4), or, when they're injected dependencies, a
-split class. An `@Override` keeps the signature it inherits, and a record's
-canonical constructor mirrors its components.
+every value is named at the call site. Better still, also accept a `Consumer` of
+that builder, the way the AWS SDK v2 configures its requests: the caller fills
+in only what it needs inside a lambda, and the method builds the object. A
+constructor with that many parameters needs a builder too (a step builder for
+mandatory values, see D18), or, when they're injected dependencies, a split
+class. An `@Override` keeps the signature it inherits, and a record's canonical
+constructor mirrors its components.
 
 ```java
 public interface ReportGenerator {
@@ -185,7 +202,7 @@ public interface ReportGenerator {
 
     default Report generate(Consumer<ReportRequest.Builder> request) {
 
-        ReportRequest.Builder builder = ReportRequest.builder();
+        final ReportRequest.Builder builder = ReportRequest.builder();
         request.accept(builder);
         return generate(builder.build());
     }
@@ -197,5 +214,7 @@ reportGenerator.generate(request -> request.projectId(projectId)
     .format(ReportFormat.PDF));
 ```
 
-With Lombok, `@Builder(builderClassName = "Builder")` on the record names the
-builder `ReportRequest.Builder`.
+`lombok.builder.className = Builder` in `lombok.config` (see B10) names every
+Lombok builder `<Type>.Builder`. The `Consumer` overload suits Lombok builders,
+whose values are mostly optional. A step builder can't be filled through a
+`Consumer`, so commands use a `Function` instead (see S11).
