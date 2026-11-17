@@ -1,3 +1,10 @@
+## [3.1.1](https://github.com/leonardo-marziali/agentic-development-kit/compare/v3.1.0...v3.1.1) (2026-11-17)
+
+
+### Bug Fixes
+
+* install the dev container's missing plugins and tooling ([#59](https://github.com/leonardo-marziali/agentic-development-kit/issues/59)) ([bc22aeb](https://github.com/leonardo-marziali/agentic-development-kit/commit/bc22aeb11596b3f209ae5fd58ea9e3c38f2bb65c))
+
 # [3.1.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v3.0.0...v3.1.0) (2026-11-17)
 
 
