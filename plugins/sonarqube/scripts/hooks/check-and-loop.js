@@ -18,7 +18,7 @@
  *     session's problem; those findings are reported once and let through.
  *
  * Analysis is fully local: SLOOP runs offline against analyzers installed by
- * /sonarqube:setup, so it behaves the same whether the project is on
+ * the SessionStart hook, so it behaves the same whether the project is on
  * SonarQube Server, SonarQube Cloud, or neither.
  *
  * Unlike the markdown plugin's equivalent there is no auto-fix pass and no

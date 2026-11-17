@@ -3,7 +3,8 @@
 
 /*
  * Installs the pinned SLOOP backend and analyzer jars (sloop.lock.json) into
- * the plugin's data dir. Run by the /sonarqube:setup skill; safe to re-run —
+ * the plugin's data dir. The SessionStart hook does this automatically; run
+ * it by hand to repair an install, or to install offline. Safe to re-run —
  * artifacts already present with the right checksum are kept.
  *
  *   node scripts/install-sloop.js [--data-dir <dir>] [--from-dir <dir>] [--no-arch]

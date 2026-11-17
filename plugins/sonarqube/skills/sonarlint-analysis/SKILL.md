@@ -103,7 +103,6 @@ key and why you left it, rather than rewriting code a third time.
 ## Related skills
 
 - `fix` (`/sonarqube:fix`) — work through findings on request.
-- `setup` (`/sonarqube:setup`) — install or repair the engine.
 - `sonarqube-web-api` — anything else the server knows about the
   project (hotspots, quality gate, measures), and logging the `sonar`
   CLI in, which `sonarlint server` depends on.

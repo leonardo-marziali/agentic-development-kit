@@ -19,9 +19,9 @@ No MCP server, no container runtime.
 
 - **Node.js 22.12 or later** — the hooks run on it, and the JS/TS analyzer
   needs it.
-- **The local engine**, installed once with `/sonarqube:setup` (see
-  [Installation](#installation)). Until it is, the hooks do nothing
-  except say so when a session ends.
+- **The local engine**, which the plugin installs on its own at the first
+  session start (see [Installation](#installation)). Until it's in place,
+  the hooks do nothing except say so when a session ends.
 - **The [SonarQube CLI][cli] (`sonar`)** — only for reading the server
   through `sonar api` (including `sonarlint server`). Local analysis
   doesn't use it. The plugin doesn't install the CLI.
@@ -41,24 +41,35 @@ the `sonarqube` plugin from it:
 /plugin install sonarqube --marketplace leonardo-marziali/agentic-development-kit
 ```
 
-Then install the local engine once:
+There is no separate setup step. At the first session start after the
+plugin is installed (or updated to a new pin), the `SessionStart` hook
+downloads the pinned backend (with a bundled Java 21 runtime) and nine
+analyzer jars into the plugin's data directory (`~/.claude/plugins/data/…`)
+and verifies every SHA-256. That's about 160-210 MB, depending on the
+platform. The download runs in the background, so the session starts
+straight away, and local analysis begins once it finishes. Uninstalling
+the plugin removes the engine.
 
-```text
-/sonarqube:setup
+To check the install or repair it by hand:
+
+```bash
+# ok / FAIL per check; exit 0 means usable
+node cli/sonarlint.js doctor
+# (re)install; files that already verify are kept
+node scripts/install-sloop.js
 ```
 
-That downloads the pinned backend (with a bundled Java 21 runtime) and
-nine analyzer jars — about 160-210 MB, depending on the platform — into
-the plugin's data directory (`~/.claude/plugins/data/…`), verifies every
-SHA-256, and runs `doctor`. Uninstalling the plugin removes it.
+If the automatic install fails (a network error, a checksum mismatch),
+`doctor` shows the error, and the install is tried again at the next
+session start.
 
 ## What This Plugin Provides
 
 ### Hooks
 
-- **`SessionStart`** — starts this project's analysis daemon in the
-  background and warms it up, so the ~20s JVM and analyzer start-up isn't
-  paid inside an edit.
+- **`SessionStart`** — installs the pinned engine if it's missing, then
+  starts this project's analysis daemon in the background and warms it
+  up, so the ~20s JVM and analyzer start-up isn't paid inside an edit.
 - **`PostToolUse`** (`Edit`/`Write`/`MultiEdit`) — if the daemon is warm,
   analyzes the file and gives Claude the MAJOR/MEDIUM+ issues and secrets
   on the lines just changed. Never blocks.
@@ -154,7 +165,6 @@ User-invocable:
   when the project is bound.
 - **`/sonarqube:fix [rule | paths]`** — work through findings, local or
   server-reported, or one rule.
-- **`/sonarqube:setup`** — install, repair, mirror/offline configuration.
 
 Knowledge (loaded when relevant):
 
@@ -211,9 +221,10 @@ the daemon restarts SLOOP so the next analysis gets a fresh bridge.
   process.
 - **Offline at analysis time.** SLOOP runs in standalone mode with no
   connections and no telemetry capability; the daemon makes no network
-  calls. The only download is the explicit setup step.
+  calls. The only download is the engine install at session start.
 - **Mirrors.** Set `SONARLINT_ARTIFACT_BASE_URL` to an Artifactory or
-  Nexus Maven 2 root and setup downloads from there.
+  Nexus Maven 2 root, and the install downloads from there. The
+  variable has to be set in the environment Claude Code starts from.
 - **Air-gapped.** `node scripts/install-sloop.js --from-dir <dir>`
   installs from a directory holding the artifacts under their Maven file
   names.
@@ -223,6 +234,26 @@ the daemon restarts SLOOP so the next analysis gets a fresh bridge.
 - **Data locations.** Engine and analyzers: `${CLAUDE_PLUGIN_DATA}` (or
   `SONARLINT_HOME`). Daemon socket, pid and log: a private per-user
   directory under the OS temp dir.
+
+## Troubleshooting
+
+- **`SLOOP is not installed`** — The first session's install hasn't
+  finished yet, or it failed. Run `sonarlint doctor` to see which, then
+  `node scripts/install-sloop.js` to install now.
+- **`doctor` says the install doesn't match `sloop.lock.json`** — The
+  plugin was updated. The next session start reinstalls it, or run the
+  installer.
+- **`checksum mismatch`** — A corrupt download, or a mirror serving
+  different bytes. Re-run the installer, or check the mirror.
+- **`node` check fails / JS analyzer `UNSATISFIED_NODE_JS`** — JS/TS
+  analysis needs Node >= 22.12.
+- **`SLOOP crashed repeatedly`** — Read the daemon log path from the
+  error, then run `sonarlint daemon start`.
+- **Daemon log shows `OutOfMemoryError`** — Raise `daemon_max_heap_mb`,
+  then run `sonarlint daemon stop` so the next analysis starts with the
+  new limit.
+- **`the JS/TS analyzer ran out of memory`** — Raise
+  `bridge_max_heap_mb`, then run `sonarlint daemon stop`.
 
 ## Version pinning
 

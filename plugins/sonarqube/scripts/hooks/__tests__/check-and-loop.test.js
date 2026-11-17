@@ -151,7 +151,8 @@ test('a tool failure (exit 2) is reported, never blocks, and keeps the state for
   const fake = installFakeSonarlint(ctx.scratch, {
     files: {
       status: 2,
-      stderr: 'sonarlint: SLOOP is not installed (looked in /x). Run /sonarqube:setup\n',
+      stderr:
+        'sonarlint: SLOOP is not installed (looked in /x). It installs automatically at session start\n',
     },
   });
   track(writeFile(ctx.scratch, 'src/app.js'), ctx);
@@ -161,7 +162,7 @@ test('a tool failure (exit 2) is reported, never blocks, and keeps the state for
   assert.equal(res.status, 0);
   assert.equal(res.stdout.trim(), '');
   assert.match(res.stderr, /were NOT checked/);
-  assert.match(res.stderr, /Run \/sonarqube:setup/);
+  assert.match(res.stderr, /installs automatically at session start/);
   assert.ok(
     fs.existsSync(path.join(stateDirFor(ctx.pluginData, ctx.sessionId), 'touched-files.txt')),
   );

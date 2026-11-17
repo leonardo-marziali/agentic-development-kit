@@ -19,6 +19,10 @@ const { spawnSystem } = require('./paths');
 
 const LOCK_FILE = path.join(__dirname, '..', 'sloop.lock.json');
 const MANIFEST = 'install.json';
+const INSTALL_LOCK = 'install.lock';
+const INSTALL_ERROR = 'install-error.txt';
+// A lock older than this belongs to an install that died without cleaning up.
+const STALE_LOCK_MS = 30 * 60 * 1000;
 const DEFAULT_BASE_URL = 'https://repo1.maven.org/maven2';
 const MIN_JAVA = 17;
 
@@ -283,7 +287,7 @@ async function install({
 /*
  * The manifest of the current install, or null. A manifest whose backend
  * version doesn't match the lock is stale (the plugin was updated past it)
- * and reads as "not installed", so the user is pointed at setup again rather
+ * and reads as "not installed", so the next session start reinstalls rather
  * than running an analyzer set nobody pinned.
  */
 function readInstall(dataDir, lock = loadLock()) {
@@ -298,9 +302,82 @@ function readInstall(dataDir, lock = loadLock()) {
   }
 }
 
+/*
+ * Takes the per-data-dir install lock, or returns null when another process
+ * holds a fresh one. Two sessions starting at once would otherwise both
+ * download the same ~200 MB.
+ */
+function acquireInstallLock(dataDir, now = Date.now()) {
+  const lockPath = path.join(dataDir, INSTALL_LOCK);
+  fs.mkdirSync(dataDir, { recursive: true });
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      fs.writeFileSync(lockPath, `${process.pid}\n`, { flag: 'wx' });
+      return lockPath;
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+      let age = 0;
+      try {
+        age = now - fs.statSync(lockPath).mtimeMs;
+      } catch {
+        continue; // released between our write and stat; try again
+      }
+      if (age < STALE_LOCK_MS) return null;
+      fs.rmSync(lockPath, { force: true });
+    }
+  }
+  return null;
+}
+
+function installInProgress(dataDir, now = Date.now()) {
+  try {
+    return now - fs.statSync(path.join(dataDir, INSTALL_LOCK)).mtimeMs < STALE_LOCK_MS;
+  } catch {
+    return false;
+  }
+}
+
+function lastInstallError(dataDir) {
+  try {
+    return fs.readFileSync(path.join(dataDir, INSTALL_ERROR), 'utf8').trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+/*
+ * Installs SLOOP unless the current pin is already in place. This is what
+ * the SessionStart hook runs, so the engine arrives with the plugin rather
+ * than through a manual step. Returns { status }: 'present', 'installed',
+ * or 'busy' (another process is installing). A failure is recorded in
+ * install-error.txt, which `doctor` reports, and rethrown.
+ */
+async function ensureInstalled({ dataDir, lock = loadLock(), ...options } = {}) {
+  const current = readInstall(dataDir, lock);
+  if (current) return { status: 'present', manifest: current };
+  const lockPath = acquireInstallLock(dataDir);
+  if (!lockPath) return { status: 'busy' };
+  try {
+    const manifest = await install({ dataDir, lock, ...options });
+    fs.rmSync(path.join(dataDir, INSTALL_ERROR), { force: true });
+    return { status: 'installed', manifest };
+  } catch (error) {
+    fs.writeFileSync(
+      path.join(dataDir, INSTALL_ERROR),
+      `${new Date().toISOString()} ${error.message}\n`,
+    );
+    throw error;
+  } finally {
+    fs.rmSync(lockPath, { force: true });
+  }
+}
+
 module.exports = {
   LOCK_FILE,
   MANIFEST,
+  INSTALL_LOCK,
+  INSTALL_ERROR,
+  STALE_LOCK_MS,
   DEFAULT_BASE_URL,
   MIN_JAVA,
   ChecksumError,
@@ -321,4 +398,8 @@ module.exports = {
   systemJava,
   install,
   readInstall,
+  acquireInstallLock,
+  installInProgress,
+  lastInstallError,
+  ensureInstalled,
 };

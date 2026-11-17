@@ -166,7 +166,7 @@ function finish(merged, parsed, ctx) {
 
 /*
  * The server's view of the same files. No daemon and no engine involved, so
- * it works before /sonarqube:setup and for languages the local pin lacks.
+ * it works before the engine is installed and for languages the local pin lacks.
  */
 function serverIssues(parsed, ctx) {
   const { files, skipped } = collectFiles(parsed.paths, ctx.cwd);
