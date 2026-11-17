@@ -1,3 +1,20 @@
+# [3.0.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.17.0...v3.0.0) (2026-11-17)
+
+
+* feat(java)!: adopt the hexagonal java-standards and enforce it ([#57](https://github.com/leonardo-marziali/agentic-development-kit/issues/57)) ([9e13866](https://github.com/leonardo-marziali/agentic-development-kit/commit/9e13866ce8005558e3a5e714a7d6e0bcfc7de8cf))
+
+
+### BREAKING CHANGES
+
+* nullaway.annotations now defaults to jspecify (J20 requires
+JSpecify on every framework version), so projects relying on the old auto default
+get findings for Spring's nullness annotations; set "auto" or "spring" to keep
+the old behavior. ArchUnit rules were renamed and redescribed, so existing freeze
+baselines no longer match them: rerun /java:setup to record a new one.
+
+
+Also excludes the java plugin test fixtures from Sonar analysis.
+
 # [2.17.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.16.0...v2.17.0) (2026-11-16)
 
 
