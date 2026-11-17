@@ -1,3 +1,10 @@
+# [3.1.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v3.0.0...v3.1.0) (2026-11-17)
+
+
+### Features
+
+* **java:** add ubiquitous-language-discovery skill ([#58](https://github.com/leonardo-marziali/agentic-development-kit/issues/58)) ([1fe3bcf](https://github.com/leonardo-marziali/agentic-development-kit/commit/1fe3bcf1b0711cd7f1774da7a06886658c158cb3))
+
 # [3.0.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v2.17.0...v3.0.0) (2026-11-17)
 
 
