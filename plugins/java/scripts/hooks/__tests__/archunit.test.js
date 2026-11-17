@@ -66,61 +66,79 @@ test('reports the standard rules a project breaks', { skip: SKIP_WITHOUT_JDK }, 
     'com.acme',
   ]);
 
-  assert.deepEqual(rulesOf(findings), ['D1', 'D5', 'S24', 'S7']);
+  assert.deepEqual(rulesOf(findings), ['D15', 'D19', 'D8', 'S24', 'S7']);
   const s24 = findings.find((f) => f.rule === 'S24');
   assert.match(s24.message, /saveProject/);
-  assert.equal(s24.file, 'com/acme/project/service/ProjectService.java');
-  const d5 = findings.find((f) => f.rule === 'D5');
-  assert.equal(d5.file, 'com/acme/project/api/ProjectController.java');
-  assert.equal(d5.line, 8);
+  assert.equal(s24.file, 'com/acme/project/domain/ProjectRepository.java');
+  const d19 = findings.find((f) => f.rule === 'D19');
+  assert.equal(d19.file, 'com/acme/project/api/ProjectController.java');
+  assert.equal(d19.line, 8);
+  // The repository port in domain depends on the persistence adapter's entity.
+  assert.equal(
+    findings.find((f) => f.rule === 'D8').file,
+    'com/acme/project/domain/ProjectRepository.java',
+  );
 });
 
 test(
-  'a *UseCase class has exactly one public method, handle (S24)',
+  'an application service is a port, a step-built *Command and one execute (S6, S11, S12, S24)',
   { skip: SKIP_WITHOUT_JDK },
   async (t) => {
     const { manifest, dir } = await setup(t);
-    const classes = path.join(dir, 'usecase-classes');
-    compile(manifest, classes, path.join(FIXTURES, 'usecase'));
+    const classes = path.join(dir, 'application-classes');
+    compile(
+      manifest,
+      classes,
+      path.join(FIXTURES, 'base', 'org'),
+      path.join(FIXTURES, 'application'),
+    );
 
     const findings = runner(manifest, ['--classes', classes, '--packages', 'com.acme..']);
 
-    const flagged = findings
-      .filter((f) => f.rule === 'S24')
-      .map((f) => path.basename(f.file))
-      .sort();
-    // ArchiveProjectUseCase: Consumer's accept is an extra public method; Ship: notify; Rename: no handle.
-    assert.deepEqual(flagged, [
-      'ArchiveProjectUseCase.java',
-      'RenameProjectUseCase.java',
-      'ShipProjectUseCase.java',
+    const filesOf = (rule) =>
+      findings
+        .filter((f) => f.rule === rule)
+        .map((f) => path.basename(f.file))
+        .sort();
+    // Close: a second public method; DraftCommand: Lombok-style builder; Rename: two arguments; Ship: returns a String.
+    assert.deepEqual(filesOf('S11'), [
+      'CloseProjectService.java',
+      'DraftProjectCommand.java',
+      'RenameProject.java',
+      'ShipProject.java',
     ]);
     assert.match(
-      findings.find((f) => f.file.endsWith('ShipProjectUseCase.java')).message,
-      /notify/,
+      findings.find((f) => f.file.endsWith('CloseProjectService.java')).message,
+      /notifyOwners/,
     );
+    assert.match(findings.find((f) => f.file.endsWith('ShipProject.java')).message, /identifier/);
+    assert.deepEqual(filesOf('S12'), ['ProjectFacade.java']);
+    assert.deepEqual(filesOf('S24'), ['ProjectQueries.java']);
+    assert.match(findings.find((f) => f.rule === 'S24').message, /loadAll/);
+    assert.deepEqual(filesOf('S6'), ['ExportProjectService.java']);
+    assert.deepEqual(rulesOf(findings), ['S11', 'S12', 'S24', 'S6']);
   },
 );
 
 test(
-  'a use case takes one *Command built by a builder, or a Consumer of its builder (S11)',
+  'dependencies point into the core and adapters never call each other (D8)',
   { skip: SKIP_WITHOUT_JDK },
   async (t) => {
     const { manifest, dir } = await setup(t);
-    const classes = path.join(dir, 'command-classes');
-    compile(manifest, classes, path.join(FIXTURES, 'command'));
+    const classes = path.join(dir, 'hexagon-classes');
+    compile(manifest, classes, path.join(FIXTURES, 'hexagon'));
 
     const findings = runner(manifest, ['--classes', classes, '--packages', 'com.acme..']);
 
-    const s11 = findings.filter((f) => f.rule === 'S11');
-    // Shipping: two arguments; Cancellation: a bare id; OrderRefundCommand: no builder().
-    assert.deepEqual(s11.map((f) => path.basename(f.file)).sort(), [
-      'OrderCancellationUseCase.java',
-      'OrderRefundCommand.java',
-      'OrderShippingUseCase.java',
+    assert.deepEqual(rulesOf(findings), ['D8']);
+    // Policy: domain → application; PlaceOrderService: application → persistence;
+    // OrderController: api → persistence; PaymentConsumer: messaging.in → messaging.out.
+    assert.deepEqual([...new Set(findings.map((f) => path.basename(f.file)))].sort(), [
+      'OrderController.java',
+      'OrderPolicy.java',
+      'PaymentConsumer.java',
+      'PlaceOrderService.java',
     ]);
-    assert.equal(findings.filter((f) => f.rule === 'S24').length, 0);
-    assert.match(s11.find((f) => f.file.endsWith('OrderShippingUseCase.java')).message, /Command/);
   },
 );
 
@@ -153,9 +171,9 @@ test(
       '--packages',
       'com.acme..',
       '--disabled',
-      'S24,S7,D5',
+      'S24,S7,D19,D8',
     ]);
-    assert.deepEqual(rulesOf(disabled), ['D1']);
+    assert.deepEqual(rulesOf(disabled), ['D15']);
 
     assert.deepEqual(runner(manifest, ['--classes', classes, '--packages', 'com.other..']), []);
   },
@@ -174,7 +192,7 @@ test(
 
     compile(manifest, classes, path.join(FIXTURES, 'base'), path.join(FIXTURES, 'extra'));
     const findings = runner(manifest, args);
-    assert.deepEqual(rulesOf(findings), ['D1']);
+    assert.deepEqual(rulesOf(findings), ['D15']);
     assert.match(findings[0].message, /Task/);
   },
 );
@@ -191,7 +209,7 @@ test(
 
     const findings = runner(manifest, ['--classes', classes, '--packages', 'com.acme..']);
 
-    assert.deepEqual(rulesOf(findings), ['D1', 'D5', 'S24', 'S7']);
+    assert.deepEqual(rulesOf(findings), ['D15', 'D19', 'D8', 'S24', 'S7']);
     assert.equal(fs.existsSync(path.join(dir, 'elsewhere')), false);
   },
 );

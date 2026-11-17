@@ -28,13 +28,15 @@ import org.eclipse.jdt.core.dom.Type;
 
 /*
  * J20, the annotation half (NullAway does the flow analysis): nullness is
- * declared with one library, non-null is the package default, `null` is only
+ * declared with JSpecify on every framework version, non-null is the package
+ * default, `null` is only
  * returned from @Nullable methods, and JSpecify's type-use @Nullable sits
  * where it means what the author meant.
  *
- * The --nullness mode picks the library: `jspecify`, `spring` (Boot 3.x's
- * org.springframework.lang), `auto` (whichever each file uses), or `off`
- * (the project disabled nullness checking; these rules don't run).
+ * The --nullness mode picks the library: `jspecify` (the standard), or, for a
+ * brownfield project that hasn't migrated yet, `spring` (Boot 3.x's
+ * org.springframework.lang) or `auto` (whichever each file uses); `off`
+ * means the project disabled nullness checking and these rules don't run.
  */
 final class Nullness implements Rule {
 
@@ -102,7 +104,10 @@ final class Nullness implements Rule {
             if (FOREIGN.stream().anyMatch(name::startsWith)) {
                 findings.add(file.finding(declaration, id(), "Declare nullness with " + libraryName(mode)
                     + ", not `" + name + "`: runtime checks and other libraries don't give the compile-time guarantee."));
-            } else if ((isSpring && mode.equals("jspecify")) || (isJspecify && mode.equals("spring"))
+            } else if (isSpring && mode.equals("jspecify")) {
+                findings.add(file.finding(declaration, id(), "Declare nullness with JSpecify on every framework version:"
+                    + " drop `" + name + "`, which would put Spring into the domain."));
+            } else if ((isJspecify && mode.equals("spring"))
                 || (mode.equals("auto") && ((isSpring && seenJspecify) || (isJspecify && seenSpring)))) {
                 findings.add(file.finding(declaration, id(), "Use one nullness library per project ("
                     + libraryName(mode.equals("auto") ? (seenJspecify ? "jspecify" : "spring") : mode) + "): drop `" + name + "`."));

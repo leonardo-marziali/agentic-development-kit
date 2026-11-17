@@ -1,6 +1,6 @@
 ---
 name: spring-boot-integrations
-description: 'Use when adding caching, Logbook HTTP logging, outbound HTTP clients or Resilience4j in a project that follows the java-standards opt-in. Covers stale-tolerant Spring Cache use, Logbook configuration and masking, one RestClient-based client per remote system speaking the domain, timeouts, OAuth2 client credentials, fault tolerance, clients generated from OpenAPI specifications and outbound URLs kept in properties (rules S54 to S60).'
+description: 'Use when adding caching, Logbook HTTP logging, outbound HTTP clients or Resilience4j in a project that follows the java-standards opt-in. Covers stale-tolerant Spring Cache use, Logbook configuration and masking, one client per remote system implementing a driven port, RestClient and Boot 4 HTTP service groups, timeouts, OAuth2 client credentials, fault tolerance, clients generated from OpenAPI specifications and outbound URLs kept in properties (rules S54 to S60).'
 paths: '**/*.java, **/pom.xml, **/build.gradle*'
 ---
 
@@ -27,8 +27,7 @@ go through Spring Cache.
 - **Limit staleness:** every cache has a TTL, and writes use `@CacheEvict`.
 - **Mind the cluster:** a local cache such as Caffeine evicts only on its own
   instance, so other instances catch up at the TTL. If that isn't acceptable,
-  use
-  a shared cache such as Redis.
+  use a shared cache such as Redis.
 - **Mind the proxy:** `@Cacheable` has no effect when a method calls another
   method on the same class.
 - **Cache immutable values:** a local cache returns the same instance to every
@@ -79,27 +78,37 @@ logbook:
 client, named `<Target>HttpClient` and placed in the `client.http` package of
 the feature that uses it, for example `payment.client.http.PayPalHttpClient`.
 
-- **It speaks the domain.** Like a repository (see S44), the client is a public
-  interface that takes and returns domain objects. Its implementation and the
-  remote API's DTOs are package-private, so no external model leaks into the
-  services.
-- **Built on `RestClient`, configured the Spring Boot way.** Use `RestClient`,
-  or an `@HttpExchange` interface backed by it, and configure it through
-  properties and Spring Boot's builder customizers rather than by hand (see S5).
-  The base URL, timeouts and credentials come from `@ConfigurationProperties`
-  (see S4 and S60). With more than two operations, the interface is generated
-  from the remote's OpenAPI specification (see S59).
+- **It implements a port.** Like a repository (see S44), the client sits behind
+  a public driven port in `domain`, named by what the core needs, such as
+  `PaymentGateway` (see D6). The port takes and returns domain objects.
+  `PayPalHttpClient` implements it, and it and the remote API's DTOs are
+  package-private, so no external model leaks into the services. This is the
+  anti-corruption layer of D4.
+- **Built on `RestClient`, configured the Spring Boot way.** Use an
+  `@HttpExchange` interface backed by `RestClient`, or `RestClient` directly,
+  and configure it through properties and Spring Boot's builder customizers
+  rather than by hand (see S5). With more than two operations, the interface is
+  generated from the remote's OpenAPI specification (see S59).
+  - **On Boot 4**, an `@HttpExchange` interface belongs to an HTTP service
+    group, one per remote system. `@ImportHttpServices` registers it, and Spring
+    Boot includes auto-configuration support and configuration properties for
+    HTTP Service Clients, configured per group with the pattern
+    `spring.http.serviceclient.<group-name>.*` (see S60).
+  - **On Boot 3**, and for a client that uses `RestClient` directly, build it
+    from Spring Boot's `RestClient.Builder` and bind its base URL and timeouts
+    with `@ConfigurationProperties` (see S4 and S60).
 - **Always set timeouts.** Connect and read timeouts are explicit for every
   client. A default of "wait forever" isn't acceptable.
-- **Authentication through Spring.** OAuth2 client credentials go through
-  Spring Security's OAuth2 client support, which obtains and refreshes the
-  token. Never build an `Authorization` header by hand from a stored token.
+- **Authentication through Spring.** OAuth2 client credentials go through Spring
+  Security's OAuth2 client support, which obtains and refreshes the token, and
+  Spring Security 7 applies it to HTTP service groups. Never build an
+  `Authorization` header by hand from a stored token.
 - **Logging through Logbook.** Register Logbook's interceptor on the client, so
   outbound traffic follows the same rules as inbound traffic (see S55 and S56).
 - **Errors become our errors.** A status handler translates remote errors into
   our exception hierarchy (see S40). The remote body is logged, never returned
   to our client (see S42).
-- **Tested with WireMock** (see T6).
+- **Tested with WireMock** when the project has integration tests (see T6).
 
 **S58. Resilience4j for fault tolerance.** When a remote call needs a circuit
 breaker, a bulkhead or a rate limiter, use Resilience4j through its Spring Boot
@@ -114,20 +123,25 @@ alone, Spring Framework 7 and later has `@Retryable` built in.
   hides the failure behind an empty result.
 
 **S59. Generated clients from OpenAPI.** When we call more than two operations
-of a remote API that has an OpenAPI specification, the client is generated
-with OpenAPI Generator rather than written by hand. For a public product, look
-for its specification online first: the vendor's developer portal, its GitHub
+of a remote API that has an OpenAPI specification, the client is generated with
+OpenAPI Generator rather than written by hand. For a public product, look for
+its specification online first: the vendor's developer portal, its GitHub
 organization, or the APIs.guru directory. For an internal service, use the
 specification its build generates (see B8). With one or two operations, a
-hand-written `@HttpExchange` interface is simpler than a generator setup.
+hand-written client is simpler than a generator setup.
 
 - **The specification is committed** under `src/main/resources/openapi/`, so a
-  vendor change arrives as a reviewed diff. The generated code isn't
-  committed: the build generates it.
+  vendor change arrives as a reviewed diff. The generated code isn't committed:
+  the build generates it.
+- **The paths come from the specification.** A generated interface carries the
+  remote's paths, so they aren't repeated in properties. Path properties (see
+  S60) are only for hand-written clients.
 - **Spring HTTP interfaces.** Use the `spring` generator with the
-  `spring-http-interface` library and
-  `useHttpServiceProxyFactoryInterfacesConfigurator`, so the generated
-  interfaces run on our configured `RestClient` (see S57).
+  `spring-http-interface` library, so the generated interfaces run on our
+  configured `RestClient` (see S57). On Boot 3,
+  `useHttpServiceProxyFactoryInterfacesConfigurator` generates the class that
+  creates them. On Boot 4, register them in the remote's HTTP service group with
+  `@ImportHttpServices` instead.
 - **Behind the client.** The generated API and models are used only by the
   `<Target>HttpClient` implementation, which maps them to domain objects with a
   MapStruct mapper, so nothing generated leaks into the services.
@@ -162,34 +176,61 @@ hand-written `@HttpExchange` interface is simpler than a generator setup.
 
 On Spring Boot 4, set `useSpringBoot4` instead of `useSpringBoot3`.
 
-**S60. Outbound URLs live in properties.** No URL is written in code. Each
-remote system's protocol, host, version and endpoint paths are properties named
-as S61 describes, composed with placeholders and bound with
-`@ConfigurationProperties` (see S4). A remote with many endpoints gets its own
-file, such as `paypal-api.properties`, loaded with `@PropertySource` the way
-`api-paths.properties` is (see S62), so `application.properties` stays
-readable. Values that change per environment come from environment variables.
+**S60. Outbound URLs live in properties.** No URL is written in code. Values
+that change per environment come from environment variables.
+
+- **Base URL and timeouts.** On Boot 4, an HTTP service group's properties hold
+  them, under `spring.http.serviceclient.<group-name>.*` (see S5 and S57), with
+  defaults for every client under `spring.http.clients.*`. On Boot 3, and for a
+  client that uses `RestClient` directly, they're our own properties, named as
+  S61 describes and bound with `@ConfigurationProperties` (see S4).
+- **Paths.** A generated client takes its paths from the specification (see
+  S59). A hand-written client reads them from properties, composed with
+  placeholders.
+- **Many endpoints, one file.** A hand-written client with many endpoints gets
+  its own file, such as `carrier-api.properties`, loaded with `@PropertySource`
+  the way `api-paths.properties` is (see S62), so `application.properties` stays
+  readable.
 
 ```properties
-### PAYPAL ###
-paypal.api.protocol=https
-paypal.api.host=${PAYPAL_API_HOST:api-m.sandbox.paypal.com}
-paypal.api.version=v2
-paypal.api.base-url=${paypal.api.protocol}://${paypal.api.host}/${paypal.api.version}
-paypal.api.payments.path=/payments
-paypal.api.payments.id.path=${paypal.api.payments.path}/{paymentId}
-paypal.api.connect-timeout=2s
-paypal.api.read-timeout=5s
+### PAYPAL: generated client, Boot 4 HTTP service group ###
+spring.http.serviceclient.paypal.base-url=${PAYPAL_API_BASE_URL:https://api-m.sandbox.paypal.com}
+spring.http.serviceclient.paypal.connect-timeout=2s
+spring.http.serviceclient.paypal.read-timeout=5s
 ```
 
 ```java
-@Configuration
-@PropertySource("classpath:paypal-api.properties")
-@EnableConfigurationProperties(PayPalApiProperties.class)
+@Configuration(proxyBeanMethods = false)
+@ImportHttpServices(group = "paypal", types = PaymentsApi.class)
 class PayPalHttpClientConfig {
-    // Loads PayPal's endpoints and binds them to PayPalApiProperties.
+    // Registers the generated PayPal interfaces in the "paypal" group (see S59).
+}
+```
+
+```properties
+### CARRIER: hand-written client ###
+carrier.api.protocol=https
+carrier.api.host=${CARRIER_API_HOST:api.sandbox.carrier.example}
+carrier.api.version=v1
+carrier.api.base-url=${carrier.api.protocol}://${carrier.api.host}/${carrier.api.version}
+carrier.api.shipments-path=/shipments
+carrier.api.shipment-path=${carrier.api.shipments-path}/{shipmentId}
+carrier.api.connect-timeout=2s
+carrier.api.read-timeout=5s
+```
+
+```java
+@Configuration(proxyBeanMethods = false)
+@PropertySource("classpath:carrier-api.properties")
+@EnableConfigurationProperties(CarrierApiProperties.class)
+class CarrierHttpClientConfig {
+    // Loads the carrier's endpoints and binds them to CarrierApiProperties.
 }
 
-@ConfigurationProperties("paypal.api")
-record PayPalApiProperties(String baseUrl, Duration connectTimeout, Duration readTimeout) {}
+@ConfigurationProperties("carrier.api")
+record CarrierApiProperties(String baseUrl,
+    String shipmentsPath,
+    String shipmentPath,
+    Duration connectTimeout,
+    Duration readTimeout) {}
 ```

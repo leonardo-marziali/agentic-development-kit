@@ -16,8 +16,9 @@ import org.eclipse.jdt.core.dom.RecordDeclaration;
 import org.eclipse.jdt.core.dom.TypeDeclaration;
 
 /*
- * J9: constants, fields, constructors, public methods, other methods, nested
- * types — in that order, in every type. Initializers, annotation members and
+ * J9: constants, fields, constructors, public methods, protected and
+ * package-private methods, private methods, nested types — in that order, in
+ * every type. Initializers, annotation members and
  * `protected abstract` methods (a mapper's proxies, a template method's hooks)
  * have no slot and are skipped. The finding goes on each member that comes
  * after one of a later kind.
@@ -25,7 +26,7 @@ import org.eclipse.jdt.core.dom.TypeDeclaration;
 final class MemberOrder implements Rule {
 
     private static final String[] KINDS = {"constants", "fields", "constructors", "public methods",
-        "non-public methods", "nested types"};
+        "protected and package-private methods", "private methods", "nested types"};
 
     @Override
     public String id() {
@@ -64,7 +65,8 @@ final class MemberOrder implements Rule {
                     }
                     if (kind < highest) {
                         findings.add(file.finding(member, id(), "Move these " + KINDS[kind] + " above the "
-                            + KINDS[highest] + ": members go constants, fields, constructors, public methods, other methods, nested types."));
+                            + KINDS[highest] + ": members go constants, fields, constructors, public methods, protected and package-private methods,"
+                            + " private methods, nested types."));
                     }
                     highest = Math.max(highest, kind);
                 }
@@ -86,10 +88,13 @@ final class MemberOrder implements Rule {
                 return -1;
             }
             boolean interfaceMember = owner instanceof TypeDeclaration t && t.isInterface();
-            return Modifier.isPublic(modifiers) || (interfaceMember && !Modifier.isPrivate(modifiers)) ? 3 : 4;
+            if (Modifier.isPublic(modifiers) || (interfaceMember && !Modifier.isPrivate(modifiers))) {
+                return 3;
+            }
+            return Modifier.isPrivate(modifiers) ? 5 : 4;
         }
         if (member instanceof AbstractTypeDeclaration) {
-            return 5;
+            return 6;
         }
         return -1;
     }

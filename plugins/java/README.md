@@ -10,7 +10,7 @@ runs **outside the project's build**, and every opinion is **opt-in per
 project**.
 
 The standard itself is [standards/java-standards.md](standards/java-standards.md)
-(rules J1–J26, B1–B10, S1–S62, D1–D12, T1–T7).
+(rules J1–J26, B1–B10, S1–S62, D1–D29, T1–T7).
 
 ## What This Plugin Provides
 
@@ -50,8 +50,9 @@ report with these sections, capped at 3 attempts per session:
   production code (S60), controller paths not taken from
   `api-paths.properties` (public) or `internal-api-paths.properties`
   (`@Hidden`) (S62), three or more fields that share a prefix in
-  an entity, DTO or domain class (D12, a heuristic), and the JSpecify
-  annotation rules for J20 (`@NullMarked` packages, one nullness library,
+  an entity, JDBC row, DTO or domain class (D23, a heuristic), and the JSpecify
+  annotation rules for J20 (`@NullMarked` packages, JSpecify as the one
+  nullness library,
   `return null` only from `@Nullable` methods). REST path rules skip
   `@Hidden` internal endpoints (S37) and check a `${…}` path as resolved
   from the module's `src/main/resources/*.properties`, and the test rules
@@ -61,12 +62,16 @@ report with these sections, capped at 3 attempts per session:
   version (B4) in `pom.xml` / `build.gradle(.kts)`.
 - **NullAway**: the changed files compiled with javac + Error Prone +
   NullAway against the module's own classpath (J20).
-- **ArchUnit**: the standard's architecture rules (S24 method vocabulary
-  and one public `handle` per `*UseCase`, S11 a single `*Command`
-  argument whose class has a static `builder()`, S7 domain-only service
-  signatures, D1 domain purity, D5 `rehydrate` callers, S47 audit fields,
-  S40 error advice, S6 visibility, S25 cycles) over the module's compiled
-  classes, plus the project's own rules.
+- **ArchUnit**: the standard's architecture rules over the module's
+  compiled classes, plus the project's own rules. They cover the hexagon
+  (D8: dependencies point into the core, adapters never depend on each
+  other) and application services (S11: one public `execute` taking one
+  step-built `*Command` and returning nothing or an identifier; S12:
+  `@Service` only on `application.*Service`). They also check the S24
+  vocabulary of repositories, query services and mappers, S7 ports
+  without DTOs or entities, D15 domain purity, D19 `reconstitute`
+  callers, S47 audit fields, S40 error advice, S6 visibility and S25
+  cycles.
 
 When a rule genuinely doesn't apply, mark the line (or the line above) with
 `// java-rules:allow <ID> <reason>`. The reason is required; an allow
@@ -77,7 +82,7 @@ warning and is skipped; it never blocks the session.
 
 ### Context digest and skills
 
-In an opted-in project, a ~7 kB must-follow digest of the standard and its
+In an opted-in project, a ~9 kB must-follow digest of the standard and its
 scope is added to Claude's context at session start (again after a
 compaction) and when a subagent starts.
 
@@ -119,8 +124,10 @@ server.
 - `checks.enabled` (`true`): the source and build-file rules.
 - `checks.disabledRules` (`[]`): rule IDs to skip, e.g. `["S6"]`.
 - `nullaway.enabled` (`true`): NullAway and the null-annotation rules.
-- `nullaway.annotations` (`"auto"`): `"jspecify"`, `"spring"` (Boot 3.x)
-  or `"auto"`.
+- `nullaway.annotations` (`"jspecify"`): J20 asks for JSpecify on every
+  framework version. `"spring"` (Boot 3.x's `org.springframework.lang`) or
+  `"auto"` (whichever each file uses) keep a brownfield project that hasn't
+  migrated yet checkable.
 - `archunit.enabled` (`true`): ArchUnit at Stop.
 - `archunit.basePackage` (none): e.g. `"com.acme.orders"`; also enables
   the cycle check (S25).

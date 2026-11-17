@@ -60,7 +60,7 @@ function normalise(raw) {
     },
     nullaway: {
       enabled: bool(nullaway.enabled, true),
-      annotations: pick(nullaway.annotations, ['auto', 'jspecify', 'spring'], 'auto'),
+      annotations: pick(nullaway.annotations, ['auto', 'jspecify', 'spring'], 'jspecify'),
     },
     archunit: {
       enabled: bool(archunit.enabled, true),

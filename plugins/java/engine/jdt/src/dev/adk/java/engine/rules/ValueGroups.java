@@ -22,12 +22,13 @@ import org.eclipse.jdt.core.dom.TypeDeclaration;
 import org.eclipse.jdt.core.dom.VariableDeclarationFragment;
 
 /*
- * D12: values that belong together in the domain are one type. A heuristic:
+ * D23: values that belong together in the domain are one type. A heuristic:
  * three or more fields sharing a first camelCase word (`addressStreet`,
- * `addressCity`, `addressZip`) in a JPA `@Entity`, a MongoDB `@Document`, a
- * `*Dto` or a class in a `domain` package. Raw SQL rows (Spring Data JDBC
- * `@Table`, jOOQ) aren't checked: there, grouping costs joins. Boolean
- * prefixes (`is`, `has`, …) name a property, not a group.
+ * `addressCity`, `addressZip`) in a JPA `@Entity`, a Spring Data JDBC
+ * `@Table`, a MongoDB `@Document`, a `*Dto` or a class in a `domain` package.
+ * The group lives in the object model, not the schema (`@Embeddable`,
+ * `@Embedded`), so it costs no join. Boolean prefixes (`is`, `has`, …) name a
+ * property, not a group.
  */
 final class ValueGroups implements Rule {
 
@@ -39,7 +40,7 @@ final class ValueGroups implements Rule {
 
     @Override
     public String id() {
-        return "D12";
+        return "D23";
     }
 
     @Override
@@ -88,8 +89,8 @@ final class ValueGroups implements Rule {
                         String type = Character.toUpperCase(prefix.charAt(0)) + prefix.substring(1);
                         findings.add(file.finding(members.get(0), id(), "`"
                             + String.join("`, `", members.stream().map(ASTNode::toString).toList())
-                            + "` belong together: group them in one `" + type + "` type (an `@Embeddable` in an entity,"
-                            + " a nested DTO in a DTO, a value object in the domain)."));
+                            + "` belong together: group them in one `" + type + "` type (an `@Embeddable` in a JPA entity,"
+                            + " an `@Embedded` value in a JDBC row, a nested DTO in a DTO, a value object in the domain)."));
                     }
                 });
             }
@@ -99,7 +100,7 @@ final class ValueGroups implements Rule {
 
     private static boolean inScope(AbstractTypeDeclaration type, boolean domainPackage) {
         return domainPackage || type.getName().getIdentifier().endsWith("Dto") || Ast.hasAnnotation(type, "Entity")
-            || Ast.hasAnnotation(type, "Document");
+            || Ast.hasAnnotation(type, "Table") || Ast.hasAnnotation(type, "Document");
     }
 
     private static boolean isDomainPackage(PackageDeclaration declaration) {

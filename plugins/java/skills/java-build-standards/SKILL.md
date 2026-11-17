@@ -1,6 +1,6 @@
 ---
 name: java-build-standards
-description: 'Use when editing pom.xml or build.gradle in a project that follows the java-standards opt-in. Covers choosing and parameterizing dependency versions, declaring the Java version, Eclipse JDT formatting, ArchUnit, the OpenAPI contract check, coverage gates and configuring Lombok with MapStruct (rules B1 to B10).'
+description: 'Use when editing pom.xml, build.gradle or lombok.config in a project that follows the java-standards opt-in. Covers choosing and parameterizing dependency versions, declaring the Java version, Eclipse JDT formatting, Spring Modulith and ArchUnit together, the OpenAPI contract check, coverage gates and configuring Lombok with MapStruct through one lombok.config (rules B1 to B10).'
 paths: '**/*.java, **/pom.xml, **/build.gradle*'
 ---
 
@@ -49,7 +49,7 @@ rule so the wrong JDK fails fast.
 
 ```xml
 <properties>
-    <java.version>21</java.version>
+    <java.version>25</java.version>
 </properties>
 ```
 
@@ -60,9 +60,8 @@ rule so the wrong JDK fails fast.
   limit formatting to files changed in version control, use `ratchetFrom`, which
   works per file.
 - **Fallback:** when CI can't enforce formatting, use the IntelliJ formatter
-  with
-  its rules versioned in the repository. Ideally, a pre-commit step runs it and
-  touches only the lines changed in version control, which is an IntelliJ
+  with its rules versioned in the repository. Ideally, a pre-commit step runs it
+  and touches only the lines changed in version control, which is an IntelliJ
   feature.
 
 **B6. The formatter serves the reader.** Formatted code should read naturally.
@@ -80,17 +79,18 @@ private static final Map<ProjectStatus, Set<ProjectStatus>> TRANSITIONS = Map.of
 // @formatter:on
 ```
 
-**B7. Enforce the architecture.** Use ArchUnit or Spring Modulith to enforce
-layering, visibility, domain purity and the absence of package cycles.
+**B7. Enforce the architecture.** Use both: Spring Modulith verifies the
+boundaries between features (see D2), and ArchUnit enforces layering,
+visibility, domain purity and the absence of package cycles inside each feature
+(see D8). Both run as unit tests.
 
 **B8. Protect the API contract.** Generate the OpenAPI specification during the
 build. Fail the build if it differs from the committed file, and check for
 breaking changes.
 
 **B9. A coverage gate that means something.** Measure branch coverage on
-business logic, and exclude only generated code. Set
-`lombok.addLombokGeneratedAnnotation=true` in `lombok.config`, and exclude
-`*MapperImpl` classes.
+business logic, and exclude only generated code. The `lombok.config` of B10
+marks Lombok's output as generated, and the gate excludes `*MapperImpl` classes.
 
 **B10. Lombok and MapStruct together.** The two are always used together, so
 configure them as a pair on the compiler's annotation processor path, including
@@ -127,4 +127,14 @@ out of the packaged application.
         </compilerArgs>
     </configuration>
 </plugin>
+```
+
+One `lombok.config` at the root of the project configures Lombok for the
+coverage gate (B9), NullAway (J20) and builders (J26):
+
+```properties
+config.stopBubbling = true
+lombok.addLombokGeneratedAnnotation = true
+lombok.addNullAnnotations = jspecify
+lombok.builder.className = Builder
 ```

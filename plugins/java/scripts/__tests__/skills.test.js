@@ -35,13 +35,18 @@ function frontmatter(text) {
   );
 }
 
+const range = (prefix, count) => Array.from({ length: count }, (_, i) => `${prefix}${i + 1}`);
+
+// Shared on purpose: Configuration files (S61, S62) and Value objects (D22, D23) serve several skills.
+const SHARED_IDS = new Set(['S61', 'S62', 'D22', 'D23']);
+
 const ALL_IDS = [
-  ...Array.from({ length: 24 }, (_, i) => `J${i + 1}`),
-  ...Array.from({ length: 10 }, (_, i) => `B${i + 1}`),
-  ...Array.from({ length: 58 }, (_, i) => `S${i + 1}`),
-  ...Array.from({ length: 11 }, (_, i) => `D${i + 1}`),
-  ...Array.from({ length: 7 }, (_, i) => `T${i + 1}`),
-];
+  ...range('J', 26),
+  ...range('B', 10),
+  ...range('S', 62),
+  ...range('D', 29),
+  ...range('T', 7),
+].filter((id) => !SHARED_IDS.has(id));
 
 test('every rule of the standard is defined in exactly one skill', () => {
   for (const id of ALL_IDS) {

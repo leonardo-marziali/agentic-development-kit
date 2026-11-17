@@ -53,7 +53,7 @@ describe('loadConfig', () => {
       exclude: [],
       formatter: { enabled: true, profile: null, scope: 'changed-lines' },
       checks: { enabled: true, disabledRules: [] },
-      nullaway: { enabled: true, annotations: 'auto' },
+      nullaway: { enabled: true, annotations: 'jspecify' },
       archunit: {
         enabled: true,
         basePackage: null,
