@@ -94,6 +94,13 @@ Nine skills carry the full standard, generated from the standard file by
 Each starts by checking the config, and tells Claude to follow the existing
 code instead when the file is out of scope.
 
+One hand-written skill sits alongside them: `ubiquitous-language-discovery`
+derives a project's ubiquitous language from legacy code, schemas, docs,
+manuals or tickets by running a virtual Big Picture EventStorming, and writes
+a glossary, an EventStorming board and a hot-spot log under
+`docs/ubiquitous-language/`. It doesn't need the opt-in, and its output is
+the vocabulary the `java-ddd-events` rules (D1 onwards) name code after.
+
 ### Skills you invoke
 
 | Skill          | What it does                                               |
