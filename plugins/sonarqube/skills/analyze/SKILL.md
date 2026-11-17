@@ -24,9 +24,10 @@ means:
 node "${CLAUDE_PLUGIN_ROOT}/cli/sonarlint.js" --data-dir "${CLAUDE_PLUGIN_DATA}"
 ```
 
-If it exits 2 saying SLOOP is not installed, tell the user and offer
-`/sonarqube:setup`. Don't install anything without asking. The server
-check in step 3 doesn't need the engine, so still run it.
+If it exits 2 saying SLOOP is not installed, the engine's automatic
+install at session start hasn't finished yet or has failed. Run `sonarlint
+doctor` and tell the user what it says. Don't run the installer without
+asking. The server check in step 3 doesn't need the engine, so still run it.
 
 ## 1. Resolve the target
 
@@ -81,7 +82,7 @@ Read the exit code — it is the result, not the output:
 - **0** — Clean, or only issues below the threshold. Report what was found, if
   anything.
 - **1** — Issues at/above `--min-severity`. Triage and fix (step 4).
-- **2** — The tool could not run. Show stderr; see `/sonarqube:setup`.
+- **2** — The tool could not run. Show stderr, and run `sonarlint doctor`.
 
 Exit `2` is **not** a clean result. Never report "no issues found" for it.
 

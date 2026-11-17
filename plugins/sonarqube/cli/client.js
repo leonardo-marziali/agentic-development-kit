@@ -118,7 +118,8 @@ async function connect({
   fs.rmSync(paths.failed, { force: true });
   if (!readInstall(dataDir)) {
     throw new NotInstalled(
-      `SLOOP is not installed (looked in ${dataDir}). Run /sonarqube:setup, or: node scripts/install-sloop.js`,
+      `SLOOP is not installed (looked in ${dataDir}). It installs automatically at session start; ` +
+        'run `sonarlint doctor` to see why it is missing, or install now with: node scripts/install-sloop.js',
     );
   }
 

@@ -270,3 +270,61 @@ test('extract fails with a ProvisionError on an archive tar or unzip cannot read
     assert.throws(() => p.extract(archive, path.join(dir, 'out')), p.ProvisionError);
   }
 });
+
+test('ensureInstalled skips when another process holds a fresh install lock, and takes over a stale one', async (t) => {
+  const data = path.join(scratch(t), 'data');
+  const lock = {
+    backend: {
+      groupId: 'g',
+      artifactId: 'backend',
+      version: '9.9',
+      mainClass: 'Main',
+      distributions: {
+        'test-os': {
+          classifier: 'c',
+          extension: 'tar.gz',
+          bundledJre: true,
+          sha256: '0'.repeat(64),
+        },
+      },
+    },
+    analyzers: [],
+  };
+  const held = p.acquireInstallLock(data);
+  assert.ok(held);
+  assert.equal(p.installInProgress(data), true);
+  assert.deepEqual(await p.ensureInstalled({ dataDir: data, lock }), { status: 'busy' });
+
+  // A lock left behind by a dead install is taken over.
+  const old = new Date(Date.now() - p.STALE_LOCK_MS - 1000);
+  fs.utimesSync(held, old, old);
+  assert.equal(p.installInProgress(data), false);
+  await assert.rejects(
+    p.ensureInstalled({
+      dataDir: data,
+      lock,
+      fromDir: path.join(data, 'missing'),
+      distributionKey: 'test-os',
+    }),
+    p.ProvisionError,
+  );
+  // The failure is recorded for doctor, and the lock is released.
+  assert.match(p.lastInstallError(data), /not found/);
+  assert.equal(fs.existsSync(path.join(data, p.INSTALL_LOCK)), false);
+});
+
+test('ensureInstalled reports an existing install as present without touching it', async (t) => {
+  const data = path.join(scratch(t), 'data');
+  const lock = p.loadLock();
+  fs.mkdirSync(data, { recursive: true });
+  fs.writeFileSync(
+    path.join(data, p.MANIFEST),
+    JSON.stringify({
+      backendVersion: lock.backend.version,
+      analyzers: lock.analyzers.map((a) => ({ key: a.key, sha256: a.sha256 })),
+    }),
+  );
+  const result = await p.ensureInstalled({ dataDir: data, lock });
+  assert.equal(result.status, 'present');
+  assert.equal(fs.existsSync(path.join(data, p.INSTALL_LOCK)), false);
+});

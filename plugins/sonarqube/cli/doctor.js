@@ -16,6 +16,8 @@ const {
   javaMajorVersion,
   MIN_JAVA,
   MANIFEST,
+  installInProgress,
+  lastInstallError,
 } = require('./provision');
 const { request, DaemonNotRunning } = require('./client');
 
@@ -58,14 +60,19 @@ async function runDoctor({ dataDir, root }) {
 }
 
 function missingInstallCheck(dataDir) {
-  const stale = fs.existsSync(path.join(dataDir, MANIFEST));
-  return {
-    name: 'install',
-    ok: false,
-    detail: stale
-      ? `${dataDir} holds an install that doesn't match sloop.lock.json (plugin updated?). Re-run setup.`
-      : `SLOOP is not installed in ${dataDir}. Run /sonarqube:setup.`,
-  };
+  const reinstall =
+    'It installs automatically at the next session start, or now with: node scripts/install-sloop.js';
+  let detail;
+  if (installInProgress(dataDir)) {
+    detail = `SLOOP is being installed into ${dataDir} (started at session start); try again in a minute.`;
+  } else if (fs.existsSync(path.join(dataDir, MANIFEST))) {
+    detail = `${dataDir} holds an install that doesn't match sloop.lock.json (plugin updated?). ${reinstall}`;
+  } else {
+    detail = `SLOOP is not installed in ${dataDir}. ${reinstall}`;
+  }
+  const error = lastInstallError(dataDir);
+  if (error) detail += ` (last automatic install failed: ${error})`;
+  return { name: 'install', ok: false, detail };
 }
 
 function javaCheck(manifest) {
