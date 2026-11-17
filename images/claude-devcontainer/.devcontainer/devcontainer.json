@@ -10,6 +10,7 @@
       "SONAR_CLI_VERSION": "latest",
       "RUFF_VERSION": "latest",
       "LLM_WIKI_VERSION": "latest",
+      "EDITORCONFIG_CHECKER_VERSION": "latest",
       "MARKETPLACE_REF": "${localEnv:MARKETPLACE_REF}"
     }
   },

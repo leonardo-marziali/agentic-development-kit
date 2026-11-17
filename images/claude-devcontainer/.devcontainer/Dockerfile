@@ -16,6 +16,7 @@ ARG MARKSMAN_VERSION=latest
 ARG SONAR_CLI_VERSION=latest
 ARG RUFF_VERSION=latest
 ARG LLM_WIKI_VERSION=latest
+ARG EDITORCONFIG_CHECKER_VERSION=latest
 ARG MARKETPLACE_REF=
 ARG USERNAME=node
 
@@ -35,10 +36,18 @@ RUN --mount=type=bind,target=/tmp/devcontainer \
     SONAR_CLI_VERSION="${SONAR_CLI_VERSION}" \
     RUFF_VERSION="${RUFF_VERSION}" \
     LLM_WIKI_VERSION="${LLM_WIKI_VERSION}" \
+    EDITORCONFIG_CHECKER_VERSION="${EDITORCONFIG_CHECKER_VERSION}" \
       bash /tmp/devcontainer/install-tools.sh \
     && ln -sfn "$(dirname "$(dirname "$(readlink -f "$(command -v javac)")")")" /usr/lib/jvm/default-jdk
 
 ENV JAVA_HOME=/usr/lib/jvm/default-jdk
+
+# mermaid-cli (`mmdc`, the diagrams plugin) drives Debian's Chromium through
+# Puppeteer. Puppeteer's own browser download is never fetched (it runs from
+# a lifecycle script, and Chrome for Testing has no linux-arm64 build), so
+# point it at the system binary.
+ENV PUPPETEER_SKIP_DOWNLOAD=true \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 # Where an optional host wiki is mounted (see the README). `wiki status
 # --all`, which the wiki-lookup skill runs, lists every LLM_WIKI_PATH entry

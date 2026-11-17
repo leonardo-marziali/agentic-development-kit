@@ -5,10 +5,14 @@
 #
 #   plugin                      needs
 #   markdown                    marksman (LSP), markdownlint-cli (via npx)
+#   editorconfig                editorconfig-checker
 #   prettier                    prettier (via npx)
 #   python                      ruff, pyright (pyright-lsp below)
 #   sonarqube                   sonar CLI, docker CLI (devcontainer feature)
 #   github                      gh CLI (devcontainer feature)
+#   java                        JDK 21 (jdtls-lsp below)
+#   diagrams                    mermaid-cli (mmdc) + Chromium, python3
+#   writing                     python3
 #   jdtls-lsp                   jdtls + JDK 21
 #   pyright-lsp                 pyright-langserver
 #   typescript-lsp              typescript-language-server + typescript
@@ -27,6 +31,7 @@ MARKSMAN_VERSION="${MARKSMAN_VERSION:-${LATEST}}"
 SONAR_CLI_VERSION="${SONAR_CLI_VERSION:-${LATEST}}"
 RUFF_VERSION="${RUFF_VERSION:-${LATEST}}"
 LLM_WIKI_VERSION="${LLM_WIKI_VERSION:-${LATEST}}"
+EDITORCONFIG_CHECKER_VERSION="${EDITORCONFIG_CHECKER_VERSION:-${LATEST}}"
 # Where a host wiki is mounted (see the README); the Dockerfile points
 # LLM_WIKI_PATH here.
 readonly LLM_WIKI_MOUNT="/home/node/llm-wiki"
@@ -37,8 +42,8 @@ fetch() {
 }
 
 case "$(uname -m)" in
-  x86_64 | amd64) MARKSMAN_ARCH="x64"; SONAR_PLATFORM="linux-x86-64" ;;
-  aarch64 | arm64) MARKSMAN_ARCH="arm64"; SONAR_PLATFORM="linux-arm64" ;;
+  x86_64 | amd64) MARKSMAN_ARCH="x64"; SONAR_PLATFORM="linux-x86-64"; GO_ARCH="amd64" ;;
+  aarch64 | arm64) MARKSMAN_ARCH="arm64"; SONAR_PLATFORM="linux-arm64"; GO_ARCH="arm64" ;;
   *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
 esac
 
@@ -47,13 +52,16 @@ apt-get update
 apt-get install -y --no-install-recommends \
   ca-certificates curl git gnupg jq ripgrep unzip \
   openjdk-21-jdk-headless \
-  python3 python3-pip python3-venv python3-yaml
+  python3 python3-pip python3-venv python3-yaml \
+  chromium fonts-liberation
 rm -rf /var/lib/apt/lists/*
 
 # Node-based CLIs. Installed globally so the hooks' `npx -y <tool>` resolves
-# them locally instead of downloading on first use. None of them needs a
-# lifecycle script.
+# them locally instead of downloading on first use. Only mermaid-cli has a
+# lifecycle script, Puppeteer's browser download; --ignore-scripts skips it
+# and the Dockerfile points Puppeteer at Debian's chromium instead.
 npm install -g --ignore-scripts \
+  @mermaid-js/mermaid-cli \
   markdownlint-cli \
   prettier \
   pyright \
@@ -97,6 +105,28 @@ else
 fi
 fetch "${marksman_url}" -o /usr/local/bin/marksman
 chmod 755 /usr/local/bin/marksman
+
+# editorconfig-checker (editorconfig plugin), the release binary checked
+# against the release's checksums.txt. Its hook prefers a binary on PATH over
+# `npx editorconfig-checker`, whose wrapper downloads this same binary from
+# the GitHub API on first use (rate-limited, and needs network).
+if [[ "${EDITORCONFIG_CHECKER_VERSION}" == "${LATEST}" ]]; then
+  ec_base="https://github.com/editorconfig-checker/editorconfig-checker/releases/latest/download"
+else
+  ec_base="https://github.com/editorconfig-checker/editorconfig-checker/releases/download/v${EDITORCONFIG_CHECKER_VERSION#v}"
+fi
+ec_file="editorconfig-checker-linux-${GO_ARCH}.tar.gz"
+ec_tmp="$(mktemp -d)"
+fetch "${ec_base}/${ec_file}" -o "${ec_tmp}/${ec_file}"
+fetch "${ec_base}/checksums.txt" -o "${ec_tmp}/checksums.txt"
+# Exactly one checksums.txt line must name the tarball, or nothing is checked.
+[[ "$(grep -cE "  ${ec_file}\$" "${ec_tmp}/checksums.txt")" == 1 ]] \
+  || { echo "editorconfig-checker: no checksum for ${ec_file}" >&2; exit 1; }
+(cd "${ec_tmp}" && grep -E "  ${ec_file}\$" checksums.txt | sha256sum -c --quiet -)
+tar -xzf "${ec_tmp}/${ec_file}" -C "${ec_tmp}" editorconfig-checker
+install -m 755 "${ec_tmp}/editorconfig-checker" /usr/local/bin/editorconfig-checker
+rm -rf "${ec_tmp}"
+editorconfig-checker --version
 
 # SonarQube CLI, verified against SonarSource's OpenPGP signature. The key
 # (sonarsource.asc) is the one the CLI itself embeds for verifying its

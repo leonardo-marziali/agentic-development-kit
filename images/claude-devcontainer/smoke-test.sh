@@ -5,7 +5,8 @@
 set -euo pipefail
 
 for bin in claude marksman jdtls java pyright-langserver \
-  typescript-language-server markdownlint prettier ruff pyright sonar docker gh gh-login wiki; do
+  typescript-language-server markdownlint prettier ruff pyright sonar docker gh gh-login wiki \
+  editorconfig-checker mmdc chromium; do
   path="$(command -v "${bin}")" || { echo "missing binary: ${bin}" >&2; exit 1; }
   printf '%-28s %s\n' "${bin}" "${path}"
 done
@@ -13,6 +14,16 @@ done
 claude --version
 sonar --version
 python3 -c 'import yaml'
+editorconfig-checker --version
+
+# mmdc must actually render: Puppeteer has to find Debian's chromium and be
+# able to start it as the non-root user (no sandbox inside a container).
+mmdc_dir="$(mktemp -d)"
+printf 'graph TD\n  A --> B\n' >"${mmdc_dir}/in.mmd"
+printf '{"args":["--no-sandbox"]}\n' >"${mmdc_dir}/puppeteer.json"
+mmdc -q -p "${mmdc_dir}/puppeteer.json" -i "${mmdc_dir}/in.mmd" -o "${mmdc_dir}/out.svg"
+grep -q '<svg' "${mmdc_dir}/out.svg" || { echo "mmdc produced no SVG" >&2; exit 1; }
+rm -rf "${mmdc_dir}"
 wiki --help >/dev/null
 
 # llm-wiki: the wiki-lookup skill, and where the CLI looks for a mounted wiki.
@@ -29,6 +40,9 @@ expected=(
   sonarqube@agentic-development-kit
   git@agentic-development-kit
   github@agentic-development-kit
+  java@agentic-development-kit
+  diagrams@agentic-development-kit
+  writing@agentic-development-kit
   github@claude-plugins-official
   superpowers@superpowers-marketplace
   context7@context7-marketplace

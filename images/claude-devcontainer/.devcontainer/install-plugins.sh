@@ -27,7 +27,7 @@ MARKETPLACES=(
 PLUGINS=(
   # agentic-development-kit (github@ pulls in github@claude-plugins-official
   # and python@ pulls in pyright-lsp@claude-plugins-official, as declared
-  # dependencies)
+  # dependencies; so does java@, for jdtls-lsp@claude-plugins-official)
   "markdown@agentic-development-kit"
   "prettier@agentic-development-kit"
   "editorconfig@agentic-development-kit"
@@ -35,6 +35,9 @@ PLUGINS=(
   "sonarqube@agentic-development-kit"
   "git@agentic-development-kit"
   "github@agentic-development-kit"
+  "java@agentic-development-kit"
+  "diagrams@agentic-development-kit"
+  "writing@agentic-development-kit"
   # Third-party
   "superpowers@superpowers-marketplace"
   "context7@context7-marketplace"
