@@ -34,8 +34,8 @@ renders them as CommonMark, links use reference syntax such as
 Java versions, use HTML for richer formatting. Don't mix the two styles in one
 project.
 
-**J3. Block syntax for long comments.** A comment spanning several lines always
-uses `/* */`.
+**J3. Block syntax for long comments.** A comment that isn't documentation and
+spans several lines always uses `/* */`. Documentation comments follow J2.
 
 **J4. Comments serve the first-time reader.** Write every comment for someone,
 human or AI agent, who is reading that code for the first time. Don't let the
@@ -59,7 +59,8 @@ it belongs to, so the whole invocation reads cleanly:
 `...Minutes`.
 
 **J8. One suffix per concept.** Pick one suffix and use it across the project,
-for example `*Config` and never a mix of `*Conf` and `*Configuration`.
+for example `*Config` and never a mix of `*Conf` and `*Configuration`. Port
+implementations follow D6.
 
 ### Code organization
 
@@ -70,24 +71,43 @@ private methods, nested types. Lombok replaces hand-written accessors, `equals`,
 constructors (see S15).
 
 **J10. Meaningful field order.** Fields run from most to least important, top to
-bottom, in the same order across the project: identifier, mandatory business
-fields, optional business fields, then technical fields such as audit data and
-version. Injected dependencies also follow one order: services, repositories,
-mappers, then infrastructure clients.
+bottom, in the same order across the project:
 
-**J11. Meaningful argument order.** Arguments run from most to least important,
-left to right, and this order stays coherent across the project. In a method
-that changes something, the identifier comes first, then the new values, then
-everything else. Optional arguments always come last.
+1. the identifier;
+2. mandatory business fields;
+3. nullable business fields;
+4. technical fields, always as tenant, version, then audit data.
+
+Injected dependencies also follow one order: services, repositories, mappers,
+then infrastructure clients.
+
+**J11. The same order for arguments.** Arguments and record components follow
+the order of J10, so a record reads like the class it mirrors, and a method's
+parameters like the fields they fill: the identifier, the mandatory business
+values (in a method that changes something, the new values), the nullable ones,
+then the technical ones, such as an expected version. A nullable argument keeps
+that place. Only an argument the caller can leave out entirely, through an
+overload (see J19), moves to the end.
 
 ```java
 void reschedule(BookingId id, DateRange period, @Nullable String reason);
+
+record UpdateProjectDetailsCommand(ProjectId projectId, String name, @Nullable String description,
+    long expectedVersion) {}
 ```
 
 **J12. Readable method bodies.** Declare local variables near their first use
 and mark them `final` when they are immutable. Separate logical steps with a
 blank line. A variable filled by a loop stays directly above that loop, with no
 blank line between them. A log statement has a blank line on each side.
+
+- **Bodies open with a blank line.** A class, record or interface body starts
+  and ends with a blank line, so its members stand apart from the declaration.
+  A method or constructor body starts with one, but doesn't end with one.
+- **An empty body, or one that holds only a comment, has none** (see J25).
+
+Set the formatter's blank-line options to match, so the build keeps the layout
+(see B5).
 
 ### Language features
 

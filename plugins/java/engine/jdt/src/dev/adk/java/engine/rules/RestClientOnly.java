@@ -36,7 +36,7 @@ final class RestClientOnly implements Rule {
             String type = REPLACED.get(declaration.getName().getFullyQualifiedName());
             if (type != null) {
                 findings.add(file.finding(declaration, id(), "Use `RestClient` (or an `@HttpExchange` interface on it) instead of `"
-                    + type + "`, inside a `<Target>HttpClient`."));
+                    + type + "`, inside a `<Target><Port>` client such as `PayPalPaymentGateway`."));
             }
         }
         return findings;

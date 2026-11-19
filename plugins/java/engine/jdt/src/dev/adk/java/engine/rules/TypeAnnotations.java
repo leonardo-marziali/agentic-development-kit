@@ -14,7 +14,8 @@ import org.eclipse.jdt.core.dom.TypeDeclaration;
  * Class-level rules keyed by a type's annotations and name:
  *   S6  @Configuration / @RestController / @Controller classes and @Service
  *       implementations (the port's implementation) aren't public;
- *   S14 read DTOs are immutable (@Value @Builder), never @Data;
+ *   S14 read DTOs are immutable records with @Builder (before Java 16,
+ *       @Value @Builder classes), never @Data;
  *   S22 MapStruct mappers are abstract classes, not interfaces.
  */
 final class TypeAnnotations {
@@ -59,6 +60,8 @@ final class TypeAnnotations {
 
     static final class ImmutableReadDto implements Rule {
 
+        private static final int RECORDS = 16;
+
         @Override
         public String id() {
             return "S14";
@@ -66,11 +69,15 @@ final class TypeAnnotations {
 
         @Override
         public List<Finding> check(SourceFile file) {
+            boolean records = file.javaLevel() >= RECORDS;
             return visitTypes(file, (type, findings) -> {
-                if (type.getName().getIdentifier().endsWith("ReadDto") && Ast.hasAnnotation(type, "Data")) {
-                    findings.add(new Finding(file.line(type.getName()), id(),
-                        "Make read DTO `" + type.getName() + "` immutable with `@Value` and `@Builder` instead of `@Data`."));
+                boolean data = Ast.hasAnnotation(type, "Data");
+                if (type.isInterface() || !type.getName().getIdentifier().endsWith("ReadDto") || !data && !records) {
+                    return;
                 }
+                findings.add(new Finding(file.line(type.getName()), id(), "Make read DTO `" + type.getName() + "` "
+                    + (records ? "an immutable record with `@Builder`" : "immutable with `@Value` and `@Builder`")
+                    + (data ? " instead of `@Data`." : ", like every other immutable value carrier.")));
             });
         }
 

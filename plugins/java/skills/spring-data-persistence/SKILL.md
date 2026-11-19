@@ -1,6 +1,6 @@
 ---
 name: spring-data-persistence
-description: 'Use when writing repositories, query services, entities, queries, auditing, migrations or filters with Spring Data JPA, JDBC or MongoDB in a project that follows the java-standards opt-in. Covers repositories as driven ports that hide the store, identifiers allocated by the repository, UTC times, automatic auditing kept out of the domain, JaVers, avoiding N+1 queries, query preference order, Liquibase, QueryDSL predicate classes, immutable value objects and @Embeddable value groups (rules S44 to S53, D22 and D23).'
+description: 'Use when writing repositories, query services, entities, queries, auditing, migrations or filters with Spring Data JPA, JDBC or MongoDB in a project that follows the java-standards opt-in. Covers repositories as driven ports that hide the store, named after their technology (JpaProjectRepository over ProjectEntityRepository), identifiers allocated by the repository, UTC times, automatic auditing kept out of the domain, JaVers, avoiding N+1 queries, query preference order, Liquibase, QueryDSL predicate classes, immutable value objects and @Embeddable value groups (rules S44 to S53, D22 and D23).'
 paths: '**/*.java, **/pom.xml, **/build.gradle*'
 ---
 
@@ -22,9 +22,10 @@ justified exception with `// java-rules:allow <ID> <reason>`.
 
 **S44. Repositories hide the persistence technology.** A public
 `ProjectRepository` interface in `domain`, a driven port (see D6), speaks only
-in domain objects. A package-private `ProjectRepositoryImpl` implements it by
-delegating to a package-private Spring Data interface (`ProjectJpaRepository`),
-which never leaves the package. Spring Data doesn't replace this layer, because
+in domain objects. A package-private `JpaProjectRepository` implements it by
+delegating to a package-private Spring Data interface,
+`ProjectEntityRepository`, which never leaves the package (see D6 for the
+names). Spring Data doesn't replace this layer, because
 it would expose entities.
 
 - **`getById` throws, `findById` doesn't.** `getById` returns the aggregate or
@@ -69,7 +70,7 @@ Use the best source for the database:
   `reWriteBatchedInserts=true` on the JDBC URL.
 
 ```java
-interface ProjectJpaRepository extends JpaRepository<ProjectEntity, Long> {
+interface ProjectEntityRepository extends JpaRepository<ProjectEntity, Long> {
 
     // Native: JPQL can't read a sequence.
     @Query(value = "select nextval('project_seq')", nativeQuery = true)
@@ -197,11 +198,11 @@ public class ChangeHistory {
 
 }
 
-// ProjectRepositoryImpl, with ProjectEntity annotated @FieldHistory
+// JpaProjectRepository, with ProjectEntity annotated @FieldHistory
 @Override
 public void update(Project project) {
 
-    final ProjectEntity projectEntity = projectJpaRepository.findById(project.getId().value())
+    final ProjectEntity projectEntity = projectEntityRepository.findById(project.getId().value())
                                                             .orElseThrow(() -> new ProjectNotFoundException(project.getId()));
 
     projectEntityMapper.updateEntity(project, projectEntity);
@@ -224,7 +225,9 @@ static final ArchRule noSpringDataAuditAspect = noClasses()
 private static DescribedPredicate<JavaClass> repositoriesOfFieldHistoryEntities() {
 
     return DescribedPredicate.describe("repositories of @FieldHistory entities",
-        javaClass -> javaClass.getSimpleName().endsWith("RepositoryImpl")
+        javaClass -> javaClass.getRawInterfaces().stream()
+                              .anyMatch(port -> port.getSimpleName().endsWith("Repository")
+                                  && port.getPackageName().endsWith(".domain"))
             && javaClass.getDirectDependenciesFromSelf().stream()
                         .anyMatch(dependency -> dependency.getTargetClass().isAnnotatedWith(FieldHistory.class)));
 }
@@ -322,9 +325,10 @@ introduction):
 - **One tool per database.** Never let two tools manage the same schema.
   Changing tool mid-project is a migration of its own: baseline the existing
   schema in the new tool and retire the old history table.
-- **Autoconfigured by Spring Boot** (see S5). On Boot 4, add
-  `spring-boot-starter-flyway` or `spring-boot-starter-liquibase`. Flyway also
-  needs its database module, such as `flyway-database-postgresql`.
+- **Autoconfigured by Spring Boot** (see S5). Add `spring-boot-starter-flyway`
+  or `spring-boot-starter-liquibase`. Flyway also needs its database module,
+  such as `flyway-database-postgresql`. **On Boot 3**, which has no such
+  starters, add `flyway-core` or `liquibase-core` directly.
 
 **Migration names say what they do.** Reading the migration folder top to bottom
 reads the schema's history, without opening a file. Every versioned migration is
@@ -497,8 +501,26 @@ values and has no identity of its own, such as `Money`, `DateRange` or
 - **Replace, don't mutate.** An aggregate changes a value object by replacing it
   with a new instance.
 - **Only where there's a rule.** Introduce a value object when the concept has
-  validation or behavior. A free-form `String` such as a description stays a
-  `String`.
+  validation or behavior. A limit is a rule, so a project's name and its
+  description, both limited in length, are `ProjectName` and
+  `ProjectDescription`. A `String` with no rule at all, such as an unbounded
+  note, stays a `String`.
+- **The value object owns its limits.** A limit is a constant on the value
+  object that enforces it, such as `ProjectName.MAX_LENGTH`, and nowhere else
+  (see J21). DTOs and commands reference that constant, so a request learns
+  about every invalid field at once (see S34), but the value object stays the
+  authority: no adapter, command or future use case can put an invalid name
+  into a `Project`.
+- **Commands carry plain values; services build the value objects.** A command
+  holds the `String` and checks it against the value object's constant, and the
+  application service creates the value object before calling the aggregate
+  (see S8). Identifiers are the exception: the controller types them on arrival
+  (see S8), because an invalid identifier is a bad address, not a form field to
+  report alongside others.
+- **Tighten a limit with a migration first.** Reconstitution goes through the
+  value objects too, so a stored value that breaks a tightened limit fails to
+  load (see D19). Correct the stored data in a migration before the release that
+  tightens the limit (see S51).
 - **Identifiers are value objects.** Every aggregate identifier is a record
   named `<Aggregate>Id`, such as `ProjectId`, in that aggregate's `domain`
   package. Every reference to another aggregate of the same module uses its
@@ -510,7 +532,8 @@ values and has no identity of its own, such as `Money`, `DateRange` or
 - **Typed identifiers stop at the core's edge.** DTOs and entities carry the
   underlying `Long`, so JPA, Spring Data and the sequence stay simple. One
   converter per identifier, such as `ProjectIdMapper`, serves every mapper of
-  the feature (see S19).
+  the feature, while hand-written code calls the constructor and `value()`
+  directly (see S19).
 
 ```java
 public record ProjectId(long value) {
@@ -521,6 +544,45 @@ public record ProjectId(long value) {
             // An InvalidValueException, so the API answers 400 (see S40).
             throw new InvalidIdentifierException("project", value);
         }
+    }
+
+}
+```
+
+```java
+public record ProjectName(String value) {
+
+    public static final int MAX_LENGTH = 120;
+
+    public ProjectName {
+
+        Objects.requireNonNull(value);
+
+        if (value.isBlank() || value.length() > MAX_LENGTH) {
+            // An InvalidValueException: PROJECT_NAME_INVALID, answered with 400 (see S40).
+            throw new InvalidProjectNameException(MAX_LENGTH);
+        }
+    }
+
+}
+
+public record ProjectDescription(String value) {
+
+    public static final int MAX_LENGTH = 2000;
+
+    public ProjectDescription {
+
+        Objects.requireNonNull(value);
+
+        if (value.length() > MAX_LENGTH) {
+            throw new InvalidProjectDescriptionException(MAX_LENGTH);
+        }
+    }
+
+    // The description is optional: no text, no value object.
+    public static @Nullable ProjectDescription ofNullable(@Nullable String value) {
+
+        return value == null ? null : new ProjectDescription(value);
     }
 
 }

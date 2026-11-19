@@ -1,6 +1,6 @@
 ---
 name: java-ddd-events
-description: 'Use when modelling bounded contexts, aggregates, value objects, domain services, ports and adapters, state machines, events, messaging or scheduled jobs in a project that follows the java-standards opt-in. Covers the ubiquitous language, bounded contexts and anti-corruption layers, the hexagonal core with driving and driven ports enforced by ArchUnit, aggregate boundaries, references by identity, one aggregate per transaction, optimistic locking on the root, read models that bypass the aggregate, plain-Java domain classes, creation factories, step builders, early identity and reconstitution, explicit state machines, value objects, domain and integration events, the transactional outbox, idempotent consumers, versioned schemas and safe scheduled jobs (rules D1 to D29).'
+description: 'Use when modelling bounded contexts, aggregates, value objects, domain services, ports and adapters, state machines, events, messaging or scheduled jobs in a project that follows the java-standards opt-in. Covers the ubiquitous language, bounded contexts and anti-corruption layers, Spring Modulith named interfaces and an open shared module, the hexagonal core with driving and driven ports enforced by ArchUnit, adapters named after their technology and port, aggregate boundaries, references by identity, one aggregate per transaction, optimistic locking on the root, read models that bypass the aggregate, plain-Java domain classes, creation factories, step builders, early identity and reconstitution, explicit state machines, value objects, domain events and integration events published from an events package, the transactional outbox, idempotent consumers, versioned schemas and safe scheduled jobs (rules D1 to D29).'
 paths: '**/*.java, **/pom.xml, **/build.gradle*'
 ---
 
@@ -52,7 +52,50 @@ anti-corruption layer, published language).
   to exactly one bounded context. Each top-level feature package is a Spring
   Modulith application module, and Modulith verifies that modules access each
   other only through their published API. The check reads the compiled classes
-  and needs no Spring context, so it runs with the unit tests (see T4):
+  and needs no Spring context, so it runs with the unit tests (see T4).
+- **Publish the API on purpose.** Modulith treats a module's base package as
+  its API and every sub-package as internal, so a feature's API is declared
+  with `@NamedInterface` on the `package-info.java` of two kinds of package,
+  and of nothing else:
+  - `application`, with the driving ports, their commands, read models and
+    filters (see S7), and each per-action subpackage of S10 under its own
+    name. Implementations are package-private (see S6), so the named interface
+    exposes only contracts.
+  - `events`, the integration events other modules listen to (see D25).
+
+  `domain` is never exposed (see D10), and neither is any adapter package.
+
+- **`shared` is an open module.** `shared` is a top-level package too, so
+  Modulith treats it as a module, and its sub-packages would be internal.
+  Declare it `Type.OPEN`, so every feature can use `shared.domain`,
+  `shared.application`, `shared.web` and the rest. It never depends on a
+  feature: that dependency would form a cycle, which the verification rejects.
+
+```java
+// shared/package-info.java
+@ApplicationModule(type = ApplicationModule.Type.OPEN)
+@NullMarked
+package com.company.app.shared;
+
+import org.jspecify.annotations.NullMarked;
+import org.springframework.modulith.ApplicationModule;
+
+// project/application/package-info.java
+@NamedInterface("application")
+@NullMarked
+package com.company.app.project.application;
+
+import org.jspecify.annotations.NullMarked;
+import org.springframework.modulith.NamedInterface;
+
+// project/events/package-info.java
+@NamedInterface("events")
+@NullMarked
+package com.company.app.project.events;
+
+import org.jspecify.annotations.NullMarked;
+import org.springframework.modulith.NamedInterface;
+```
 
 ```java
 class ApplicationModulesTest {
@@ -98,10 +141,10 @@ point inward: adapters depend on the core, never the other way around.
           driving adapters                          driven adapters
    ┌──────────────────────┐                 ┌───────────────────────────┐
    │ api (controllers)    │                 │ persistence               │
-   │ messaging.in         │──┐           ┌─▶│  ProjectRepositoryImpl    │
-   │ scheduler (jobs)     │  │           │  │  ProjectQueriesImpl       │
+   │ messaging.in         │──┐           ┌─▶│  JpaProjectRepository     │
+   │ scheduler (jobs)     │  │           │  │  JpaProjectQueries        │
    └──────────────────────┘  │           │  │ client.http               │
-                             │           │  │  PayPalHttpClient         │
+                             │           │  │  PayPalPaymentGateway     │
                              ▼           │  └───────────────────────────┘
               ┌──────────────────────────┴───────┐
               │ core                             │
@@ -126,9 +169,24 @@ point inward: adapters depend on the core, never the other way around.
   The adapter in `persistence` or `client` implements the port, and it stays
   package-private (see S17).
 - **Name the need, not the technology.** A port is named after what the core
-  wants done, so `PaymentGateway` and never `PayPalClient`. The technology
-  appears only in the adapter's name:
-  `PayPalHttpClient implements PaymentGateway`.
+  wants done, so `PaymentGateway` and never `PayPalClient`.
+- **Name the adapter by what it's built on.** An implementation of a driven
+  port, or of a query port in `persistence`, is the port's name with the
+  technology or the remote system in front: `JpaProjectRepository implements
+ProjectRepository`, `JpaProjectQueries implements ProjectQueries`,
+  `PayPalPaymentGateway implements PaymentGateway`. The package already names
+  the kind of adapter (`persistence`, `client.http`), so the name adds only
+  what the package can't say. Two names stay outside the pattern:
+  - **Application services** are `<Port>Service` (see S10).
+  - **An implementation in the core** has no technology to name, so it's
+    `Default<Port>`, the convention Spring itself uses
+    (`DefaultConversionService`), as in D14.
+
+  The `Impl` suffix is left to generated code, MapStruct's `*MapperImpl`, so a
+  name ending in `Impl` always means "generated" (see S17). The Spring Data
+  interface behind a repository is named after what it stores,
+  `ProjectEntityRepository`, so it can't be mistaken for the adapter.
+
 - **Shape ports for the core.** A port's methods take and return domain objects
   and use domain terms. A port that mirrors a remote API, method for method,
   leaks that API into the core.
@@ -238,15 +296,15 @@ same locked entity in the persistence context, and the commit increments the
 version.
 
 ```java
-// ProjectJpaRepository: Spring Data ignores "Locked", between "find" and "By"
+// ProjectEntityRepository: Spring Data ignores "Locked", between "find" and "By"
 @Lock(LockModeType.OPTIMISTIC_FORCE_INCREMENT)
 Optional<ProjectEntity> findLockedById(Long id);
 
-// ProjectRepositoryImpl
+// JpaProjectRepository
 @Override
 public Project getByIdForUpdate(ProjectId projectId) {
 
-    return projectJpaRepository.findLockedById(projectId.value())
+    return projectEntityRepository.findLockedById(projectId.value())
                                .map(projectEntityMapper::toDomain)
                                .orElseThrow(() -> new ProjectNotFoundException(projectId));
 }
@@ -281,13 +339,14 @@ but each has its own model.
   the write side (_Get Your Hands Dirty on Clean Architecture_, ch. 4), and
   Buenosvinos and his co-authors treat reads as an infrastructure concern that
   needs no command (_DDD in PHP_, ch. 2 and 12).
-- **The implementation.** `ProjectQueriesImpl` lives in `persistence`,
+- **The implementation.** `JpaProjectQueries` lives in `persistence`,
   package-private, and reads the entities, a projection or plain SQL directly.
   Implementing a driving port in an adapter is a deliberate shortcut: it saves a
   query service in the core whose only job would be to call a driven port. When
   a read needs business logic, such as a computed balance, write
-  `ProjectQueriesImpl` in `application` instead, annotated `@Component` rather
-  than `@Service` (see S12), and give it a driven port.
+  `DefaultProjectQueries` in `application` instead, annotated `@Component`
+  rather than `@Service` (see S12), and give it a driven port. It has no
+  technology to name, so it takes the `Default` prefix (see D6).
 - **Writes don't decide on reads.** An application service loads the aggregate
   through its repository, never a read model, because a read model can be stale
   and isn't locked.
@@ -312,6 +371,7 @@ Domain exceptions follow the same rule: they carry a category and a code, never
 an HTTP status (see S40). ArchUnit checks the whole list:
 
 ```java
+// Jackson 3 lives in tools.jackson, but its annotations stay in com.fasterxml (see Baseline).
 @ArchTest
 static final ArchRule domainIsPlainJava = noClasses().that()
     .resideInAPackage("..domain..")
@@ -326,15 +386,18 @@ creates it, such as `Project.draft(...)`, never through a public constructor.
 The factory takes the identifier and the minimum set of mandatory values that
 makes the aggregate coherent, applies the creation rules and records the
 creation event. Other fields get default values where that makes sense.
-Free-form optional values may have setters (see D17). Nothing else does.
+Optional values that no other rule depends on may have setters (see D17).
+Nothing else does.
 
 **D17. Behavior protects invariants.** State with rules attached, such as a
 status, changes only through behavior methods named in the ubiquitous language,
 such as `archive()` rather than `setStatus(ARCHIVED)`. The method checks the
 rule, changes the state and records the domain event in one place. Callers tell
 the aggregate what to do; they don't read its state, decide, and write it back.
-Setters are kept for free-form optional values with no rules, such as a
-description.
+Setters are kept for optional values that no other rule depends on, such as a
+description. A value with a rule of its own, such as a length, still gets a
+setter, as long as its type is a value object that enforces that rule (see
+D22): the setter then can't take an invalid value.
 
 **D18. Step builders for many mandatory fields.** When an object has many
 mandatory values, a constructor stops being readable. Prefer the Step Builder
@@ -380,27 +443,24 @@ static final ArchRule onlyPersistenceReconstitutes = noClasses().that()
 @Getter
 public class Project extends AggregateRoot<ProjectId> {
 
-    // Facts of the domain that the commands and DTOs reference (see S34).
-    public static final int NAME_MAX_LENGTH = 120;
-
-    public static final int DESCRIPTION_MAX_LENGTH = 2000;
-
     private final ProjectId id;
 
-    private String name;
+    // Its limits live on the value object, which the commands and DTOs reference (see D22).
+    private ProjectName name;
 
     // A user of another module, referenced by its plain identifier (see D10).
     private final long ownerId;
 
     private ProjectStatus status = ProjectStatus.DRAFT;
 
+    // No other rule depends on it, so a setter will do: the type carries its limit.
     @Setter
-    private @Nullable String description;
+    private @Nullable ProjectDescription description;
 
     // Null until the aggregate is first stored. Only reconstitute sets it.
     private @Nullable Long version;
 
-    private Project(ProjectId id, String name, long ownerId) {
+    private Project(ProjectId id, ProjectName name, long ownerId) {
 
         this.id = Objects.requireNonNull(id);
         this.name = Objects.requireNonNull(name);
@@ -408,7 +468,7 @@ public class Project extends AggregateRoot<ProjectId> {
     }
 
     // Creation: a new project, with its rules and its event.
-    public static Project draft(ProjectId id, String name, long ownerId, Instant draftedAt) {
+    public static Project draft(ProjectId id, ProjectName name, long ownerId, Instant draftedAt) {
 
         final Project project = new Project(id, name, ownerId);
         project.registerEvent(new ProjectDrafted(project.newEventId(), id, ownerId, draftedAt));
@@ -418,10 +478,10 @@ public class Project extends AggregateRoot<ProjectId> {
 
     // Reconstitution: a stored project, with no rules and no events.
     public static Project reconstitute(ProjectId id,
-        String name,
+        ProjectName name,
         long ownerId,
         ProjectStatus status,
-        @Nullable String description,
+        @Nullable ProjectDescription description,
         long version) {
 
         final Project project = new Project(id, name, ownerId);
@@ -437,7 +497,7 @@ public class Project extends AggregateRoot<ProjectId> {
         return status == ProjectStatus.ACTIVE;
     }
 
-    public void rename(String name) {
+    public void rename(ProjectName name) {
 
         this.name = Objects.requireNonNull(name);
     }
@@ -464,7 +524,7 @@ class DraftProjectService implements DraftProject {
     public ProjectId execute(DraftProjectCommand command) {
 
         final Project project = Project.draft(projectRepository.nextIdentity(),
-                                              command.name(),
+                                              new ProjectName(command.name()),
                                               command.ownerId(),
                                               clock.instant());
         projectRepository.save(project);
@@ -589,8 +649,26 @@ values and has no identity of its own, such as `Money`, `DateRange` or
 - **Replace, don't mutate.** An aggregate changes a value object by replacing it
   with a new instance.
 - **Only where there's a rule.** Introduce a value object when the concept has
-  validation or behavior. A free-form `String` such as a description stays a
-  `String`.
+  validation or behavior. A limit is a rule, so a project's name and its
+  description, both limited in length, are `ProjectName` and
+  `ProjectDescription`. A `String` with no rule at all, such as an unbounded
+  note, stays a `String`.
+- **The value object owns its limits.** A limit is a constant on the value
+  object that enforces it, such as `ProjectName.MAX_LENGTH`, and nowhere else
+  (see J21). DTOs and commands reference that constant, so a request learns
+  about every invalid field at once (see S34), but the value object stays the
+  authority: no adapter, command or future use case can put an invalid name
+  into a `Project`.
+- **Commands carry plain values; services build the value objects.** A command
+  holds the `String` and checks it against the value object's constant, and the
+  application service creates the value object before calling the aggregate
+  (see S8). Identifiers are the exception: the controller types them on arrival
+  (see S8), because an invalid identifier is a bad address, not a form field to
+  report alongside others.
+- **Tighten a limit with a migration first.** Reconstitution goes through the
+  value objects too, so a stored value that breaks a tightened limit fails to
+  load (see D19). Correct the stored data in a migration before the release that
+  tightens the limit (see S51).
 - **Identifiers are value objects.** Every aggregate identifier is a record
   named `<Aggregate>Id`, such as `ProjectId`, in that aggregate's `domain`
   package. Every reference to another aggregate of the same module uses its
@@ -602,7 +680,8 @@ values and has no identity of its own, such as `Money`, `DateRange` or
 - **Typed identifiers stop at the core's edge.** DTOs and entities carry the
   underlying `Long`, so JPA, Spring Data and the sequence stay simple. One
   converter per identifier, such as `ProjectIdMapper`, serves every mapper of
-  the feature (see S19).
+  the feature, while hand-written code calls the constructor and `value()`
+  directly (see S19).
 
 ```java
 public record ProjectId(long value) {
@@ -613,6 +692,45 @@ public record ProjectId(long value) {
             // An InvalidValueException, so the API answers 400 (see S40).
             throw new InvalidIdentifierException("project", value);
         }
+    }
+
+}
+```
+
+```java
+public record ProjectName(String value) {
+
+    public static final int MAX_LENGTH = 120;
+
+    public ProjectName {
+
+        Objects.requireNonNull(value);
+
+        if (value.isBlank() || value.length() > MAX_LENGTH) {
+            // An InvalidValueException: PROJECT_NAME_INVALID, answered with 400 (see S40).
+            throw new InvalidProjectNameException(MAX_LENGTH);
+        }
+    }
+
+}
+
+public record ProjectDescription(String value) {
+
+    public static final int MAX_LENGTH = 2000;
+
+    public ProjectDescription {
+
+        Objects.requireNonNull(value);
+
+        if (value.length() > MAX_LENGTH) {
+            throw new InvalidProjectDescriptionException(MAX_LENGTH);
+        }
+    }
+
+    // The description is optional: no text, no value object.
+    public static @Nullable ProjectDescription ofNullable(@Nullable String value) {
+
+        return value == null ? null : new ProjectDescription(value);
     }
 
 }
@@ -738,10 +856,15 @@ fact.
   states it.
 - **Creation events.** The creation factory records the creation event like any
   other, because the aggregate has its identifier from the start (see D19).
-- **Reacting.** A listener in another aggregate or module reacts in its own
-  transaction (see D11). Use Spring Modulith's `@ApplicationModuleListener`,
-  which runs after commit, in a new transaction, through the event publication
-  registry (see D26).
+- **Reacting inside the module.** Another aggregate of the same module reacts
+  in its own transaction (see D11), through a listener in `messaging.in` that
+  calls an application service, like any driving adapter (see D5). Use Spring
+  Modulith's `@ApplicationModuleListener`, which runs after commit, in a new
+  transaction, through the event publication registry (see D26).
+- **Reacting across modules.** Another module never listens to a domain event,
+  because it would depend on our `domain` package (see D10). It listens to the
+  integration event that `messaging.out` translates from it (see D25), with the
+  same `@ApplicationModuleListener`.
 - **Spring Modulith is mandatory.** Aggregates react to each other only through
   events, each in its own transaction (see D11). A plain `@EventListener` runs
   inside the publisher's transaction, and a `@TransactionalEventListener` loses
@@ -778,7 +901,7 @@ public abstract class AggregateRoot<ID> {
     public void assertVersion(long expectedVersion) {
 
         if (!Objects.equals(getVersion(), expectedVersion)) {
-            throw new VersionMismatchException(getClass().getSimpleName(), getId(), expectedVersion);
+            throw new VersionMismatchException(getClass().getSimpleName(), expectedVersion);
         }
     }
 
@@ -833,14 +956,23 @@ public void execute(ArchiveProjectCommand command) {
 ```
 
 **D25. Domain events are private; integration events are a contract.** A domain
-event describes our model and may change whenever the model does. Other bounded
-contexts and systems never receive it directly. They receive an integration
-event: a separate type in `messaging.out`, designed as part of our published
-language, versioned (see D28) and mapped from the domain event by the publishing
-adapter.
+event describes our model and may change whenever the model does. Other modules,
+bounded contexts and systems never receive it directly. They receive an
+integration event: a separate record in the feature's `events` package, named
+`<DomainEvent>IntegrationEvent`, designed as part of our published language,
+versioned (see D28) and holding only plain values, so no typed identifier
+crosses the module (see D10).
 
-- **Publish deliberately.** Only events another context needs become integration
-  events. Most domain events stay internal.
+- **Publish deliberately.** Only events another module or context needs become
+  integration events. Most domain events stay internal.
+- **Translated once, in the transaction.** A package-private translator in
+  `messaging.out` listens to the domain event with a plain `@EventListener`,
+  maps it and publishes the integration event. A plain listener runs inside the
+  transaction that changed the aggregate (see D24), which is right here: the
+  integration event enters the publication registry together with the change,
+  and the translator only maps, so nothing else happens in that transaction.
+  Listeners in other modules and the externalization (see D26) receive the
+  same integration event, so the mapping has one home (see J21).
 - **Choose the payload on purpose.** An event notification carries identifiers
   and the consumer queries for the rest. Use it when the consumer needs the
   latest state or the data is sensitive. Event-carried state transfer carries
@@ -849,6 +981,56 @@ adapter.
 - **No entity dumps.** An integration event never serializes an entity or an
   aggregate as it is, because that turns our internal model into someone else's
   contract.
+
+```java
+// project.events: the contract, with the envelope of D28
+public record ProjectArchivedIntegrationEvent(UUID eventId,
+    long projectId,
+    Instant occurredAt,
+    int schemaVersion) {
+
+    public static final int SCHEMA_VERSION = 1;
+
+}
+
+// project.messaging.out
+@Component
+@RequiredArgsConstructor
+class ProjectIntegrationEventTranslator {
+
+    private final ApplicationEventPublisher eventPublisher;
+
+    // Runs in the transaction that archived the project, so both commit together.
+    @EventListener
+    void on(ProjectArchived projectArchived) {
+
+        eventPublisher.publishEvent(new ProjectArchivedIntegrationEvent(projectArchived.eventId(),
+                                                                        projectArchived.projectId().value(),
+                                                                        projectArchived.occurredAt(),
+                                                                        ProjectArchivedIntegrationEvent.SCHEMA_VERSION));
+    }
+
+}
+
+// billing.messaging.in: depends only on the project module's "events" interface
+@Component
+@RequiredArgsConstructor
+class ProjectEventsListener {
+
+    private final CloseProjectBilling closeProjectBilling;
+
+    // The service deduplicates on the event identifier (see D27).
+    @ApplicationModuleListener
+    void on(ProjectArchivedIntegrationEvent event) {
+
+        closeProjectBilling.execute(CloseProjectBillingCommand.builder()
+            .projectId(event.projectId())
+            .eventId(event.eventId())
+            .build());
+    }
+
+}
+```
 
 **D26. Transactional outbox across systems.** Whenever a change in our database
 must go together with an effect on another system, such as publishing an event,
@@ -889,11 +1071,11 @@ spring.modulith.events.republish-outstanding-events-on-restart=false
 
 Modulith's event externalization delivers events to a broker after commit.
 Configure the externalization in the `messaging.out` adapter with
-`EventExternalizationConfiguration`, mapping each domain event to its
-integration event (see D25), rather than annotating domain events with
-`@Externalized`, which would put Modulith into `domain` (see D15). The receiving
-side must be idempotent (see D27), because the relay can deliver a record more
-than once.
+`EventExternalizationConfiguration`, selecting the integration events that the
+translator has already mapped (see D25), rather than annotating them with
+`@Externalized`: the routing to topics is adapter configuration, and the
+contract in `events` stays free of it. The receiving side must be idempotent
+(see D27), because the relay can deliver a record more than once.
 
 **D27. Idempotent, order-tolerant consumers.** A consumer is a driving adapter
 in `messaging.in`, in two steps. Receiving stores the message, as it arrived
@@ -924,8 +1106,8 @@ the repository, as JSON Schema, Avro or AsyncAPI.
 
 - Every integration event carries an envelope: event identifier, type, schema
   version, occurrence time and the aggregate's identifier. The event identifier
-  is the domain event's `eventId` (see D24), never one generated while mapping,
-  because the mapping runs again on every redelivery.
+  is the domain event's `eventId` (see D24), copied by the translator (see
+  D25), never a new one: consumers deduplicate on it (see D27).
 - Changes are backward compatible: add optional fields, never rename, remove or
   change the meaning of one. A breaking change is a new version, published next
   to the old one until every consumer has moved.
@@ -935,8 +1117,13 @@ the repository, as JSON Schema, Avro or AsyncAPI.
 ### Background work
 
 **D29. Safe scheduled jobs.** Scheduled jobs are driving adapters in
-`scheduler`: they call an application service and contain no business logic. In
+`scheduler`: they call an application service and contain no business logic.
+The one exception is upkeep with no business rule at all, such as resubmitting
+event publications (see D26): that job lives in `shared` and calls Spring
+Modulith directly. In
 a cluster, they use a distributed lock, such as ShedLock, and each job has its
-own on/off switch in configuration. A job builds its commands like any other
-adapter, so they validate themselves (see S34). A command the job can't build is
-a bug in the job, logged at `error`.
+own on/off switch in configuration. A job whose action takes input builds the
+command like any other adapter, so the command validates itself (see S34), and a
+command the job can't build is a bug in the job, logged at `error`. An action
+without input, such as a cleanup that only needs the current time from the
+injected `Clock`, has `execute()` and no command (see S11).

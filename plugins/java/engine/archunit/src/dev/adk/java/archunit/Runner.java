@@ -5,6 +5,7 @@ import com.tngtech.archunit.base.DescribedPredicate;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
+import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.lang.ArchRule;
 import com.tngtech.archunit.lang.EvaluationResult;
 import com.tngtech.archunit.library.freeze.FreezingArchRule;
@@ -64,7 +65,9 @@ public final class Runner {
             out.println("ERROR\t-\tno compiled classes to analyse");
             return;
         }
-        JavaClasses classes = new ClassFileImporter().importPaths(classDirs);
+        // The rules govern the application; tests legitimately reach package-private code (B7).
+        JavaClasses classes = new ClassFileImporter().withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
+            .importPaths(classDirs);
         List<String> packages = list(options.get("--packages"));
         if (!packages.isEmpty()) {
             classes = classes.that(resideInAny(packages));
