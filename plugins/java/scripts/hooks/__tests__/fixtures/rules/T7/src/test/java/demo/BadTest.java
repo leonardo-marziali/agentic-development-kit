@@ -12,7 +12,7 @@ class BadTest {
         ProjectReadDto dto = mock(ProjectReadDto.class); // expect: T7
     }
 
-    static class ProjectReadDto {
+    record ProjectReadDto() {
     }
 
 }

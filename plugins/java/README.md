@@ -63,15 +63,17 @@ report with these sections, capped at 3 attempts per session:
 - **NullAway**: the changed files compiled with javac + Error Prone +
   NullAway against the module's own classpath (J20).
 - **ArchUnit**: the standard's architecture rules over the module's
-  compiled classes, plus the project's own rules. They cover the hexagon
-  (D8: dependencies point into the core, adapters never depend on each
-  other) and application services (S11: one public `execute` taking one
-  step-built `*Command` and returning nothing or an identifier; S12:
-  `@Service` only on `application.*Service`). They also check the S24
+  compiled production classes (test classes are never imported), plus the
+  project's own rules. They cover the hexagon (D8: dependencies point into
+  the core, adapters never depend on each other) and application services
+  (S11: a port declares one abstract `execute` taking its own step-built
+  `<Port>Command`, or nothing, and returning nothing or an identifier;
+  S12: `@Service` only on `application.*Service`). They also check the S24
   vocabulary of repositories, query services and mappers, S7 ports
-  without DTOs or entities, D15 domain purity, D19 `reconstitute`
-  callers, S47 audit fields, S40 error advice, S6 visibility and S25
-  cycles.
+  without DTOs or entities, S19 converters used only by MapStruct, D15
+  domain purity, D19 `reconstitute` callers, S47 audit fields, S40 error
+  advice, S6 visibility (port implementations are recognized by the port
+  they implement, not by an `Impl` suffix) and S25 cycles.
 
 When a rule genuinely doesn't apply, mark the line (or the line above) with
 `// java-rules:allow <ID> <reason>`. The reason is required; an allow

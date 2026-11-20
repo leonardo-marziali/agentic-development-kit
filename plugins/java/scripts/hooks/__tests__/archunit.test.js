@@ -100,11 +100,18 @@ test(
         .filter((f) => f.rule === rule)
         .map((f) => path.basename(f.file))
         .sort();
-    // Close: a second public method; DraftCommand: Lombok-style builder; Rename: two arguments; Ship: returns a String.
+    /*
+     * Close: a second public method; DraftCommand: Lombok-style builder; Admin: a second abstract method;
+     * AdminCommand: another command's first step; Rename: two arguments; Reopen: another port's command;
+     * Ship: returns a String.
+     */
     assert.deepEqual(filesOf('S11'), [
       'CloseProjectService.java',
       'DraftProjectCommand.java',
+      'ProjectAdmin.java',
+      'ProjectAdminCommand.java',
       'RenameProject.java',
+      'ReopenProject.java',
       'ShipProject.java',
     ]);
     assert.match(
@@ -115,8 +122,25 @@ test(
     assert.deepEqual(filesOf('S12'), ['ProjectFacade.java']);
     assert.deepEqual(filesOf('S24'), ['ProjectQueries.java']);
     assert.match(findings.find((f) => f.rule === 'S24').message, /loadAll/);
-    assert.deepEqual(filesOf('S6'), ['ExportProjectService.java']);
-    assert.deepEqual(rulesOf(findings), ['S11', 'S12', 'S24', 'S6']);
+    // A port implementation is recognized by the port it implements, whatever its name.
+    assert.deepEqual(filesOf('S6'), ['ExportProjectService.java', 'JpaProjectQueries.java']);
+    // The mapper and its generated implementation may use the converter; hand-written code may not.
+    assert.deepEqual([...new Set(filesOf('S19'))], ['JpaProjectQueries.java']);
+    assert.deepEqual(rulesOf(findings), ['S11', 'S12', 'S19', 'S24', 'S6']);
+  },
+);
+
+test(
+  'checks production classes only, never test classes (B7)',
+  { skip: SKIP_WITHOUT_JDK },
+  async (t) => {
+    const { manifest, dir } = await setup(t);
+    const classes = path.join(dir, 'target', 'test-classes');
+    compile(manifest, classes, path.join(FIXTURES, 'base'));
+
+    const findings = runner(manifest, ['--classes', classes, '--packages', 'com.acme..']);
+
+    assert.deepEqual(findings, []);
   },
 );
 

@@ -1,6 +1,6 @@
 ---
 name: mapstruct-mapping
-description: 'Use when creating DTOs, commands, read models, domain objects, entities or MapStruct mappers in a project that follows the java-standards opt-in. Covers the model set, DTO and anemic entity style, one mapper per layer boundary, @Context lookups, no java() expressions, abstract mappers with nullability proxies, explicit ignores, the fixed method vocabulary of repositories, query services and mappers, immutable value objects and grouping related values into one type (rules S13 to S24, D22 and D23).'
+description: 'Use when creating DTOs, commands, read models, domain objects, entities or MapStruct mappers in a project that follows the java-standards opt-in. Covers the model set, record read DTOs and anemic entity style, one mapper per layer boundary, @Context lookups, no java() expressions, converters that serve MapStruct only, abstract mappers with nullability proxies, explicit ignores, the fixed method vocabulary of repositories, query services and mappers, immutable value objects and grouping related values into one type (rules S13 to S24, D22 and D23).'
 paths: '**/*.java, **/pom.xml, **/build.gradle*'
 ---
 
@@ -20,8 +20,8 @@ justified exception with `// java-rules:allow <ID> <reason>`.
 
 ## Models
 
-**S13. The model set.** A domain concept can have up to nine models, and exists
-only in the forms it needs. For `Project`:
+**S13. The model set.** A domain concept gets one model per role it plays, and
+only the roles it needs. For `Project`:
 
 | Model                         | Layer       | Purpose                                  |
 | ----------------------------- | ----------- | ---------------------------------------- |
@@ -35,11 +35,16 @@ only in the forms it needs. For `Project`:
 | `Project`                     | Domain      | Aggregate, always                        |
 | `ProjectEntity`               | Persistence | Persistence model, when persisted        |
 
-Every other action has its own command in the same way (see S11).
+The table lists kinds of model, not a fixed count. Every other action has its
+own command (see S11), a state change can have its own write DTO, such as
+`ProjectStatusDto` (see S28), integration events are types of their own (see
+D25), and shared values such as `AuditInfo` appear in several models (see S47).
 
-**S14. DTO style.** Read DTOs are immutable: use Lombok's `@Value` with
-`@Builder`, because builders are more readable than constructors. Write and
-filter DTOs use `@Data`. DTOs prefer composition over inheritance.
+**S14. DTO style.** Read DTOs are immutable records with Lombok's `@Builder`,
+like every other immutable value carrier (see J15). Code that builds one by hand
+uses the builder, because it names every value at the call site; MapStruct finds
+the same builder (see S11). Write and filter DTOs use `@Data`. DTOs prefer
+composition over inheritance.
 
 **S15. Entity style.** An entity is the record a Data Mapper writes (Fowler,
 _PoEAA_), not the domain model. The aggregate owns the rules (see D17), so the
@@ -76,9 +81,6 @@ class ProjectEntity {
     @Setter(AccessLevel.NONE)
     private Long id;
 
-    @Setter(AccessLevel.NONE)
-    private String tenantId;
-
     private String name;
 
     private long ownerId;
@@ -87,6 +89,9 @@ class ProjectEntity {
     private ProjectStatus status;
 
     private @Nullable String description;
+
+    @Setter(AccessLevel.NONE)
+    private String tenantId;
 
     // A wrapper, so a null version tells Spring Data the entity is new (see S45).
     @Version
@@ -137,8 +142,8 @@ the boundary instead of ArchUnit:
 
 - `api` holds the controllers, the DTOs and `ProjectApiMapper`, all
   package-private.
-- `persistence` holds `ProjectRepositoryImpl`, `ProjectQueriesImpl`,
-  `ProjectJpaRepository`, `ProjectEntity`, `ProjectEntityMapper` and
+- `persistence` holds `JpaProjectRepository`, `JpaProjectQueries`,
+  `ProjectEntityRepository`, `ProjectEntity`, `ProjectEntityMapper` and
   `ProjectPredicates`, all package-private. The public interfaces they implement
   live in the core: `ProjectRepository` in `domain` and `ProjectQueries` in
   `application` (see D6 and D14).
@@ -155,16 +160,18 @@ the boundary instead of ArchUnit:
 ```java
 @ArchTest
 static final ArchRule noOneUsesMapperImplementations = noClasses().that()
-    .areNotAnnotatedWith(Generated.class)
+    .haveSimpleNameNotEndingWith("MapperImpl")
     .should().dependOnClassesThat()
     .haveSimpleNameEndingWith("MapperImpl")
     .because("inject the abstract mapper; MapStruct owns the implementation");
 ```
 
-`Generated` is `javax.annotation.processing.Generated`, which MapStruct puts on
-every class it writes, so the implementations themselves are exempt. A
-`MapperImpl` that extends another mapper's implementation would also be caught,
-which is the point.
+The generated implementations are exempt by name. MapStruct marks them with
+`javax.annotation.processing.Generated`, but that annotation has source
+retention, so it isn't in the bytecode ArchUnit reads. A hand-written class that
+extends a generated implementation is still caught, which is the point. Mapper
+tests construct the implementation directly (see T4), and they're outside the
+import (see B7).
 
 Converters used by more than one mapper are the exception, and they're public
 (see S19): those of one feature, such as `ProjectIdMapper`, live in the
@@ -188,7 +195,7 @@ ProjectEntity mapToEntity(Project project, String currentTenant);
 **S19. Compose with `uses`.** A nested object is mapped by its own mapper, which
 is injected through `uses` and never reimplemented. A value object that several
 mappers convert, such as a typed identifier (see D22), has one converter that
-they all reference the same way, so the conversion has one home (see J21):
+they all reference the same way:
 
 - **One feature's value objects** have their converter in the feature's
   `mapping` package, such as `project.mapping.ProjectIdMapper`, used by
@@ -199,8 +206,29 @@ they all reference the same way, so the conversion has one home (see J21):
 Converters are hand-written Spring beans, so MapStruct injects them like any
 other mapper. Their public methods follow the mapper vocabulary of S24.
 
+- **The rule's home is the value object.** What makes an identifier valid lives
+  in `ProjectId`'s constructor and nowhere else (see D22 and J21). A converter
+  holds no rule: it only lets generated code reach the constructor, and passes
+  through the `null` that MapStruct hands over for an absent value.
+- **Hand-written code calls the value object directly.** A controller types an
+  identifier with `new ProjectId(projectId)` (see S8), a repository unwraps it
+  with `value()` (see S44), and the mapper's object factory builds it for
+  `reconstitute` (see S23). None of them goes through a converter, which exists
+  for MapStruct only and accepts a `null` that hand-written code never has.
+  ArchUnit keeps it that way:
+
 ```java
-// project.mapping
+@ArchTest
+static final ArchRule convertersServeMapStructOnly = noClasses().that()
+    .resideOutsideOfPackage("..mapping..")
+    .and().areNotAnnotatedWith(Mapper.class)
+    .and().haveSimpleNameNotEndingWith("MapperImpl")
+    .should().dependOnClassesThat().resideInAPackage("..mapping..")
+    .because("hand-written code converts through the value object itself");
+```
+
+```java
+// project.mapping. For MapStruct only: the rule is ProjectId's constructor.
 @Component
 public class ProjectIdMapper {
 
@@ -300,6 +328,8 @@ abstract class ProjectEntityMapper {
 
     // MapStruct implements these. They are visible only to the generated class.
 
+    // reconstitute below builds the whole aggregate, so the setter isn't a target.
+    @Mapping(target = "description", ignore = true)
     protected abstract Project mapToDomain(ProjectEntity projectEntity);
 
     // The read model carries the audit data, which AuditMapper converts.
@@ -324,11 +354,22 @@ abstract class ProjectEntityMapper {
     protected Project reconstitute(ProjectEntity projectEntity) {
 
         return Project.reconstitute(new ProjectId(projectEntity.getId()),
-                                    projectEntity.getName(),
+                                    new ProjectName(projectEntity.getName()),
                                     projectEntity.getOwnerId(),
                                     projectEntity.getStatus(),
-                                    projectEntity.getDescription(),
+                                    ProjectDescription.ofNullable(projectEntity.getDescription()),
                                     Objects.requireNonNull(projectEntity.getVersion(), "a stored project has a version"));
+    }
+
+    // Value objects to columns, selected by their source and target types (see S21).
+    protected String toNameColumn(ProjectName projectName) {
+
+        return projectName.value();
+    }
+
+    protected @Nullable String toDescriptionColumn(@Nullable ProjectDescription projectDescription) {
+
+        return projectDescription == null ? null : projectDescription.value();
     }
 
 }
@@ -373,7 +414,10 @@ abstract class ProjectApiMapper {
 
         final UserSummary userSummary = usersById.get(ownerId);
 
-        return userSummary == null ? null : new OwnerDto(ownerId, userSummary.displayName());
+        return userSummary == null ? null : OwnerDto.builder()
+                                                    .id(ownerId)
+                                                    .displayName(userSummary.displayName())
+                                                    .build();
     }
 
     // Replaces expression = "java(project.status().name().toLowerCase())".
@@ -389,7 +433,7 @@ abstract class ProjectApiMapper {
 
 **S24. Fixed method names, enforced by ArchUnit.** Repositories, query services
 and mappers use a fixed vocabulary, as J6 and the examples above show.
-Application services have their own, a single `execute` (see S11).
+Application services declare one abstract method, `execute` (see S11).
 
 | Type          | Methods                                                                                                 |
 | ------------- | ------------------------------------------------------------------------------------------------------- |
@@ -446,8 +490,26 @@ values and has no identity of its own, such as `Money`, `DateRange` or
 - **Replace, don't mutate.** An aggregate changes a value object by replacing it
   with a new instance.
 - **Only where there's a rule.** Introduce a value object when the concept has
-  validation or behavior. A free-form `String` such as a description stays a
-  `String`.
+  validation or behavior. A limit is a rule, so a project's name and its
+  description, both limited in length, are `ProjectName` and
+  `ProjectDescription`. A `String` with no rule at all, such as an unbounded
+  note, stays a `String`.
+- **The value object owns its limits.** A limit is a constant on the value
+  object that enforces it, such as `ProjectName.MAX_LENGTH`, and nowhere else
+  (see J21). DTOs and commands reference that constant, so a request learns
+  about every invalid field at once (see S34), but the value object stays the
+  authority: no adapter, command or future use case can put an invalid name
+  into a `Project`.
+- **Commands carry plain values; services build the value objects.** A command
+  holds the `String` and checks it against the value object's constant, and the
+  application service creates the value object before calling the aggregate
+  (see S8). Identifiers are the exception: the controller types them on arrival
+  (see S8), because an invalid identifier is a bad address, not a form field to
+  report alongside others.
+- **Tighten a limit with a migration first.** Reconstitution goes through the
+  value objects too, so a stored value that breaks a tightened limit fails to
+  load (see D19). Correct the stored data in a migration before the release that
+  tightens the limit (see S51).
 - **Identifiers are value objects.** Every aggregate identifier is a record
   named `<Aggregate>Id`, such as `ProjectId`, in that aggregate's `domain`
   package. Every reference to another aggregate of the same module uses its
@@ -459,7 +521,8 @@ values and has no identity of its own, such as `Money`, `DateRange` or
 - **Typed identifiers stop at the core's edge.** DTOs and entities carry the
   underlying `Long`, so JPA, Spring Data and the sequence stay simple. One
   converter per identifier, such as `ProjectIdMapper`, serves every mapper of
-  the feature (see S19).
+  the feature, while hand-written code calls the constructor and `value()`
+  directly (see S19).
 
 ```java
 public record ProjectId(long value) {
@@ -470,6 +533,45 @@ public record ProjectId(long value) {
             // An InvalidValueException, so the API answers 400 (see S40).
             throw new InvalidIdentifierException("project", value);
         }
+    }
+
+}
+```
+
+```java
+public record ProjectName(String value) {
+
+    public static final int MAX_LENGTH = 120;
+
+    public ProjectName {
+
+        Objects.requireNonNull(value);
+
+        if (value.isBlank() || value.length() > MAX_LENGTH) {
+            // An InvalidValueException: PROJECT_NAME_INVALID, answered with 400 (see S40).
+            throw new InvalidProjectNameException(MAX_LENGTH);
+        }
+    }
+
+}
+
+public record ProjectDescription(String value) {
+
+    public static final int MAX_LENGTH = 2000;
+
+    public ProjectDescription {
+
+        Objects.requireNonNull(value);
+
+        if (value.length() > MAX_LENGTH) {
+            throw new InvalidProjectDescriptionException(MAX_LENGTH);
+        }
+    }
+
+    // The description is optional: no text, no value object.
+    public static @Nullable ProjectDescription ofNullable(@Nullable String value) {
+
+        return value == null ? null : new ProjectDescription(value);
     }
 
 }

@@ -1,6 +1,6 @@
 ---
 name: spring-boot-integrations
-description: 'Use when adding caching, Logbook HTTP logging, outbound HTTP clients or Resilience4j in a project that follows the java-standards opt-in. Covers stale-tolerant Spring Cache use, Logbook configuration and masking, one client per remote system implementing a driven port, RestClient and Boot 4 HTTP service groups, timeouts, OAuth2 client credentials, fault tolerance, clients generated from OpenAPI specifications and outbound URLs kept in properties (rules S54 to S60).'
+description: 'Use when adding caching, Logbook HTTP logging, outbound HTTP clients or Resilience4j in a project that follows the java-standards opt-in. Covers stale-tolerant Spring Cache use, Logbook configuration and masking, one client per remote system named <Target><Port> and implementing a driven port, RestClient and HTTP service groups, timeouts, OAuth2 client credentials, fault tolerance, clients generated from OpenAPI specifications and outbound URLs kept in properties (rules S54 to S60).'
 paths: '**/*.java, **/pom.xml, **/build.gradle*'
 ---
 
@@ -75,13 +75,14 @@ logbook:
 ## Outbound HTTP
 
 **S57. One client per remote system.** Every remote HTTP API gets its own
-client, named `<Target>HttpClient` and placed in the `client.http` package of
-the feature that uses it, for example `payment.client.http.PayPalHttpClient`.
+client, named after the remote system and the port it implements,
+`<Target><Port>` (see D6), and placed in the `client.http` package of the
+feature that uses it, for example `payment.client.http.PayPalPaymentGateway`.
 
 - **It implements a port.** Like a repository (see S44), the client sits behind
   a public driven port in `domain`, named by what the core needs, such as
   `PaymentGateway` (see D6). The port takes and returns domain objects.
-  `PayPalHttpClient` implements it, and it and the remote API's DTOs are
+  `PayPalPaymentGateway` implements it, and it and the remote API's DTOs are
   package-private, so no external model leaks into the services. This is the
   anti-corruption layer of D4.
 - **Built on `RestClient`, configured the Spring Boot way.** Use an
@@ -89,14 +90,16 @@ the feature that uses it, for example `payment.client.http.PayPalHttpClient`.
   and configure it through properties and Spring Boot's builder customizers
   rather than by hand (see S5). With more than two operations, the interface is
   generated from the remote's OpenAPI specification (see S59).
-  - **On Boot 4**, an `@HttpExchange` interface belongs to an HTTP service
-    group, one per remote system. `@ImportHttpServices` registers it, and Spring
-    Boot includes auto-configuration support and configuration properties for
-    HTTP Service Clients, configured per group with the pattern
+  - **An `@HttpExchange` interface** belongs to an HTTP service group, one per
+    remote system. `@ImportHttpServices` registers it, and Spring Boot
+    configures each group through properties under
     `spring.http.serviceclient.<group-name>.*` (see S60).
-  - **On Boot 3**, and for a client that uses `RestClient` directly, build it
-    from Spring Boot's `RestClient.Builder` and bind its base URL and timeouts
-    with `@ConfigurationProperties` (see S4 and S60).
+  - **A client that uses `RestClient` directly** is built from Spring Boot's
+    `RestClient.Builder`, with its base URL and timeouts bound through
+    `@ConfigurationProperties` (see S4 and S60).
+  - **On Boot 3**, which has no HTTP service groups, every client is built the
+    second way, and an `@HttpExchange` interface is created with
+    `HttpServiceProxyFactory`.
 - **Always set timeouts.** Connect and read timeouts are explicit for every
   client. A default of "wait forever" isn't acceptable.
 - **Authentication through Spring.** OAuth2 client credentials go through Spring
@@ -138,12 +141,12 @@ hand-written client is simpler than a generator setup.
   S60) are only for hand-written clients.
 - **Spring HTTP interfaces.** Use the `spring` generator with the
   `spring-http-interface` library, so the generated interfaces run on our
-  configured `RestClient` (see S57). On Boot 3,
-  `useHttpServiceProxyFactoryInterfacesConfigurator` generates the class that
-  creates them. On Boot 4, register them in the remote's HTTP service group with
-  `@ImportHttpServices` instead.
+  configured `RestClient` (see S57), with `useSpringBoot4` and `useJackson3`,
+  which OpenAPI Generator offers from 7.16.0. Register the generated interfaces
+  in the remote's HTTP service group with `@ImportHttpServices` (see S60), so
+  the generator needs no configuration class of its own.
 - **Behind the client.** The generated API and models are used only by the
-  `<Target>HttpClient` implementation, which maps them to domain objects with a
+  `<Target><Port>` implementation, which maps them to domain objects with a
   MapStruct mapper, so nothing generated leaks into the services.
 
 ```xml
@@ -164,8 +167,8 @@ hand-written client is simpler than a generator setup.
         <apiPackage>com.company.app.payment.client.http.paypal.api</apiPackage>
         <modelPackage>com.company.app.payment.client.http.paypal.model</modelPackage>
         <configOptions>
-          <useSpringBoot3>true</useSpringBoot3>
-          <useHttpServiceProxyFactoryInterfacesConfigurator>true</useHttpServiceProxyFactoryInterfacesConfigurator>
+          <useSpringBoot4>true</useSpringBoot4>
+          <useJackson3>true</useJackson3>
           <openApiNullable>false</openApiNullable>
         </configOptions>
       </configuration>
@@ -174,16 +177,18 @@ hand-written client is simpler than a generator setup.
 </plugin>
 ```
 
-On Spring Boot 4, set `useSpringBoot4` instead of `useSpringBoot3`.
+**On Boot 3**, set `useSpringBoot3` instead of `useSpringBoot4` and
+`useJackson3`, and add `useHttpServiceProxyFactoryInterfacesConfigurator`, which
+generates the class that creates the interfaces.
 
 **S60. Outbound URLs live in properties.** No URL is written in code. Values
 that change per environment come from environment variables.
 
-- **Base URL and timeouts.** On Boot 4, an HTTP service group's properties hold
-  them, under `spring.http.serviceclient.<group-name>.*` (see S5 and S57), with
-  defaults for every client under `spring.http.clients.*`. On Boot 3, and for a
-  client that uses `RestClient` directly, they're our own properties, named as
-  S61 describes and bound with `@ConfigurationProperties` (see S4).
+- **Base URL and timeouts.** An HTTP service group's properties hold them,
+  under `spring.http.serviceclient.<group-name>.*` (see S5 and S57), with
+  defaults for every client under `spring.http.clients.*`. A client that uses
+  `RestClient` directly has its own properties, named as S61 describes and bound
+  with `@ConfigurationProperties` (see S4). **On Boot 3**, every client does.
 - **Paths.** A generated client takes its paths from the specification (see
   S59). A hand-written client reads them from properties, composed with
   placeholders.
@@ -193,7 +198,7 @@ that change per environment come from environment variables.
   readable.
 
 ```properties
-### PAYPAL: generated client, Boot 4 HTTP service group ###
+### PAYPAL: generated client, HTTP service group ###
 spring.http.serviceclient.paypal.base-url=${PAYPAL_API_BASE_URL:https://api-m.sandbox.paypal.com}
 spring.http.serviceclient.paypal.connect-timeout=2s
 spring.http.serviceclient.paypal.read-timeout=5s

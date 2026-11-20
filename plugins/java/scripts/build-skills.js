@@ -32,9 +32,9 @@ const SKILLS = [
   {
     name: 'java-build-standards',
     title: 'Java build standards (Maven and Gradle)',
-    parts: ['## 2. Build (Maven and Gradle)'],
+    parts: ['## Baseline', '## 2. Build (Maven and Gradle)'],
     description:
-      'Use when editing pom.xml, build.gradle or lombok.config in a project that follows the java-standards opt-in. Covers choosing and parameterizing dependency versions, declaring the Java version, Eclipse JDT formatting, Spring Modulith and ArchUnit together, the OpenAPI contract check, coverage gates and configuring Lombok with MapStruct through one lombok.config (rules B1 to B10).',
+      'Use when editing pom.xml, build.gradle or lombok.config in a project that follows the java-standards opt-in. Covers the baseline stack (Java 25, Spring Boot 4, Jackson 3, Hibernate 7, Spring Modulith 2) and its On Boot 3 notes, choosing and parameterizing dependency versions, declaring the Java version, Eclipse JDT formatting, Spring Modulith and ArchUnit together over production classes only, the OpenAPI contract check, coverage gates that exclude generated code by pattern and configuring Lombok with MapStruct through one lombok.config (rules B1 to B10).',
   },
   {
     name: 'spring-boot-architecture',
@@ -54,7 +54,7 @@ const SKILLS = [
     title: 'Models and MapStruct mapping',
     parts: ['### Models', '### Mapping', '### Method naming', '### Value objects'],
     description:
-      'Use when creating DTOs, commands, read models, domain objects, entities or MapStruct mappers in a project that follows the java-standards opt-in. Covers the model set, DTO and anemic entity style, one mapper per layer boundary, @Context lookups, no java() expressions, abstract mappers with nullability proxies, explicit ignores, the fixed method vocabulary of repositories, query services and mappers, immutable value objects and grouping related values into one type (rules S13 to S24, D22 and D23).',
+      'Use when creating DTOs, commands, read models, domain objects, entities or MapStruct mappers in a project that follows the java-standards opt-in. Covers the model set, record read DTOs and anemic entity style, one mapper per layer boundary, @Context lookups, no java() expressions, converters that serve MapStruct only, abstract mappers with nullability proxies, explicit ignores, the fixed method vocabulary of repositories, query services and mappers, immutable value objects and grouping related values into one type (rules S13 to S24, D22 and D23).',
   },
   {
     name: 'spring-rest-api-design',
@@ -68,35 +68,35 @@ const SKILLS = [
       '### Configuration files',
     ],
     description:
-      'Use when adding or changing REST endpoints, request and response DTOs, validation, OpenAPI annotations, pagination or error handling in a project that follows the java-standards opt-in. Covers Richardson level 2, standard HTTP and RFC features, resource naming, state changes as a PUT on the state, PATCH with JSON Merge Patch and JSON Patch, the three layers of validation, OpenAPI documentation, PageableDto and PageDto, ProblemDetail errors mapped from HTTP-free domain exception categories, bulk operations and controller paths kept in api-paths.properties (rules S26 to S43, S61 and S62).',
+      'Use when adding or changing REST endpoints, request and response DTOs, validation, OpenAPI annotations, pagination or error handling in a project that follows the java-standards opt-in. Covers Richardson level 2, standard HTTP and RFC features, resource naming, state changes as a PUT on the state, PATCH with JSON Merge Patch and JSON Patch validated with the groups of the PUT, the three layers of validation with limits owned by value objects, OpenAPI documentation, PageableDto and PageDto, ProblemDetail errors mapped from HTTP-free domain exception categories, optimistic-locking failures answered with 412, bulk operations and controller paths kept in api-paths.properties (rules S26 to S43, S61 and S62).',
   },
   {
     name: 'spring-data-persistence',
     title: 'Persistence with Spring Data',
     parts: ['### Persistence', '### Value objects'],
     description:
-      'Use when writing repositories, query services, entities, queries, auditing, migrations or filters with Spring Data JPA, JDBC or MongoDB in a project that follows the java-standards opt-in. Covers repositories as driven ports that hide the store, identifiers allocated by the repository, UTC times, automatic auditing kept out of the domain, JaVers, avoiding N+1 queries, query preference order, Liquibase, QueryDSL predicate classes, immutable value objects and @Embeddable value groups (rules S44 to S53, D22 and D23).',
+      'Use when writing repositories, query services, entities, queries, auditing, migrations or filters with Spring Data JPA, JDBC or MongoDB in a project that follows the java-standards opt-in. Covers repositories as driven ports that hide the store, named after their technology (JpaProjectRepository over ProjectEntityRepository), identifiers allocated by the repository, UTC times, automatic auditing kept out of the domain, JaVers, avoiding N+1 queries, query preference order, Liquibase, QueryDSL predicate classes, immutable value objects and @Embeddable value groups (rules S44 to S53, D22 and D23).',
   },
   {
     name: 'spring-boot-integrations',
     title: 'Caching, HTTP logging and outbound HTTP',
     parts: ['### Caching', '### HTTP logging', '### Outbound HTTP'],
     description:
-      'Use when adding caching, Logbook HTTP logging, outbound HTTP clients or Resilience4j in a project that follows the java-standards opt-in. Covers stale-tolerant Spring Cache use, Logbook configuration and masking, one client per remote system implementing a driven port, RestClient and Boot 4 HTTP service groups, timeouts, OAuth2 client credentials, fault tolerance, clients generated from OpenAPI specifications and outbound URLs kept in properties (rules S54 to S60).',
+      'Use when adding caching, Logbook HTTP logging, outbound HTTP clients or Resilience4j in a project that follows the java-standards opt-in. Covers stale-tolerant Spring Cache use, Logbook configuration and masking, one client per remote system named <Target><Port> and implementing a driven port, RestClient and HTTP service groups, timeouts, OAuth2 client credentials, fault tolerance, clients generated from OpenAPI specifications and outbound URLs kept in properties (rules S54 to S60).',
   },
   {
     name: 'java-ddd-events',
     title: 'Domain-driven, hexagonal and event-driven design',
     parts: ['## 4. Domain-Driven, Hexagonal and Event-Driven Design'],
     description:
-      'Use when modelling bounded contexts, aggregates, value objects, domain services, ports and adapters, state machines, events, messaging or scheduled jobs in a project that follows the java-standards opt-in. Covers the ubiquitous language, bounded contexts and anti-corruption layers, the hexagonal core with driving and driven ports enforced by ArchUnit, aggregate boundaries, references by identity, one aggregate per transaction, optimistic locking on the root, read models that bypass the aggregate, plain-Java domain classes, creation factories, step builders, early identity and reconstitution, explicit state machines, value objects, domain and integration events, the transactional outbox, idempotent consumers, versioned schemas and safe scheduled jobs (rules D1 to D29).',
+      'Use when modelling bounded contexts, aggregates, value objects, domain services, ports and adapters, state machines, events, messaging or scheduled jobs in a project that follows the java-standards opt-in. Covers the ubiquitous language, bounded contexts and anti-corruption layers, Spring Modulith named interfaces and an open shared module, the hexagonal core with driving and driven ports enforced by ArchUnit, adapters named after their technology and port, aggregate boundaries, references by identity, one aggregate per transaction, optimistic locking on the root, read models that bypass the aggregate, plain-Java domain classes, creation factories, step builders, early identity and reconstitution, explicit state machines, value objects, domain events and integration events published from an events package, the transactional outbox, idempotent consumers, versioned schemas and safe scheduled jobs (rules D1 to D29).',
   },
   {
     name: 'java-testing-standards',
     title: 'Testing standards',
     parts: ['## 5. Testing'],
     description:
-      'Use when writing or reviewing tests in a Java project that follows the java-standards opt-in. Covers branch coverage, shouldXWhenY naming with @Nested and AssertJ, parameterized tests, mandatory unit tests for the domain, application services and mappers, optional slice and integration tests, WireMock, and the shortcuts never to take (rules T1 to T7).',
+      'Use when writing or reviewing tests in a Java project that follows the java-standards opt-in. Covers branch coverage of the required suite, shouldXWhenY naming with @Nested and AssertJ, parameterized tests, mandatory unit tests for the domain, application services, commands, mappers, the error handler and the patch applier, a mandatory repository round-trip test per aggregate, optional other slice and integration tests, WireMock, and the shortcuts never to take (rules T1 to T7).',
   },
 ];
 

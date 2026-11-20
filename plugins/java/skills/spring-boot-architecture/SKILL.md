@@ -41,24 +41,45 @@ comment saying which.
 **S6. Minimum visibility for managed classes.**
 
 - Configuration classes and controllers aren't public.
-- Application services, query services and repositories expose a public
-  interface, the port, with a package-private implementation (see S10 and D6).
-  Adapters can then depend only on the port, never on the implementation.
-  ArchUnit checks it:
+- Application services, query services, repositories and outbound clients
+  expose a public interface, the port, with a package-private implementation
+  (see S10 and D6). Adapters can then depend only on the port, never on the
+  implementation. ArchUnit recognizes implementations by the port they
+  implement, not by their name, so the rule holds whatever the adapter is
+  called:
 
 ```java
 @ArchTest
-static final ArchRule portImplementationsArePackagePrivate = classes().that()
-    .areAnnotatedWith(Service.class)
-    .or().haveSimpleNameEndingWith("Impl")
+static final ArchRule portImplementationsArePackagePrivate = classes()
+    .that(arePortImplementations())
     .should().notBePublic();
+
+// Application services, and classes outside domain that implement a feature's port.
+private static DescribedPredicate<JavaClass> arePortImplementations() {
+
+    return DescribedPredicate.describe("port implementations",
+        javaClass -> javaClass.isAnnotatedWith(Service.class)
+            || (!javaClass.getPackageName().matches(".*\\.domain(\\..*)?")
+                && javaClass.getAllRawInterfaces().stream().anyMatch(ArchitectureTest::isFeaturePort)));
+}
+
+// A port is a public top-level interface in a feature's domain or application package.
+private static boolean isFeaturePort(JavaClass javaInterface) {
+
+    return javaInterface.getModifiers().contains(JavaModifier.PUBLIC)
+        && javaInterface.isTopLevelClass()
+        && javaInterface.getPackageName().matches(".*\\.(domain|application)(\\..*)?")
+        && !javaInterface.getPackageName().contains(".shared.");
+}
 ```
+
+Classes in `domain` are left out because domain events implement interfaces
+there and stay public (see D24).
 
 - Internal collaborators are package-private classes with no interface.
   Interfaces exist only at package boundaries, with one exception: a controller
   interface, which exists only to keep the OpenAPI annotations and the mappings
   apart from the logic (see S35).
-- Repositories follow the same pattern (see S44).
 
 ## Layers and flow
 
@@ -143,8 +164,8 @@ class UpdateProjectDetailsService implements UpdateProjectDetails {
         final Project project = projectRepository.getById(command.projectId());
         project.assertVersion(command.expectedVersion());
 
-        project.rename(command.name());
-        project.setDescription(command.description());
+        project.rename(new ProjectName(command.name()));
+        project.setDescription(ProjectDescription.ofNullable(command.description()));
 
         projectRepository.update(project);
     }
@@ -161,7 +182,7 @@ public void update(Project project) {
      * between the version check and the flush, @Version fails the flush. The
      * entity is managed, so the commit flushes the change without a save call.
      */
-    final ProjectEntity projectEntity = projectJpaRepository.findById(project.getId().value())
+    final ProjectEntity projectEntity = projectEntityRepository.findById(project.getId().value())
                                                             .orElseThrow(() -> new ProjectNotFoundException(project.getId()));
 
     projectEntityMapper.updateEntity(project, projectEntity);
@@ -170,9 +191,11 @@ public void update(Project project) {
 ```
 
 `VersionMismatchException` (see D13) and Spring's
-`ObjectOptimisticLockingFailureException` both map to `412 Precondition Failed`.
-A missing `If-Match` on an update returns `428 Precondition Required` (RFC
-6585). Spring answers a missing required header with `400`, so the error handler
+`ObjectOptimisticLockingFailureException` both map to `412 Precondition Failed`
+with the same code, so a client handles one case (see S40). The first means the
+client's version was already stale; the second means another transaction
+committed between the version check and the flush. A missing `If-Match` on an
+update returns `428 Precondition Required` (RFC 6585). Spring answers a missing required header with `400`, so the error handler
 overrides that case (see S40). `ETags` in `shared.web` converts between a
 version and a strong `ETag` value.
 
@@ -249,23 +272,25 @@ apart (Hombergs, ch. 4).
   that takes a `Function` from the first step to the final step. The lambda must
   reach the final step, so the compiler still checks every mandatory value. The
   `Consumer` overload of J26 can't do this.
-- **Checked by ArchUnit.** The port has one abstract `execute(<Port>Command)`,
-  and the command has a static `builder()` that returns its first step.
+- **Checked by ArchUnit.** A port declares one abstract method, `execute`,
+  which takes its `<Port>Command` or nothing. A command has a public static
+  `builder()` that returns its first step. The rules after the example check
+  both.
 
 ```java
 public record UpdateProjectDetailsCommand(ProjectId projectId,
-    long expectedVersion,
     String name,
-    @Nullable String description) {
+    @Nullable String description,
+    long expectedVersion) {
 
     public UpdateProjectDetailsCommand {
 
         CommandCheck.of(UpdateProjectDetailsCommand.class)
                     .notNull("projectId", projectId)
-                    .notNegative("expectedVersion", expectedVersion)
                     .notBlank("name", name)
-                    .maxLength("name", name, Project.NAME_MAX_LENGTH)
-                    .maxLength("description", description, Project.DESCRIPTION_MAX_LENGTH)
+                    .maxLength("name", name, ProjectName.MAX_LENGTH)
+                    .maxLength("description", description, ProjectDescription.MAX_LENGTH)
+                    .notNegative("expectedVersion", expectedVersion)
                     .throwIfInvalid();
     }
 
@@ -276,19 +301,19 @@ public record UpdateProjectDetailsCommand(ProjectId projectId,
 
     public interface ProjectIdStep {
 
-        ExpectedVersionStep projectId(ProjectId projectId);
-
-    }
-
-    public interface ExpectedVersionStep {
-
-        NameStep expectedVersion(long expectedVersion);
+        NameStep projectId(ProjectId projectId);
 
     }
 
     public interface NameStep {
 
-        FinalStep name(String name);
+        ExpectedVersionStep name(String name);
+
+    }
+
+    public interface ExpectedVersionStep {
+
+        FinalStep expectedVersion(long expectedVersion);
 
     }
 
@@ -301,34 +326,34 @@ public record UpdateProjectDetailsCommand(ProjectId projectId,
 
     }
 
-    private static final class Builder implements ProjectIdStep, ExpectedVersionStep, NameStep, FinalStep {
+    private static final class Builder implements ProjectIdStep, NameStep, ExpectedVersionStep, FinalStep {
 
         private @Nullable ProjectId projectId;
-
-        private long expectedVersion;
 
         private @Nullable String name;
 
         private @Nullable String description;
 
+        private long expectedVersion;
+
         @Override
-        public ExpectedVersionStep projectId(ProjectId projectId) {
+        public NameStep projectId(ProjectId projectId) {
 
             this.projectId = projectId;
             return this;
         }
 
         @Override
-        public NameStep expectedVersion(long expectedVersion) {
+        public ExpectedVersionStep name(String name) {
 
-            this.expectedVersion = expectedVersion;
+            this.name = name;
             return this;
         }
 
         @Override
-        public FinalStep name(String name) {
+        public FinalStep expectedVersion(long expectedVersion) {
 
-            this.name = name;
+            this.expectedVersion = expectedVersion;
             return this;
         }
 
@@ -339,14 +364,16 @@ public record UpdateProjectDetailsCommand(ProjectId projectId,
             return this;
         }
 
+        /*
+         * In null-marked code the steps guarantee these values. A null can still
+         * arrive from unannotated code, and then CommandCheck reports it as a 400
+         * (see S34); requireNonNull would turn it into a 500.
+         */
         @Override
+        @SuppressWarnings("NullAway")
         public UpdateProjectDetailsCommand build() {
 
-            // The steps guarantee these values; requireNonNull states it for NullAway.
-            return new UpdateProjectDetailsCommand(Objects.requireNonNull(projectId),
-                                                   expectedVersion,
-                                                   Objects.requireNonNull(name),
-                                                   description);
+            return new UpdateProjectDetailsCommand(projectId, name, description, expectedVersion);
         }
 
     }
@@ -368,14 +395,88 @@ public interface UpdateProjectDetails {
 // Both calls fail to compile if a mandatory value is missing.
 updateProjectDetails.execute(UpdateProjectDetailsCommand.builder()
     .projectId(projectId)
-    .expectedVersion(expectedVersion)
     .name(name)
+    .expectedVersion(expectedVersion)
     .build());
 
 updateProjectDetails.execute(command -> command.projectId(projectId)
-    .expectedVersion(expectedVersion)
     .name(name)
+    .expectedVersion(expectedVersion)
     .description(description));
+```
+
+Query ports end in `Queries` and follow S24 instead. The step interfaces are
+nested in their command, so `areTopLevelClasses()` leaves them out.
+
+```java
+@ArchTest
+static final ArchRule portsDeclareOneExecute = classes().that()
+    .resideInAPackage("..application..")
+    .and().areInterfaces()
+    .and().arePublic()
+    .and().areTopLevelClasses()
+    .and().haveSimpleNameNotEndingWith("Queries")
+    .should(declareOneExecute());
+
+@ArchTest
+static final ArchRule commandsHaveStepBuilders = classes().that()
+    .resideInAPackage("..application..")
+    .and().areTopLevelClasses()
+    .and().haveSimpleNameEndingWith("Command")
+    .should(declareStepBuilder());
+
+private static ArchCondition<JavaClass> declareOneExecute() {
+
+    return new ArchCondition<>("declare one abstract execute(<Port>Command) or execute()") {
+
+        @Override
+        public void check(JavaClass port, ConditionEvents events) {
+
+            final List<JavaMethod> abstractMethods = port.getMethods().stream()
+                                                         .filter(method -> method.getModifiers().contains(JavaModifier.ABSTRACT))
+                                                         .toList();
+
+            final boolean valid = abstractMethods.size() == 1
+                && abstractMethods.getFirst().getName().equals("execute")
+                && takesItsCommandOrNothing(abstractMethods.getFirst(), port.getName() + "Command");
+
+            if (!valid) {
+                events.add(SimpleConditionEvent.violated(port,
+                    port.getName() + " must declare one abstract execute(" + port.getSimpleName() + "Command) or execute()"));
+            }
+        }
+
+    };
+}
+
+private static boolean takesItsCommandOrNothing(JavaMethod execute, String commandName) {
+
+    final List<JavaClass> parameters = execute.getRawParameterTypes();
+
+    return parameters.isEmpty() || (parameters.size() == 1 && parameters.getFirst().getName().equals(commandName));
+}
+
+private static ArchCondition<JavaClass> declareStepBuilder() {
+
+    return new ArchCondition<>("declare a public static builder() that returns its first step") {
+
+        @Override
+        public void check(JavaClass command, ConditionEvents events) {
+
+            final boolean valid = command.getMethods().stream()
+                                         .anyMatch(method -> method.getName().equals("builder")
+                                             && method.getRawParameterTypes().isEmpty()
+                                             && method.getModifiers().containsAll(Set.of(JavaModifier.PUBLIC, JavaModifier.STATIC))
+                                             && method.getRawReturnType().getEnclosingClass().map(command::equals).orElse(false));
+
+            if (!valid) {
+                events.add(SimpleConditionEvent.violated(command,
+                    command.getName() + " must declare a public static builder() that returns one of its nested steps"));
+            }
+        }
+
+    };
+}
 ```
 
 MapStruct creates commands through their canonical constructor. It uses a
@@ -425,7 +526,7 @@ com.company.app
 │   │                     (interfaces and implementations), ProjectReadDto,
 │   │                     ProjectWriteDto, ProjectFilterDto, ProjectApiMapper
 │   ├── client/
-│   │   └── http/         Outbound HTTP adapters, such as PayPalHttpClient (see S57)
+│   │   └── http/         Outbound HTTP adapters, such as PayPalPaymentGateway (see S57)
 │   ├── application/      DraftProject, DraftProjectCommand, DraftProjectService,
 │   │   │                 UpdateProjectDetails, UpdateProjectDetailsCommand,
 │   │   │                 UpdateProjectDetailsService, ProjectQueries,
@@ -436,15 +537,17 @@ com.company.app
 │   ├── domain/           Project, ProjectId, value objects, state machines,
 │   │                     domain events, domain exceptions, domain services,
 │   │                     driven ports such as ProjectRepository
+│   ├── events/           Our integration events, the published language
+│   │                     (named interface, see D2 and D25)
 │   ├── mapping/          Converters shared by the feature's mappers, such as
 │   │                     ProjectIdMapper (see S19)
 │   ├── messaging/
-│   │   ├── in/           Callbacks and consumers (driving), foreign integration
-│   │   │                 events, inbox and its processor (see D27)
-│   │   └── out/          Our integration events, externalization (driven,
-│   │                     see D26)
-│   ├── persistence/      ProjectRepositoryImpl, ProjectQueriesImpl,
-│   │                     ProjectJpaRepository, ProjectEntity,
+│   │   ├── in/           Listeners, callbacks and consumers (driving), foreign
+│   │   │                 integration events, inbox and its processor (see D27)
+│   │   └── out/          Translation of domain events into integration events,
+│   │                     externalization (driven, see D25 and D26)
+│   ├── persistence/      JpaProjectRepository, JpaProjectQueries,
+│   │                     ProjectEntityRepository, ProjectEntity,
 │   │                     ProjectEntityMapper, ProjectPredicates
 │   └── scheduler/        Scheduled jobs
 └── shared/
@@ -473,7 +576,9 @@ service, a driving port (see D14). `messaging` is the one technology on both
 sides, so it is split: `messaging.in` receives and calls a driving port, and
 `messaging.out` implements the publishing side. The two never depend on each
 other (see D8). Everything in `application`, except the public ports and their
-input and output records, is package-private (see S6).
+input and output records, is package-private (see S6). `events` isn't an
+adapter: it holds only records of plain values, the contract that other modules
+and systems receive (see D25).
 
 ## Configuration files
 

@@ -14,8 +14,31 @@ Two principles sit behind everything else:
 - **Code is read far more often than it is written.** Consistency and clarity
   win over brevity.
 
+## Baseline
+
+The standard targets one stack, and every example is written for it:
+
+| Part            | Baseline                                                  |
+| --------------- | --------------------------------------------------------- |
+| Java            | 25 (see B4)                                               |
+| Spring Boot     | 4.x, with Spring Framework 7 and Spring Security 7        |
+| JSON            | Jackson 3 (`tools.jackson`), the default of Spring Boot 4 |
+| Persistence     | Hibernate 7, through Spring Data JPA                      |
+| Modules, outbox | Spring Modulith 2 (see D2 and D26)                        |
+
+- **Examples follow the baseline only.** Where an older line differs, a note
+  that starts with **On Boot 3** says what changes, and nothing else in the
+  standard depends on it. Spring Boot 3.5's open-source support ended in June
+  2026, so a new project starts on 4.x.
+- **Jackson 3 keeps one old package.** Its annotations stay in
+  `com.fasterxml.jackson.annotation`, while everything else moved to
+  `tools.jackson`, which is why domain purity forbids both (see D15).
+- **Raise the baseline deliberately.** When it moves, every example moves with
+  it in one change, so the standard never mixes two generations again.
+
 ## Contents
 
+- [Baseline](#baseline)
 - [1. Java](#1-java)
 - [2. Build (Maven and Gradle)](#2-build-maven-and-gradle)
 - [3. Spring Boot](#3-spring-boot)
@@ -38,8 +61,8 @@ renders them as CommonMark, links use reference syntax such as
 Java versions, use HTML for richer formatting. Don't mix the two styles in one
 project.
 
-**J3. Block syntax for long comments.** A comment spanning several lines always
-uses `/* */`.
+**J3. Block syntax for long comments.** A comment that isn't documentation and
+spans several lines always uses `/* */`. Documentation comments follow J2.
 
 **J4. Comments serve the first-time reader.** Write every comment for someone,
 human or AI agent, who is reading that code for the first time. Don't let the
@@ -63,7 +86,8 @@ it belongs to, so the whole invocation reads cleanly:
 `...Minutes`.
 
 **J8. One suffix per concept.** Pick one suffix and use it across the project,
-for example `*Config` and never a mix of `*Conf` and `*Configuration`.
+for example `*Config` and never a mix of `*Conf` and `*Configuration`. Port
+implementations follow D6.
 
 ### Code organization
 
@@ -74,24 +98,43 @@ private methods, nested types. Lombok replaces hand-written accessors, `equals`,
 constructors (see [S15](#models)).
 
 **J10. Meaningful field order.** Fields run from most to least important, top to
-bottom, in the same order across the project: identifier, mandatory business
-fields, optional business fields, then technical fields such as audit data and
-version. Injected dependencies also follow one order: services, repositories,
-mappers, then infrastructure clients.
+bottom, in the same order across the project:
 
-**J11. Meaningful argument order.** Arguments run from most to least important,
-left to right, and this order stays coherent across the project. In a method
-that changes something, the identifier comes first, then the new values, then
-everything else. Optional arguments always come last.
+1. the identifier;
+2. mandatory business fields;
+3. nullable business fields;
+4. technical fields, always as tenant, version, then audit data.
+
+Injected dependencies also follow one order: services, repositories, mappers,
+then infrastructure clients.
+
+**J11. The same order for arguments.** Arguments and record components follow
+the order of J10, so a record reads like the class it mirrors, and a method's
+parameters like the fields they fill: the identifier, the mandatory business
+values (in a method that changes something, the new values), the nullable ones,
+then the technical ones, such as an expected version. A nullable argument keeps
+that place. Only an argument the caller can leave out entirely, through an
+overload (see J19), moves to the end.
 
 ```java
 void reschedule(BookingId id, DateRange period, @Nullable String reason);
+
+record UpdateProjectDetailsCommand(ProjectId projectId, String name, @Nullable String description,
+    long expectedVersion) {}
 ```
 
 **J12. Readable method bodies.** Declare local variables near their first use
 and mark them `final` when they are immutable. Separate logical steps with a
 blank line. A variable filled by a loop stays directly above that loop, with no
 blank line between them. A log statement has a blank line on each side.
+
+- **Bodies open with a blank line.** A class, record or interface body starts
+  and ends with a blank line, so its members stand apart from the declaration.
+  A method or constructor body starts with one, but doesn't end with one.
+- **An empty body, or one that holds only a comment, has none** (see J25).
+
+Set the formatter's blank-line options to match, so the build keeps the layout
+(see B5).
 
 ### Language features
 
@@ -287,15 +330,49 @@ private static final Map<ProjectStatus, Set<ProjectStatus>> TRANSITIONS = Map.of
 **B7. Enforce the architecture.** Use both: Spring Modulith verifies the
 boundaries between features (see D2), and ArchUnit enforces layering,
 visibility, domain purity and the absence of package cycles inside each feature
-(see D8). Both run as unit tests.
+(see D8). Both run as unit tests, and both import production classes only:
+Modulith does so by default, and the ArchUnit suite declares it. The rules
+govern the application, while tests legitimately reach into package-private
+code (see T4).
+
+```java
+@AnalyzeClasses(packagesOf = Application.class, importOptions = ImportOption.DoNotIncludeTests.class)
+class ArchitectureTest {
+    // The @ArchTest rules of this standard.
+}
+```
 
 **B8. Protect the API contract.** Generate the OpenAPI specification during the
 build. Fail the build if it differs from the committed file, and check for
 breaking changes.
 
-**B9. A coverage gate that means something.** Measure branch coverage on
-business logic, and exclude only generated code. The `lombok.config` of B10
-marks Lombok's output as generated, and the gate excludes `*MapperImpl` classes.
+**B9. A coverage gate that means something.** Measure branch coverage on the
+code that T4 and T5 require tests for (see T1), and exclude only generated
+code. JaCoCo skips code annotated
+with an annotation whose simple name contains `Generated`, but only if the
+annotation stays in the class file:
+
+- **Lombok** qualifies: the `lombok.config` of B10 adds `@lombok.Generated`,
+  which stays in the class file.
+- **MapStruct, QueryDSL and OpenAPI Generator** don't: their `@Generated` has
+  source retention, so JaCoCo never sees it. Exclude their output by pattern.
+
+```xml
+<plugin>
+    <groupId>org.jacoco</groupId>
+    <artifactId>jacoco-maven-plugin</artifactId>
+    <configuration>
+        <excludes>
+            <!-- Generated code whose @Generated JaCoCo can't see. -->
+            <exclude>**/*MapperImpl.class</exclude>
+            <exclude>**/Q*Entity.class</exclude>
+            <exclude>**/Q*Embeddable.class</exclude>
+            <exclude>**/client/http/*/api/**</exclude>
+            <exclude>**/client/http/*/model/**</exclude>
+        </excludes>
+    </configuration>
+</plugin>
+```
 
 **B10. Lombok and MapStruct together.** The two are always used together, so
 configure them as a pair on the compiler's annotation processor path, including
@@ -369,24 +446,45 @@ comment saying which.
 **S6. Minimum visibility for managed classes.**
 
 - Configuration classes and controllers aren't public.
-- Application services, query services and repositories expose a public
-  interface, the port, with a package-private implementation (see S10 and D6).
-  Adapters can then depend only on the port, never on the implementation.
-  ArchUnit checks it:
+- Application services, query services, repositories and outbound clients
+  expose a public interface, the port, with a package-private implementation
+  (see S10 and D6). Adapters can then depend only on the port, never on the
+  implementation. ArchUnit recognizes implementations by the port they
+  implement, not by their name, so the rule holds whatever the adapter is
+  called:
 
 ```java
 @ArchTest
-static final ArchRule portImplementationsArePackagePrivate = classes().that()
-    .areAnnotatedWith(Service.class)
-    .or().haveSimpleNameEndingWith("Impl")
+static final ArchRule portImplementationsArePackagePrivate = classes()
+    .that(arePortImplementations())
     .should().notBePublic();
+
+// Application services, and classes outside domain that implement a feature's port.
+private static DescribedPredicate<JavaClass> arePortImplementations() {
+
+    return DescribedPredicate.describe("port implementations",
+        javaClass -> javaClass.isAnnotatedWith(Service.class)
+            || (!javaClass.getPackageName().matches(".*\\.domain(\\..*)?")
+                && javaClass.getAllRawInterfaces().stream().anyMatch(ArchitectureTest::isFeaturePort)));
+}
+
+// A port is a public top-level interface in a feature's domain or application package.
+private static boolean isFeaturePort(JavaClass javaInterface) {
+
+    return javaInterface.getModifiers().contains(JavaModifier.PUBLIC)
+        && javaInterface.isTopLevelClass()
+        && javaInterface.getPackageName().matches(".*\\.(domain|application)(\\..*)?")
+        && !javaInterface.getPackageName().contains(".shared.");
+}
 ```
+
+Classes in `domain` are left out because domain events implement interfaces
+there and stay public (see D24).
 
 - Internal collaborators are package-private classes with no interface.
   Interfaces exist only at package boundaries, with one exception: a controller
   interface, which exists only to keep the OpenAPI annotations and the mappings
   apart from the logic (see S35).
-- Repositories follow the same pattern (see [S44](#persistence)).
 
 ### Layers and flow
 
@@ -471,8 +569,8 @@ class UpdateProjectDetailsService implements UpdateProjectDetails {
         final Project project = projectRepository.getById(command.projectId());
         project.assertVersion(command.expectedVersion());
 
-        project.rename(command.name());
-        project.setDescription(command.description());
+        project.rename(new ProjectName(command.name()));
+        project.setDescription(ProjectDescription.ofNullable(command.description()));
 
         projectRepository.update(project);
     }
@@ -489,7 +587,7 @@ public void update(Project project) {
      * between the version check and the flush, @Version fails the flush. The
      * entity is managed, so the commit flushes the change without a save call.
      */
-    final ProjectEntity projectEntity = projectJpaRepository.findById(project.getId().value())
+    final ProjectEntity projectEntity = projectEntityRepository.findById(project.getId().value())
                                                             .orElseThrow(() -> new ProjectNotFoundException(project.getId()));
 
     projectEntityMapper.updateEntity(project, projectEntity);
@@ -498,9 +596,11 @@ public void update(Project project) {
 ```
 
 `VersionMismatchException` (see D13) and Spring's
-`ObjectOptimisticLockingFailureException` both map to `412 Precondition Failed`.
-A missing `If-Match` on an update returns `428 Precondition Required` (RFC
-6585). Spring answers a missing required header with `400`, so the error handler
+`ObjectOptimisticLockingFailureException` both map to `412 Precondition Failed`
+with the same code, so a client handles one case (see S40). The first means the
+client's version was already stale; the second means another transaction
+committed between the version check and the flush. A missing `If-Match` on an
+update returns `428 Precondition Required` (RFC 6585). Spring answers a missing required header with `400`, so the error handler
 overrides that case (see S40). `ETags` in `shared.web` converts between a
 version and a strong `ETag` value.
 
@@ -577,23 +677,25 @@ apart (Hombergs, ch. 4).
   that takes a `Function` from the first step to the final step. The lambda must
   reach the final step, so the compiler still checks every mandatory value. The
   `Consumer` overload of J26 can't do this.
-- **Checked by ArchUnit.** The port has one abstract `execute(<Port>Command)`,
-  and the command has a static `builder()` that returns its first step.
+- **Checked by ArchUnit.** A port declares one abstract method, `execute`,
+  which takes its `<Port>Command` or nothing. A command has a public static
+  `builder()` that returns its first step. The rules after the example check
+  both.
 
 ```java
 public record UpdateProjectDetailsCommand(ProjectId projectId,
-    long expectedVersion,
     String name,
-    @Nullable String description) {
+    @Nullable String description,
+    long expectedVersion) {
 
     public UpdateProjectDetailsCommand {
 
         CommandCheck.of(UpdateProjectDetailsCommand.class)
                     .notNull("projectId", projectId)
-                    .notNegative("expectedVersion", expectedVersion)
                     .notBlank("name", name)
-                    .maxLength("name", name, Project.NAME_MAX_LENGTH)
-                    .maxLength("description", description, Project.DESCRIPTION_MAX_LENGTH)
+                    .maxLength("name", name, ProjectName.MAX_LENGTH)
+                    .maxLength("description", description, ProjectDescription.MAX_LENGTH)
+                    .notNegative("expectedVersion", expectedVersion)
                     .throwIfInvalid();
     }
 
@@ -604,19 +706,19 @@ public record UpdateProjectDetailsCommand(ProjectId projectId,
 
     public interface ProjectIdStep {
 
-        ExpectedVersionStep projectId(ProjectId projectId);
-
-    }
-
-    public interface ExpectedVersionStep {
-
-        NameStep expectedVersion(long expectedVersion);
+        NameStep projectId(ProjectId projectId);
 
     }
 
     public interface NameStep {
 
-        FinalStep name(String name);
+        ExpectedVersionStep name(String name);
+
+    }
+
+    public interface ExpectedVersionStep {
+
+        FinalStep expectedVersion(long expectedVersion);
 
     }
 
@@ -629,34 +731,34 @@ public record UpdateProjectDetailsCommand(ProjectId projectId,
 
     }
 
-    private static final class Builder implements ProjectIdStep, ExpectedVersionStep, NameStep, FinalStep {
+    private static final class Builder implements ProjectIdStep, NameStep, ExpectedVersionStep, FinalStep {
 
         private @Nullable ProjectId projectId;
-
-        private long expectedVersion;
 
         private @Nullable String name;
 
         private @Nullable String description;
 
+        private long expectedVersion;
+
         @Override
-        public ExpectedVersionStep projectId(ProjectId projectId) {
+        public NameStep projectId(ProjectId projectId) {
 
             this.projectId = projectId;
             return this;
         }
 
         @Override
-        public NameStep expectedVersion(long expectedVersion) {
+        public ExpectedVersionStep name(String name) {
 
-            this.expectedVersion = expectedVersion;
+            this.name = name;
             return this;
         }
 
         @Override
-        public FinalStep name(String name) {
+        public FinalStep expectedVersion(long expectedVersion) {
 
-            this.name = name;
+            this.expectedVersion = expectedVersion;
             return this;
         }
 
@@ -667,14 +769,16 @@ public record UpdateProjectDetailsCommand(ProjectId projectId,
             return this;
         }
 
+        /*
+         * In null-marked code the steps guarantee these values. A null can still
+         * arrive from unannotated code, and then CommandCheck reports it as a 400
+         * (see S34); requireNonNull would turn it into a 500.
+         */
         @Override
+        @SuppressWarnings("NullAway")
         public UpdateProjectDetailsCommand build() {
 
-            // The steps guarantee these values; requireNonNull states it for NullAway.
-            return new UpdateProjectDetailsCommand(Objects.requireNonNull(projectId),
-                                                   expectedVersion,
-                                                   Objects.requireNonNull(name),
-                                                   description);
+            return new UpdateProjectDetailsCommand(projectId, name, description, expectedVersion);
         }
 
     }
@@ -696,14 +800,88 @@ public interface UpdateProjectDetails {
 // Both calls fail to compile if a mandatory value is missing.
 updateProjectDetails.execute(UpdateProjectDetailsCommand.builder()
     .projectId(projectId)
-    .expectedVersion(expectedVersion)
     .name(name)
+    .expectedVersion(expectedVersion)
     .build());
 
 updateProjectDetails.execute(command -> command.projectId(projectId)
-    .expectedVersion(expectedVersion)
     .name(name)
+    .expectedVersion(expectedVersion)
     .description(description));
+```
+
+Query ports end in `Queries` and follow S24 instead. The step interfaces are
+nested in their command, so `areTopLevelClasses()` leaves them out.
+
+```java
+@ArchTest
+static final ArchRule portsDeclareOneExecute = classes().that()
+    .resideInAPackage("..application..")
+    .and().areInterfaces()
+    .and().arePublic()
+    .and().areTopLevelClasses()
+    .and().haveSimpleNameNotEndingWith("Queries")
+    .should(declareOneExecute());
+
+@ArchTest
+static final ArchRule commandsHaveStepBuilders = classes().that()
+    .resideInAPackage("..application..")
+    .and().areTopLevelClasses()
+    .and().haveSimpleNameEndingWith("Command")
+    .should(declareStepBuilder());
+
+private static ArchCondition<JavaClass> declareOneExecute() {
+
+    return new ArchCondition<>("declare one abstract execute(<Port>Command) or execute()") {
+
+        @Override
+        public void check(JavaClass port, ConditionEvents events) {
+
+            final List<JavaMethod> abstractMethods = port.getMethods().stream()
+                                                         .filter(method -> method.getModifiers().contains(JavaModifier.ABSTRACT))
+                                                         .toList();
+
+            final boolean valid = abstractMethods.size() == 1
+                && abstractMethods.getFirst().getName().equals("execute")
+                && takesItsCommandOrNothing(abstractMethods.getFirst(), port.getName() + "Command");
+
+            if (!valid) {
+                events.add(SimpleConditionEvent.violated(port,
+                    port.getName() + " must declare one abstract execute(" + port.getSimpleName() + "Command) or execute()"));
+            }
+        }
+
+    };
+}
+
+private static boolean takesItsCommandOrNothing(JavaMethod execute, String commandName) {
+
+    final List<JavaClass> parameters = execute.getRawParameterTypes();
+
+    return parameters.isEmpty() || (parameters.size() == 1 && parameters.getFirst().getName().equals(commandName));
+}
+
+private static ArchCondition<JavaClass> declareStepBuilder() {
+
+    return new ArchCondition<>("declare a public static builder() that returns its first step") {
+
+        @Override
+        public void check(JavaClass command, ConditionEvents events) {
+
+            final boolean valid = command.getMethods().stream()
+                                         .anyMatch(method -> method.getName().equals("builder")
+                                             && method.getRawParameterTypes().isEmpty()
+                                             && method.getModifiers().containsAll(Set.of(JavaModifier.PUBLIC, JavaModifier.STATIC))
+                                             && method.getRawReturnType().getEnclosingClass().map(command::equals).orElse(false));
+
+            if (!valid) {
+                events.add(SimpleConditionEvent.violated(command,
+                    command.getName() + " must declare a public static builder() that returns one of its nested steps"));
+            }
+        }
+
+    };
+}
 ```
 
 MapStruct creates commands through their canonical constructor. It uses a
@@ -743,8 +921,8 @@ static final ArchRule serviceStereotypeOnlyInApplication = classes().that()
 
 ### Models
 
-**S13. The model set.** A domain concept can have up to nine models, and exists
-only in the forms it needs. For `Project`:
+**S13. The model set.** A domain concept gets one model per role it plays, and
+only the roles it needs. For `Project`:
 
 | Model                         | Layer       | Purpose                                  |
 | ----------------------------- | ----------- | ---------------------------------------- |
@@ -758,11 +936,16 @@ only in the forms it needs. For `Project`:
 | `Project`                     | Domain      | Aggregate, always                        |
 | `ProjectEntity`               | Persistence | Persistence model, when persisted        |
 
-Every other action has its own command in the same way (see S11).
+The table lists kinds of model, not a fixed count. Every other action has its
+own command (see S11), a state change can have its own write DTO, such as
+`ProjectStatusDto` (see S28), integration events are types of their own (see
+D25), and shared values such as `AuditInfo` appear in several models (see S47).
 
-**S14. DTO style.** Read DTOs are immutable: use Lombok's `@Value` with
-`@Builder`, because builders are more readable than constructors. Write and
-filter DTOs use `@Data`. DTOs prefer composition over inheritance.
+**S14. DTO style.** Read DTOs are immutable records with Lombok's `@Builder`,
+like every other immutable value carrier (see J15). Code that builds one by hand
+uses the builder, because it names every value at the call site; MapStruct finds
+the same builder (see S11). Write and filter DTOs use `@Data`. DTOs prefer
+composition over inheritance.
 
 **S15. Entity style.** An entity is the record a Data Mapper writes (Fowler,
 _PoEAA_), not the domain model. The aggregate owns the rules (see D17), so the
@@ -799,9 +982,6 @@ class ProjectEntity {
     @Setter(AccessLevel.NONE)
     private Long id;
 
-    @Setter(AccessLevel.NONE)
-    private String tenantId;
-
     private String name;
 
     private long ownerId;
@@ -810,6 +990,9 @@ class ProjectEntity {
     private ProjectStatus status;
 
     private @Nullable String description;
+
+    @Setter(AccessLevel.NONE)
+    private String tenantId;
 
     // A wrapper, so a null version tells Spring Data the entity is new (see S45).
     @Version
@@ -860,8 +1043,8 @@ the boundary instead of ArchUnit:
 
 - `api` holds the controllers, the DTOs and `ProjectApiMapper`, all
   package-private.
-- `persistence` holds `ProjectRepositoryImpl`, `ProjectQueriesImpl`,
-  `ProjectJpaRepository`, `ProjectEntity`, `ProjectEntityMapper` and
+- `persistence` holds `JpaProjectRepository`, `JpaProjectQueries`,
+  `ProjectEntityRepository`, `ProjectEntity`, `ProjectEntityMapper` and
   `ProjectPredicates`, all package-private. The public interfaces they implement
   live in the core: `ProjectRepository` in `domain` and `ProjectQueries` in
   `application` (see D6 and D14).
@@ -878,16 +1061,18 @@ the boundary instead of ArchUnit:
 ```java
 @ArchTest
 static final ArchRule noOneUsesMapperImplementations = noClasses().that()
-    .areNotAnnotatedWith(Generated.class)
+    .haveSimpleNameNotEndingWith("MapperImpl")
     .should().dependOnClassesThat()
     .haveSimpleNameEndingWith("MapperImpl")
     .because("inject the abstract mapper; MapStruct owns the implementation");
 ```
 
-`Generated` is `javax.annotation.processing.Generated`, which MapStruct puts on
-every class it writes, so the implementations themselves are exempt. A
-`MapperImpl` that extends another mapper's implementation would also be caught,
-which is the point.
+The generated implementations are exempt by name. MapStruct marks them with
+`javax.annotation.processing.Generated`, but that annotation has source
+retention, so it isn't in the bytecode ArchUnit reads. A hand-written class that
+extends a generated implementation is still caught, which is the point. Mapper
+tests construct the implementation directly (see T4), and they're outside the
+import (see B7).
 
 Converters used by more than one mapper are the exception, and they're public
 (see S19): those of one feature, such as `ProjectIdMapper`, live in the
@@ -911,7 +1096,7 @@ ProjectEntity mapToEntity(Project project, String currentTenant);
 **S19. Compose with `uses`.** A nested object is mapped by its own mapper, which
 is injected through `uses` and never reimplemented. A value object that several
 mappers convert, such as a typed identifier (see D22), has one converter that
-they all reference the same way, so the conversion has one home (see J21):
+they all reference the same way:
 
 - **One feature's value objects** have their converter in the feature's
   `mapping` package, such as `project.mapping.ProjectIdMapper`, used by
@@ -922,8 +1107,29 @@ they all reference the same way, so the conversion has one home (see J21):
 Converters are hand-written Spring beans, so MapStruct injects them like any
 other mapper. Their public methods follow the mapper vocabulary of S24.
 
+- **The rule's home is the value object.** What makes an identifier valid lives
+  in `ProjectId`'s constructor and nowhere else (see D22 and J21). A converter
+  holds no rule: it only lets generated code reach the constructor, and passes
+  through the `null` that MapStruct hands over for an absent value.
+- **Hand-written code calls the value object directly.** A controller types an
+  identifier with `new ProjectId(projectId)` (see S8), a repository unwraps it
+  with `value()` (see S44), and the mapper's object factory builds it for
+  `reconstitute` (see S23). None of them goes through a converter, which exists
+  for MapStruct only and accepts a `null` that hand-written code never has.
+  ArchUnit keeps it that way:
+
 ```java
-// project.mapping
+@ArchTest
+static final ArchRule convertersServeMapStructOnly = noClasses().that()
+    .resideOutsideOfPackage("..mapping..")
+    .and().areNotAnnotatedWith(Mapper.class)
+    .and().haveSimpleNameNotEndingWith("MapperImpl")
+    .should().dependOnClassesThat().resideInAPackage("..mapping..")
+    .because("hand-written code converts through the value object itself");
+```
+
+```java
+// project.mapping. For MapStruct only: the rule is ProjectId's constructor.
 @Component
 public class ProjectIdMapper {
 
@@ -1023,6 +1229,8 @@ abstract class ProjectEntityMapper {
 
     // MapStruct implements these. They are visible only to the generated class.
 
+    // reconstitute below builds the whole aggregate, so the setter isn't a target.
+    @Mapping(target = "description", ignore = true)
     protected abstract Project mapToDomain(ProjectEntity projectEntity);
 
     // The read model carries the audit data, which AuditMapper converts.
@@ -1047,11 +1255,22 @@ abstract class ProjectEntityMapper {
     protected Project reconstitute(ProjectEntity projectEntity) {
 
         return Project.reconstitute(new ProjectId(projectEntity.getId()),
-                                    projectEntity.getName(),
+                                    new ProjectName(projectEntity.getName()),
                                     projectEntity.getOwnerId(),
                                     projectEntity.getStatus(),
-                                    projectEntity.getDescription(),
+                                    ProjectDescription.ofNullable(projectEntity.getDescription()),
                                     Objects.requireNonNull(projectEntity.getVersion(), "a stored project has a version"));
+    }
+
+    // Value objects to columns, selected by their source and target types (see S21).
+    protected String toNameColumn(ProjectName projectName) {
+
+        return projectName.value();
+    }
+
+    protected @Nullable String toDescriptionColumn(@Nullable ProjectDescription projectDescription) {
+
+        return projectDescription == null ? null : projectDescription.value();
     }
 
 }
@@ -1096,7 +1315,10 @@ abstract class ProjectApiMapper {
 
         final UserSummary userSummary = usersById.get(ownerId);
 
-        return userSummary == null ? null : new OwnerDto(ownerId, userSummary.displayName());
+        return userSummary == null ? null : OwnerDto.builder()
+                                                    .id(ownerId)
+                                                    .displayName(userSummary.displayName())
+                                                    .build();
     }
 
     // Replaces expression = "java(project.status().name().toLowerCase())".
@@ -1112,7 +1334,7 @@ abstract class ProjectApiMapper {
 
 **S24. Fixed method names, enforced by ArchUnit.** Repositories, query services
 and mappers use a fixed vocabulary, as J6 and the examples above show.
-Application services have their own, a single `execute` (see S11).
+Application services declare one abstract method, `execute` (see S11).
 
 | Type          | Methods                                                                                                 |
 | ------------- | ------------------------------------------------------------------------------------------------------- |
@@ -1166,7 +1388,7 @@ com.company.app
 │   │                     (interfaces and implementations), ProjectReadDto,
 │   │                     ProjectWriteDto, ProjectFilterDto, ProjectApiMapper
 │   ├── client/
-│   │   └── http/         Outbound HTTP adapters, such as PayPalHttpClient (see S57)
+│   │   └── http/         Outbound HTTP adapters, such as PayPalPaymentGateway (see S57)
 │   ├── application/      DraftProject, DraftProjectCommand, DraftProjectService,
 │   │   │                 UpdateProjectDetails, UpdateProjectDetailsCommand,
 │   │   │                 UpdateProjectDetailsService, ProjectQueries,
@@ -1177,15 +1399,17 @@ com.company.app
 │   ├── domain/           Project, ProjectId, value objects, state machines,
 │   │                     domain events, domain exceptions, domain services,
 │   │                     driven ports such as ProjectRepository
+│   ├── events/           Our integration events, the published language
+│   │                     (named interface, see D2 and D25)
 │   ├── mapping/          Converters shared by the feature's mappers, such as
 │   │                     ProjectIdMapper (see S19)
 │   ├── messaging/
-│   │   ├── in/           Callbacks and consumers (driving), foreign integration
-│   │   │                 events, inbox and its processor (see D27)
-│   │   └── out/          Our integration events, externalization (driven,
-│   │                     see D26)
-│   ├── persistence/      ProjectRepositoryImpl, ProjectQueriesImpl,
-│   │                     ProjectJpaRepository, ProjectEntity,
+│   │   ├── in/           Listeners, callbacks and consumers (driving), foreign
+│   │   │                 integration events, inbox and its processor (see D27)
+│   │   └── out/          Translation of domain events into integration events,
+│   │                     externalization (driven, see D25 and D26)
+│   ├── persistence/      JpaProjectRepository, JpaProjectQueries,
+│   │                     ProjectEntityRepository, ProjectEntity,
 │   │                     ProjectEntityMapper, ProjectPredicates
 │   └── scheduler/        Scheduled jobs
 └── shared/
@@ -1214,7 +1438,9 @@ service, a driving port (see D14). `messaging` is the one technology on both
 sides, so it is split: `messaging.in` receives and calls a driving port, and
 `messaging.out` implements the publishing side. The two never depend on each
 other (see D8). Everything in `application`, except the public ports and their
-input and output records, is package-private (see S6).
+input and output records, is package-private (see S6). `events` isn't an
+adapter: it holds only records of plain values, the contract that other modules
+and systems receive (see D25).
 
 ### REST design
 
@@ -1305,17 +1531,20 @@ performs. A read is never a `POST`.
   accept both on the same path, routed by `consumes`.
 - **Patch the write DTO, not the entity.** Clients can then reach only writable
   fields.
-- **Validate after patching.** Spring validates the request body, which here is
-  the patch document, so the patched DTO has to be validated explicitly.
+- **Validate after patching, with the groups of the `PUT`.** Spring validates
+  the request body, which here is the patch document, so the patched DTO has to
+  be validated explicitly. It goes through the same validation groups as the
+  operation's `PUT` body (see S34), so both methods enforce the same rules.
 - **Protect against lost updates.** The read and the update run in separate
   transactions (see S9), so require `If-Match` and pass the version down as in
   S8 (see D13).
 - **Use the maintained artifact for JSON Patch.** Use
-  `io.github.vishwakarma:zjsonpatch`, which is the project's current home and
-  supports both Jackson generations through the same Java package: `JsonPatch`
-  for Jackson 2 and `Jackson3JsonPatch` for Jackson 3. Its Jackson dependency is
-  optional, so declare the one you use. The old
-  `com.flipkart.zjsonpatch:zjsonpatch` artifact stopped at 0.4.16 in 2023.
+  `io.github.vishwakarma:zjsonpatch`, which is the project's current home, with
+  `Jackson3JsonPatch` for Jackson 3. Its Jackson dependency is optional, so
+  declare it. The old `com.flipkart.zjsonpatch:zjsonpatch` artifact stopped at
+  0.4.16 in 2023. **On Boot 3** (Jackson 2), the same artifact offers
+  `JsonPatch`, and `PatchApplier` below uses `ObjectMapper` and catches the
+  checked `JsonProcessingException` instead.
 
 ```java
 // Controller
@@ -1325,7 +1554,8 @@ public ResponseEntity<ProjectReadDto> mergePatch(Long projectId, JsonNode mergeP
 
     final ProjectId id = new ProjectId(projectId);
     final ProjectWriteDto current = projectApiMapper.toWriteDto(projectQueries.getById(id));
-    final ProjectWriteDto patched = patchApplier.applyMergePatch(mergePatch, current, ProjectWriteDto.class);
+    final ProjectWriteDto patched = patchApplier.applyMergePatch(mergePatch, current, ProjectWriteDto.class,
+        OnUpdate.class);
 
     updateProjectDetails.execute(projectApiMapper.toUpdateDetailsCommand(id, patched, ETags.toVersion(ifMatch)));
 
@@ -1337,30 +1567,28 @@ public ResponseEntity<ProjectReadDto> mergePatch(Long projectId, JsonNode mergeP
                          .body(projectApiMapper.toReadDto(updatedProject, usersById));
 }
 
-/*
- * shared.web. The Jackson 2 API is shown. On Jackson 3, use JsonMapper and
- * Jackson3JsonPatch, whose exceptions are unchecked.
- */
+// shared.web. Jackson 3: JsonMapper, JsonNode and the exceptions are in tools.jackson.
 @Component
 @RequiredArgsConstructor
 public class PatchApplier {
 
-    private final ObjectMapper objectMapper;
+    private final JsonMapper jsonMapper;
 
     private final Validator validator;
 
-    public <T> T applyJsonPatch(JsonNode jsonPatch, T source, Class<T> type) {
+    // The groups are those of the operation's PUT body, such as OnUpdate (see S34).
+    public <T> T applyJsonPatch(JsonNode jsonPatch, T source, Class<T> type, Class<?>... groups) {
 
-        final JsonNode patched = JsonPatch.apply(jsonPatch, objectMapper.valueToTree(source));
+        final JsonNode patched = Jackson3JsonPatch.apply(jsonPatch, jsonMapper.valueToTree(source));
 
-        return readAndValidate(patched, type);
+        return readAndValidate(patched, type, groups);
     }
 
-    public <T> T applyMergePatch(JsonNode mergePatch, T source, Class<T> type) {
+    public <T> T applyMergePatch(JsonNode mergePatch, T source, Class<T> type, Class<?>... groups) {
 
-        final JsonNode patched = merge(objectMapper.valueToTree(source), mergePatch);
+        final JsonNode patched = merge(jsonMapper.valueToTree(source), mergePatch);
 
-        return readAndValidate(patched, type);
+        return readAndValidate(patched, type, groups);
     }
 
     // The merge algorithm defined in RFC 7396, section 2.
@@ -1370,7 +1598,7 @@ public class PatchApplier {
             return patch;
         }
 
-        final ObjectNode result = target instanceof ObjectNode objectNode ? objectNode : objectMapper.createObjectNode();
+        final ObjectNode result = target instanceof ObjectNode objectNode ? objectNode : jsonMapper.createObjectNode();
 
         patch.properties().forEach(entry -> {
             if (entry.getValue().isNull()) {
@@ -1383,10 +1611,10 @@ public class PatchApplier {
         return result;
     }
 
-    private <T> T readAndValidate(JsonNode patched, Class<T> type) {
+    private <T> T readAndValidate(JsonNode patched, Class<T> type, Class<?>... groups) {
 
         final T result = read(patched, type);
-        final Set<ConstraintViolation<T>> violations = validator.validate(result);
+        final Set<ConstraintViolation<T>> violations = validator.validate(result, groups);
 
         if (!violations.isEmpty()) {
             throw new ConstraintViolationException(violations);
@@ -1401,11 +1629,12 @@ public class PatchApplier {
      */
     private <T> T read(JsonNode patched, Class<T> type) {
 
+        // Jackson 3's exceptions are unchecked; this one is translated to our own (see S40).
         try {
-            return objectMapper.readerFor(type)
-                               .with(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
-                               .treeToValue(patched, type);
-        } catch (JsonProcessingException exception) {
+            return jsonMapper.readerFor(type)
+                             .with(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+                             .treeToValue(patched, type);
+        } catch (JacksonException exception) {
             throw new InvalidPatchResultException(exception);
         }
     }
@@ -1413,7 +1642,11 @@ public class PatchApplier {
 }
 ```
 
-Failures map to these statuses, following RFC 5789:
+Failures map to these statuses. A patched DTO that no longer reads as the DTO,
+or breaks its constraints, gets the same `400` and field list as a `PUT` body
+with the same fault (see S34). RFC 5789 also allows `422` there, but one rule
+gives one answer, whatever the method. `422` stays for a patch that can't be
+applied at all.
 
 | Failure                       | Exception                       | Status |
 | ----------------------------- | ------------------------------- | ------ |
@@ -1422,8 +1655,8 @@ Failures map to these statuses, following RFC 5789:
 | Wrong media type              | Handled by Spring               | `415`  |
 | Failed `test` operation       | `JsonPatchTestFailedException`  | `409`  |
 | Patch can't be applied        | `JsonPatchApplicationException` | `422`  |
-| Patched result has bad fields | `InvalidPatchResultException`   | `422`  |
-| Patched result fails rules    | `ConstraintViolationException`  | `422`  |
+| Patched result has bad fields | `InvalidPatchResultException`   | `400`  |
+| Patched result fails rules    | `ConstraintViolationException`  | `400`  |
 
 ### REST validation
 
@@ -1436,7 +1669,27 @@ ch. 4).
   field listed (see S42), and the annotations also document the contract (see
   S35). Use Jakarta Validation annotations, and create a custom annotation when
   the standard ones can't express the check. Use validation groups (`OnCreate`,
-  `OnUpdate`) when rules differ by operation.
+  `OnUpdate`) when rules differ by operation:
+  - **Each group extends `Default`**, so `@Validated(OnUpdate.class)` still
+    checks the constraints that have no group. Without it, those constraints
+    would silently stop running.
+  - **One operation, one set of groups.** A `PUT` body is validated with
+    `@Validated(OnUpdate.class)` on its `@RequestBody`, and the patched DTO of
+    the same resource with the same group (see S33).
+  - **One answer per broken rule.** Every DTO violation returns `400` with the
+    same field list, whether it comes from a `PUT` body, a patched DTO or a
+    command (see S40).
+  - **Constraints on DTOs, not on controller parameters.** A constraint such as
+    `@Positive` on a `@PathVariable` makes Spring validate the whole method, and
+    a body violation then arrives as `HandlerMethodValidationException` instead
+    of `MethodArgumentNotValidException`, which the handler of S40 covers.
+    Identifiers are checked by their value object anyway (see D22).
+
+  ```java
+  // shared.web
+  public interface OnUpdate extends Default {}
+  ```
+
 - **Commands** validate themselves in their compact constructors (see S11), so
   every adapter, REST, messaging or scheduler, passes through the same checks.
   `CommandCheck` collects every violation and throws one
@@ -1444,13 +1697,16 @@ ch. 4).
   messaging it sends the message to the dead-letter table (see D27). In a
   scheduled job it's a bug, logged at `error` (see D29).
 - **The domain** enforces business invariants, such as allowed state transitions
-  or a uniqueness that depends on other data. A violation throws a coded domain
-  exception (see S40 and S41), usually returned as `409` or `422`.
+  or a uniqueness that depends on other data, and its value objects enforce
+  their own limits (see D22). A violation throws a coded domain exception (see
+  S40 and S41): `400` for a value object that rejects its input, usually `409`
+  or `422` for the rest.
 
-A limit that both a DTO and a command check is one constant, defined once (see
-J21): on the aggregate when it's a fact of the domain, such as
-`Project.NAME_MAX_LENGTH`, and referenced from both, as in
-`@Size(max = Project.NAME_MAX_LENGTH)`.
+A limit is one constant, defined once (see J21) on the value object that
+enforces it, such as `ProjectName.MAX_LENGTH`. The DTO and the command reference
+it, as in `@Size(max = ProjectName.MAX_LENGTH)`, and repeat the check only so
+that a client learns about every invalid field at once. The value object stays
+the authority, whichever adapter or use case reaches the aggregate.
 
 ```java
 // shared.application
@@ -1556,9 +1812,9 @@ processed, and an invalid event goes to the dead-letter table (see D27).
 
 ### Pagination
 
-**S38. `Pageable` and `Page` start at the service.** Spring Data's types live in
-the service layer and below. Controllers use `PageableDto` and `PageDto`, and
-`PageMapper` converts between the two.
+**S38. `Pageable` and `Page` start at the query port.** Spring Data's types
+appear from the query ports inward, the one exception of S7. Controllers use
+`PageableDto` and `PageDto`, and `PageMapper` converts between the two.
 
 **S39. DTOs mirror Spring Data.** `PageableDto` and `PageDto` use the same field
 names and types as `Pageable` and `Page`, with OpenAPI annotations added. The
@@ -1587,41 +1843,17 @@ public class PageableDto {
 
 }
 
-@Value
 @Builder
-public class PageDto<T> {
-
-    @Schema(description = "Items on this page")
-    List<T> content;
-
-    @Schema(description = "Zero-based page index", example = "0")
-    int number;
-
-    @Schema(description = "Requested page size", example = "20")
-    int size;
-
-    @Schema(description = "Items on this page", example = "20")
-    int numberOfElements;
-
-    @Schema(description = "Items across all pages", example = "137")
-    long totalElements;
-
-    @Schema(description = "Total number of pages", example = "7")
-    int totalPages;
-
-    @Schema(description = "Whether this is the first page", example = "true")
-    boolean first;
-
-    @Schema(description = "Whether this is the last page", example = "false")
-    boolean last;
-
-    @Schema(description = "Whether this page has no items", example = "false")
-    boolean empty;
-
-    @Schema(description = "Sort criteria applied to this page")
-    List<SortOrderDto> sort;
-
-}
+public record PageDto<T>(@Schema(description = "Items on this page") List<T> content,
+    @Schema(description = "Zero-based page index", example = "0") int number,
+    @Schema(description = "Requested page size", example = "20") int size,
+    @Schema(description = "Items on this page", example = "20") int numberOfElements,
+    @Schema(description = "Items across all pages", example = "137") long totalElements,
+    @Schema(description = "Total number of pages", example = "7") int totalPages,
+    @Schema(description = "Whether this is the first page", example = "true") boolean first,
+    @Schema(description = "Whether this is the last page", example = "false") boolean last,
+    @Schema(description = "Whether this page has no items", example = "false") boolean empty,
+    @Schema(description = "Sort criteria applied to this page") List<SortOrderDto> sort) {}
 
 // Controller: one batched lookup for the owners on this page (see S49)
 final Page<ProjectReadModel> projects = projectQueries.findAll(pageMapper.toPageable(pageableDto));
@@ -1663,6 +1895,14 @@ table.
   `error` with one.
 - 5xx responses never expose internals such as bucket names, keys or parser
   messages.
+- **A lost race is a stale version too.** Hibernate checks `@Version` when the
+  commit flushes, after the service has returned, and Spring translates the
+  failure into `ObjectOptimisticLockingFailureException`. It isn't a domain
+  exception, so it needs its own handler, or the client gets a `500` for a
+  normal concurrent edit. The handler catches the parent,
+  `OptimisticLockingFailureException`, which Spring Data JDBC and MongoDB throw
+  too, and answers `412` with the code of `VersionMismatchException`,
+  `VERSION_MISMATCH`: either way, the client reads again and retries.
 - GraphQL needs its own exception resolver, because REST advice doesn't cover
   it.
 
@@ -1693,6 +1933,22 @@ public abstract non-sealed class AggregateNotFoundException extends DomainExcept
     protected AggregateNotFoundException(String code, String message) {
 
         super(code, message);
+    }
+
+}
+
+/*
+ * The one final category: a stale version is the same error for every
+ * aggregate, so it has one code, which the optimistic-locking handler reuses.
+ */
+public final class VersionMismatchException extends DomainException {
+
+    public static final String CODE = "VERSION_MISMATCH";
+
+    public VersionMismatchException(String aggregateType, long expectedVersion) {
+
+        super(CODE, "This %s has changed since version %d. Read it again and repeat your change."
+            .formatted(aggregateType.toLowerCase(), expectedVersion));
     }
 
 }
@@ -1737,11 +1993,56 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
         log.warn("Invalid {}: {}", exception.getCommandName(), exception.getViolations());
 
-        final ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST,
-            "Some fields are invalid. Fix them and send the request again.");
-        problem.setProperty("errors", exception.getViolations());
+        return ResponseEntity.badRequest().body(invalidFields(exception.getViolations()));
+    }
 
-        return ResponseEntity.badRequest().body(problem);
+    // A patched DTO that breaks its constraints (see S33): the same answer as a PUT body.
+    @ExceptionHandler
+    ResponseEntity<ProblemDetail> handleConstraintViolation(ConstraintViolationException exception) {
+
+        final List<FieldViolation> violations = exception.getConstraintViolations().stream()
+                                                         .map(violation -> new FieldViolation(violation.getPropertyPath().toString(),
+                                                                                              violation.getMessage()))
+                                                         .toList();
+
+        log.warn("Invalid patched request: {}", violations);
+
+        return ResponseEntity.badRequest().body(invalidFields(violations));
+    }
+
+    // A request body that breaks its constraints. Spring's default lists no fields (see S42).
+    @Override
+    protected @Nullable ResponseEntity<Object> handleMethodArgumentNotValid(MethodArgumentNotValidException exception,
+        HttpHeaders headers, HttpStatusCode status, WebRequest request) {
+
+        final BindingResult bindingResult = exception.getBindingResult();
+
+        // A class-level constraint names no field, so it's reported against the request.
+        final List<FieldViolation> violations = Stream.concat(
+            bindingResult.getFieldErrors().stream().map(error -> new FieldViolation(error.getField(), messageOf(error))),
+            bindingResult.getGlobalErrors().stream().map(error -> new FieldViolation("request", messageOf(error))))
+            .toList();
+
+        log.warn("Invalid request: {}", violations);
+
+        return handleExceptionInternal(exception, invalidFields(violations), headers, HttpStatus.BAD_REQUEST, request);
+    }
+
+    /*
+     * Another transaction committed between the version check (see D13) and the
+     * flush. Same status and code as VersionMismatchException: the client's
+     * version is stale either way. The library message goes to the log only.
+     */
+    @ExceptionHandler
+    ResponseEntity<ProblemDetail> handleOptimisticLockingFailure(OptimisticLockingFailureException exception) {
+
+        log.warn("Concurrent update rejected: {}", exception.getMessage());
+
+        final ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.PRECONDITION_FAILED,
+            "Someone changed this resource after your last read. Read it again and repeat your change.");
+        problem.setProperty("code", VersionMismatchException.CODE);
+
+        return ResponseEntity.status(HttpStatus.PRECONDITION_FAILED).body(problem);
     }
 
     // A missing If-Match on an update is 428 (RFC 6585), not Spring's default 400.
@@ -1762,11 +2063,26 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return super.handleServletRequestBindingException(exception, headers, status, request);
     }
 
+    // One body for every invalid input: DTOs, patched DTOs and commands (see S34).
+    private ProblemDetail invalidFields(List<FieldViolation> violations) {
+
+        final ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST,
+            "Some fields are invalid. Fix them and send the request again.");
+        problem.setProperty("errors", violations);
+
+        return problem;
+    }
+
+    private String messageOf(ObjectError error) {
+
+        return Objects.requireNonNullElse(error.getDefaultMessage(), "is invalid");
+    }
+
 }
 ```
 
-`HttpStatus.UNPROCESSABLE_CONTENT` is Spring Framework 7's name for `422`. On
-Spring Framework 6, use `UNPROCESSABLE_ENTITY`.
+`HttpStatus.UNPROCESSABLE_CONTENT` is Spring Framework 7's name for `422`.
+**On Boot 3** (Spring Framework 6), use `UNPROCESSABLE_ENTITY`.
 
 **S41. Coded domain errors.** Alongside technical errors, document custom domain
 errors with examples. Each has a stable, machine-readable code, such as
@@ -1807,9 +2123,10 @@ This applies to scheduled jobs as well as to API calls (see S49 and D29).
 
 **S44. Repositories hide the persistence technology.** A public
 `ProjectRepository` interface in `domain`, a driven port (see D6), speaks only
-in domain objects. A package-private `ProjectRepositoryImpl` implements it by
-delegating to a package-private Spring Data interface (`ProjectJpaRepository`),
-which never leaves the package. Spring Data doesn't replace this layer, because
+in domain objects. A package-private `JpaProjectRepository` implements it by
+delegating to a package-private Spring Data interface,
+`ProjectEntityRepository`, which never leaves the package (see D6 for the
+names). Spring Data doesn't replace this layer, because
 it would expose entities.
 
 - **`getById` throws, `findById` doesn't.** `getById` returns the aggregate or
@@ -1854,7 +2171,7 @@ Use the best source for the database:
   `reWriteBatchedInserts=true` on the JDBC URL.
 
 ```java
-interface ProjectJpaRepository extends JpaRepository<ProjectEntity, Long> {
+interface ProjectEntityRepository extends JpaRepository<ProjectEntity, Long> {
 
     // Native: JPQL can't read a sequence.
     @Query(value = "select nextval('project_seq')", nativeQuery = true)
@@ -1982,11 +2299,11 @@ public class ChangeHistory {
 
 }
 
-// ProjectRepositoryImpl, with ProjectEntity annotated @FieldHistory
+// JpaProjectRepository, with ProjectEntity annotated @FieldHistory
 @Override
 public void update(Project project) {
 
-    final ProjectEntity projectEntity = projectJpaRepository.findById(project.getId().value())
+    final ProjectEntity projectEntity = projectEntityRepository.findById(project.getId().value())
                                                             .orElseThrow(() -> new ProjectNotFoundException(project.getId()));
 
     projectEntityMapper.updateEntity(project, projectEntity);
@@ -2009,7 +2326,9 @@ static final ArchRule noSpringDataAuditAspect = noClasses()
 private static DescribedPredicate<JavaClass> repositoriesOfFieldHistoryEntities() {
 
     return DescribedPredicate.describe("repositories of @FieldHistory entities",
-        javaClass -> javaClass.getSimpleName().endsWith("RepositoryImpl")
+        javaClass -> javaClass.getRawInterfaces().stream()
+                              .anyMatch(port -> port.getSimpleName().endsWith("Repository")
+                                  && port.getPackageName().endsWith(".domain"))
             && javaClass.getDirectDependenciesFromSelf().stream()
                         .anyMatch(dependency -> dependency.getTargetClass().isAnnotatedWith(FieldHistory.class)));
 }
@@ -2107,9 +2426,10 @@ introduction):
 - **One tool per database.** Never let two tools manage the same schema.
   Changing tool mid-project is a migration of its own: baseline the existing
   schema in the new tool and retire the old history table.
-- **Autoconfigured by Spring Boot** (see S5). On Boot 4, add
-  `spring-boot-starter-flyway` or `spring-boot-starter-liquibase`. Flyway also
-  needs its database module, such as `flyway-database-postgresql`.
+- **Autoconfigured by Spring Boot** (see S5). Add `spring-boot-starter-flyway`
+  or `spring-boot-starter-liquibase`. Flyway also needs its database module,
+  such as `flyway-database-postgresql`. **On Boot 3**, which has no such
+  starters, add `flyway-core` or `liquibase-core` directly.
 
 **Migration names say what they do.** Reading the migration folder top to bottom
 reads the schema's history, without opening a file. Every versioned migration is
@@ -2324,13 +2644,14 @@ logbook:
 ### Outbound HTTP
 
 **S57. One client per remote system.** Every remote HTTP API gets its own
-client, named `<Target>HttpClient` and placed in the `client.http` package of
-the feature that uses it, for example `payment.client.http.PayPalHttpClient`.
+client, named after the remote system and the port it implements,
+`<Target><Port>` (see D6), and placed in the `client.http` package of the
+feature that uses it, for example `payment.client.http.PayPalPaymentGateway`.
 
 - **It implements a port.** Like a repository (see S44), the client sits behind
   a public driven port in `domain`, named by what the core needs, such as
   `PaymentGateway` (see D6). The port takes and returns domain objects.
-  `PayPalHttpClient` implements it, and it and the remote API's DTOs are
+  `PayPalPaymentGateway` implements it, and it and the remote API's DTOs are
   package-private, so no external model leaks into the services. This is the
   anti-corruption layer of D4.
 - **Built on `RestClient`, configured the Spring Boot way.** Use an
@@ -2338,14 +2659,16 @@ the feature that uses it, for example `payment.client.http.PayPalHttpClient`.
   and configure it through properties and Spring Boot's builder customizers
   rather than by hand (see S5). With more than two operations, the interface is
   generated from the remote's OpenAPI specification (see S59).
-  - **On Boot 4**, an `@HttpExchange` interface belongs to an HTTP service
-    group, one per remote system. `@ImportHttpServices` registers it, and Spring
-    Boot includes auto-configuration support and configuration properties for
-    HTTP Service Clients, configured per group with the pattern
+  - **An `@HttpExchange` interface** belongs to an HTTP service group, one per
+    remote system. `@ImportHttpServices` registers it, and Spring Boot
+    configures each group through properties under
     `spring.http.serviceclient.<group-name>.*` (see S60).
-  - **On Boot 3**, and for a client that uses `RestClient` directly, build it
-    from Spring Boot's `RestClient.Builder` and bind its base URL and timeouts
-    with `@ConfigurationProperties` (see S4 and S60).
+  - **A client that uses `RestClient` directly** is built from Spring Boot's
+    `RestClient.Builder`, with its base URL and timeouts bound through
+    `@ConfigurationProperties` (see S4 and S60).
+  - **On Boot 3**, which has no HTTP service groups, every client is built the
+    second way, and an `@HttpExchange` interface is created with
+    `HttpServiceProxyFactory`.
 - **Always set timeouts.** Connect and read timeouts are explicit for every
   client. A default of "wait forever" isn't acceptable.
 - **Authentication through Spring.** OAuth2 client credentials go through Spring
@@ -2387,12 +2710,12 @@ hand-written client is simpler than a generator setup.
   S60) are only for hand-written clients.
 - **Spring HTTP interfaces.** Use the `spring` generator with the
   `spring-http-interface` library, so the generated interfaces run on our
-  configured `RestClient` (see S57). On Boot 3,
-  `useHttpServiceProxyFactoryInterfacesConfigurator` generates the class that
-  creates them. On Boot 4, register them in the remote's HTTP service group with
-  `@ImportHttpServices` instead.
+  configured `RestClient` (see S57), with `useSpringBoot4` and `useJackson3`,
+  which OpenAPI Generator offers from 7.16.0. Register the generated interfaces
+  in the remote's HTTP service group with `@ImportHttpServices` (see S60), so
+  the generator needs no configuration class of its own.
 - **Behind the client.** The generated API and models are used only by the
-  `<Target>HttpClient` implementation, which maps them to domain objects with a
+  `<Target><Port>` implementation, which maps them to domain objects with a
   MapStruct mapper, so nothing generated leaks into the services.
 
 ```xml
@@ -2413,8 +2736,8 @@ hand-written client is simpler than a generator setup.
         <apiPackage>com.company.app.payment.client.http.paypal.api</apiPackage>
         <modelPackage>com.company.app.payment.client.http.paypal.model</modelPackage>
         <configOptions>
-          <useSpringBoot3>true</useSpringBoot3>
-          <useHttpServiceProxyFactoryInterfacesConfigurator>true</useHttpServiceProxyFactoryInterfacesConfigurator>
+          <useSpringBoot4>true</useSpringBoot4>
+          <useJackson3>true</useJackson3>
           <openApiNullable>false</openApiNullable>
         </configOptions>
       </configuration>
@@ -2423,16 +2746,18 @@ hand-written client is simpler than a generator setup.
 </plugin>
 ```
 
-On Spring Boot 4, set `useSpringBoot4` instead of `useSpringBoot3`.
+**On Boot 3**, set `useSpringBoot3` instead of `useSpringBoot4` and
+`useJackson3`, and add `useHttpServiceProxyFactoryInterfacesConfigurator`, which
+generates the class that creates the interfaces.
 
 **S60. Outbound URLs live in properties.** No URL is written in code. Values
 that change per environment come from environment variables.
 
-- **Base URL and timeouts.** On Boot 4, an HTTP service group's properties hold
-  them, under `spring.http.serviceclient.<group-name>.*` (see S5 and S57), with
-  defaults for every client under `spring.http.clients.*`. On Boot 3, and for a
-  client that uses `RestClient` directly, they're our own properties, named as
-  S61 describes and bound with `@ConfigurationProperties` (see S4).
+- **Base URL and timeouts.** An HTTP service group's properties hold them,
+  under `spring.http.serviceclient.<group-name>.*` (see S5 and S57), with
+  defaults for every client under `spring.http.clients.*`. A client that uses
+  `RestClient` directly has its own properties, named as S61 describes and bound
+  with `@ConfigurationProperties` (see S4). **On Boot 3**, every client does.
 - **Paths.** A generated client takes its paths from the specification (see
   S59). A hand-written client reads them from properties, composed with
   placeholders.
@@ -2442,7 +2767,7 @@ that change per environment come from environment variables.
   readable.
 
 ```properties
-### PAYPAL: generated client, Boot 4 HTTP service group ###
+### PAYPAL: generated client, HTTP service group ###
 spring.http.serviceclient.paypal.base-url=${PAYPAL_API_BASE_URL:https://api-m.sandbox.paypal.com}
 spring.http.serviceclient.paypal.connect-timeout=2s
 spring.http.serviceclient.paypal.read-timeout=5s
@@ -2584,7 +2909,50 @@ anti-corruption layer, published language).
   to exactly one bounded context. Each top-level feature package is a Spring
   Modulith application module, and Modulith verifies that modules access each
   other only through their published API. The check reads the compiled classes
-  and needs no Spring context, so it runs with the unit tests (see T4):
+  and needs no Spring context, so it runs with the unit tests (see T4).
+- **Publish the API on purpose.** Modulith treats a module's base package as
+  its API and every sub-package as internal, so a feature's API is declared
+  with `@NamedInterface` on the `package-info.java` of two kinds of package,
+  and of nothing else:
+  - `application`, with the driving ports, their commands, read models and
+    filters (see S7), and each per-action subpackage of S10 under its own
+    name. Implementations are package-private (see S6), so the named interface
+    exposes only contracts.
+  - `events`, the integration events other modules listen to (see D25).
+
+  `domain` is never exposed (see D10), and neither is any adapter package.
+
+- **`shared` is an open module.** `shared` is a top-level package too, so
+  Modulith treats it as a module, and its sub-packages would be internal.
+  Declare it `Type.OPEN`, so every feature can use `shared.domain`,
+  `shared.application`, `shared.web` and the rest. It never depends on a
+  feature: that dependency would form a cycle, which the verification rejects.
+
+```java
+// shared/package-info.java
+@ApplicationModule(type = ApplicationModule.Type.OPEN)
+@NullMarked
+package com.company.app.shared;
+
+import org.jspecify.annotations.NullMarked;
+import org.springframework.modulith.ApplicationModule;
+
+// project/application/package-info.java
+@NamedInterface("application")
+@NullMarked
+package com.company.app.project.application;
+
+import org.jspecify.annotations.NullMarked;
+import org.springframework.modulith.NamedInterface;
+
+// project/events/package-info.java
+@NamedInterface("events")
+@NullMarked
+package com.company.app.project.events;
+
+import org.jspecify.annotations.NullMarked;
+import org.springframework.modulith.NamedInterface;
+```
 
 ```java
 class ApplicationModulesTest {
@@ -2630,10 +2998,10 @@ point inward: adapters depend on the core, never the other way around.
           driving adapters                          driven adapters
    ┌──────────────────────┐                 ┌───────────────────────────┐
    │ api (controllers)    │                 │ persistence               │
-   │ messaging.in         │──┐           ┌─▶│  ProjectRepositoryImpl    │
-   │ scheduler (jobs)     │  │           │  │  ProjectQueriesImpl       │
+   │ messaging.in         │──┐           ┌─▶│  JpaProjectRepository     │
+   │ scheduler (jobs)     │  │           │  │  JpaProjectQueries        │
    └──────────────────────┘  │           │  │ client.http               │
-                             │           │  │  PayPalHttpClient         │
+                             │           │  │  PayPalPaymentGateway     │
                              ▼           │  └───────────────────────────┘
               ┌──────────────────────────┴───────┐
               │ core                             │
@@ -2658,9 +3026,24 @@ point inward: adapters depend on the core, never the other way around.
   The adapter in `persistence` or `client` implements the port, and it stays
   package-private (see S17).
 - **Name the need, not the technology.** A port is named after what the core
-  wants done, so `PaymentGateway` and never `PayPalClient`. The technology
-  appears only in the adapter's name:
-  `PayPalHttpClient implements PaymentGateway`.
+  wants done, so `PaymentGateway` and never `PayPalClient`.
+- **Name the adapter by what it's built on.** An implementation of a driven
+  port, or of a query port in `persistence`, is the port's name with the
+  technology or the remote system in front: `JpaProjectRepository implements
+ProjectRepository`, `JpaProjectQueries implements ProjectQueries`,
+  `PayPalPaymentGateway implements PaymentGateway`. The package already names
+  the kind of adapter (`persistence`, `client.http`), so the name adds only
+  what the package can't say. Two names stay outside the pattern:
+  - **Application services** are `<Port>Service` (see S10).
+  - **An implementation in the core** has no technology to name, so it's
+    `Default<Port>`, the convention Spring itself uses
+    (`DefaultConversionService`), as in D14.
+
+  The `Impl` suffix is left to generated code, MapStruct's `*MapperImpl`, so a
+  name ending in `Impl` always means "generated" (see S17). The Spring Data
+  interface behind a repository is named after what it stores,
+  `ProjectEntityRepository`, so it can't be mistaken for the adapter.
+
 - **Shape ports for the core.** A port's methods take and return domain objects
   and use domain terms. A port that mirrors a remote API, method for method,
   leaks that API into the core.
@@ -2770,15 +3153,15 @@ same locked entity in the persistence context, and the commit increments the
 version.
 
 ```java
-// ProjectJpaRepository: Spring Data ignores "Locked", between "find" and "By"
+// ProjectEntityRepository: Spring Data ignores "Locked", between "find" and "By"
 @Lock(LockModeType.OPTIMISTIC_FORCE_INCREMENT)
 Optional<ProjectEntity> findLockedById(Long id);
 
-// ProjectRepositoryImpl
+// JpaProjectRepository
 @Override
 public Project getByIdForUpdate(ProjectId projectId) {
 
-    return projectJpaRepository.findLockedById(projectId.value())
+    return projectEntityRepository.findLockedById(projectId.value())
                                .map(projectEntityMapper::toDomain)
                                .orElseThrow(() -> new ProjectNotFoundException(projectId));
 }
@@ -2813,13 +3196,14 @@ but each has its own model.
   the write side (_Get Your Hands Dirty on Clean Architecture_, ch. 4), and
   Buenosvinos and his co-authors treat reads as an infrastructure concern that
   needs no command (_DDD in PHP_, ch. 2 and 12).
-- **The implementation.** `ProjectQueriesImpl` lives in `persistence`,
+- **The implementation.** `JpaProjectQueries` lives in `persistence`,
   package-private, and reads the entities, a projection or plain SQL directly.
   Implementing a driving port in an adapter is a deliberate shortcut: it saves a
   query service in the core whose only job would be to call a driven port. When
   a read needs business logic, such as a computed balance, write
-  `ProjectQueriesImpl` in `application` instead, annotated `@Component` rather
-  than `@Service` (see S12), and give it a driven port.
+  `DefaultProjectQueries` in `application` instead, annotated `@Component`
+  rather than `@Service` (see S12), and give it a driven port. It has no
+  technology to name, so it takes the `Default` prefix (see D6).
 - **Writes don't decide on reads.** An application service loads the aggregate
   through its repository, never a read model, because a read model can be stale
   and isn't locked.
@@ -2844,6 +3228,7 @@ Domain exceptions follow the same rule: they carry a category and a code, never
 an HTTP status (see S40). ArchUnit checks the whole list:
 
 ```java
+// Jackson 3 lives in tools.jackson, but its annotations stay in com.fasterxml (see Baseline).
 @ArchTest
 static final ArchRule domainIsPlainJava = noClasses().that()
     .resideInAPackage("..domain..")
@@ -2858,15 +3243,18 @@ creates it, such as `Project.draft(...)`, never through a public constructor.
 The factory takes the identifier and the minimum set of mandatory values that
 makes the aggregate coherent, applies the creation rules and records the
 creation event. Other fields get default values where that makes sense.
-Free-form optional values may have setters (see D17). Nothing else does.
+Optional values that no other rule depends on may have setters (see D17).
+Nothing else does.
 
 **D17. Behavior protects invariants.** State with rules attached, such as a
 status, changes only through behavior methods named in the ubiquitous language,
 such as `archive()` rather than `setStatus(ARCHIVED)`. The method checks the
 rule, changes the state and records the domain event in one place. Callers tell
 the aggregate what to do; they don't read its state, decide, and write it back.
-Setters are kept for free-form optional values with no rules, such as a
-description.
+Setters are kept for optional values that no other rule depends on, such as a
+description. A value with a rule of its own, such as a length, still gets a
+setter, as long as its type is a value object that enforces that rule (see
+D22): the setter then can't take an invalid value.
 
 **D18. Step builders for many mandatory fields.** When an object has many
 mandatory values, a constructor stops being readable. Prefer the Step Builder
@@ -2912,27 +3300,24 @@ static final ArchRule onlyPersistenceReconstitutes = noClasses().that()
 @Getter
 public class Project extends AggregateRoot<ProjectId> {
 
-    // Facts of the domain that the commands and DTOs reference (see S34).
-    public static final int NAME_MAX_LENGTH = 120;
-
-    public static final int DESCRIPTION_MAX_LENGTH = 2000;
-
     private final ProjectId id;
 
-    private String name;
+    // Its limits live on the value object, which the commands and DTOs reference (see D22).
+    private ProjectName name;
 
     // A user of another module, referenced by its plain identifier (see D10).
     private final long ownerId;
 
     private ProjectStatus status = ProjectStatus.DRAFT;
 
+    // No other rule depends on it, so a setter will do: the type carries its limit.
     @Setter
-    private @Nullable String description;
+    private @Nullable ProjectDescription description;
 
     // Null until the aggregate is first stored. Only reconstitute sets it.
     private @Nullable Long version;
 
-    private Project(ProjectId id, String name, long ownerId) {
+    private Project(ProjectId id, ProjectName name, long ownerId) {
 
         this.id = Objects.requireNonNull(id);
         this.name = Objects.requireNonNull(name);
@@ -2940,7 +3325,7 @@ public class Project extends AggregateRoot<ProjectId> {
     }
 
     // Creation: a new project, with its rules and its event.
-    public static Project draft(ProjectId id, String name, long ownerId, Instant draftedAt) {
+    public static Project draft(ProjectId id, ProjectName name, long ownerId, Instant draftedAt) {
 
         final Project project = new Project(id, name, ownerId);
         project.registerEvent(new ProjectDrafted(project.newEventId(), id, ownerId, draftedAt));
@@ -2950,10 +3335,10 @@ public class Project extends AggregateRoot<ProjectId> {
 
     // Reconstitution: a stored project, with no rules and no events.
     public static Project reconstitute(ProjectId id,
-        String name,
+        ProjectName name,
         long ownerId,
         ProjectStatus status,
-        @Nullable String description,
+        @Nullable ProjectDescription description,
         long version) {
 
         final Project project = new Project(id, name, ownerId);
@@ -2969,7 +3354,7 @@ public class Project extends AggregateRoot<ProjectId> {
         return status == ProjectStatus.ACTIVE;
     }
 
-    public void rename(String name) {
+    public void rename(ProjectName name) {
 
         this.name = Objects.requireNonNull(name);
     }
@@ -2996,7 +3381,7 @@ class DraftProjectService implements DraftProject {
     public ProjectId execute(DraftProjectCommand command) {
 
         final Project project = Project.draft(projectRepository.nextIdentity(),
-                                              command.name(),
+                                              new ProjectName(command.name()),
                                               command.ownerId(),
                                               clock.instant());
         projectRepository.save(project);
@@ -3121,8 +3506,26 @@ values and has no identity of its own, such as `Money`, `DateRange` or
 - **Replace, don't mutate.** An aggregate changes a value object by replacing it
   with a new instance.
 - **Only where there's a rule.** Introduce a value object when the concept has
-  validation or behavior. A free-form `String` such as a description stays a
-  `String`.
+  validation or behavior. A limit is a rule, so a project's name and its
+  description, both limited in length, are `ProjectName` and
+  `ProjectDescription`. A `String` with no rule at all, such as an unbounded
+  note, stays a `String`.
+- **The value object owns its limits.** A limit is a constant on the value
+  object that enforces it, such as `ProjectName.MAX_LENGTH`, and nowhere else
+  (see J21). DTOs and commands reference that constant, so a request learns
+  about every invalid field at once (see S34), but the value object stays the
+  authority: no adapter, command or future use case can put an invalid name
+  into a `Project`.
+- **Commands carry plain values; services build the value objects.** A command
+  holds the `String` and checks it against the value object's constant, and the
+  application service creates the value object before calling the aggregate
+  (see S8). Identifiers are the exception: the controller types them on arrival
+  (see S8), because an invalid identifier is a bad address, not a form field to
+  report alongside others.
+- **Tighten a limit with a migration first.** Reconstitution goes through the
+  value objects too, so a stored value that breaks a tightened limit fails to
+  load (see D19). Correct the stored data in a migration before the release that
+  tightens the limit (see S51).
 - **Identifiers are value objects.** Every aggregate identifier is a record
   named `<Aggregate>Id`, such as `ProjectId`, in that aggregate's `domain`
   package. Every reference to another aggregate of the same module uses its
@@ -3134,7 +3537,8 @@ values and has no identity of its own, such as `Money`, `DateRange` or
 - **Typed identifiers stop at the core's edge.** DTOs and entities carry the
   underlying `Long`, so JPA, Spring Data and the sequence stay simple. One
   converter per identifier, such as `ProjectIdMapper`, serves every mapper of
-  the feature (see S19).
+  the feature, while hand-written code calls the constructor and `value()`
+  directly (see S19).
 
 ```java
 public record ProjectId(long value) {
@@ -3145,6 +3549,45 @@ public record ProjectId(long value) {
             // An InvalidValueException, so the API answers 400 (see S40).
             throw new InvalidIdentifierException("project", value);
         }
+    }
+
+}
+```
+
+```java
+public record ProjectName(String value) {
+
+    public static final int MAX_LENGTH = 120;
+
+    public ProjectName {
+
+        Objects.requireNonNull(value);
+
+        if (value.isBlank() || value.length() > MAX_LENGTH) {
+            // An InvalidValueException: PROJECT_NAME_INVALID, answered with 400 (see S40).
+            throw new InvalidProjectNameException(MAX_LENGTH);
+        }
+    }
+
+}
+
+public record ProjectDescription(String value) {
+
+    public static final int MAX_LENGTH = 2000;
+
+    public ProjectDescription {
+
+        Objects.requireNonNull(value);
+
+        if (value.length() > MAX_LENGTH) {
+            throw new InvalidProjectDescriptionException(MAX_LENGTH);
+        }
+    }
+
+    // The description is optional: no text, no value object.
+    public static @Nullable ProjectDescription ofNullable(@Nullable String value) {
+
+        return value == null ? null : new ProjectDescription(value);
     }
 
 }
@@ -3270,10 +3713,15 @@ fact.
   states it.
 - **Creation events.** The creation factory records the creation event like any
   other, because the aggregate has its identifier from the start (see D19).
-- **Reacting.** A listener in another aggregate or module reacts in its own
-  transaction (see D11). Use Spring Modulith's `@ApplicationModuleListener`,
-  which runs after commit, in a new transaction, through the event publication
-  registry (see D26).
+- **Reacting inside the module.** Another aggregate of the same module reacts
+  in its own transaction (see D11), through a listener in `messaging.in` that
+  calls an application service, like any driving adapter (see D5). Use Spring
+  Modulith's `@ApplicationModuleListener`, which runs after commit, in a new
+  transaction, through the event publication registry (see D26).
+- **Reacting across modules.** Another module never listens to a domain event,
+  because it would depend on our `domain` package (see D10). It listens to the
+  integration event that `messaging.out` translates from it (see D25), with the
+  same `@ApplicationModuleListener`.
 - **Spring Modulith is mandatory.** Aggregates react to each other only through
   events, each in its own transaction (see D11). A plain `@EventListener` runs
   inside the publisher's transaction, and a `@TransactionalEventListener` loses
@@ -3310,7 +3758,7 @@ public abstract class AggregateRoot<ID> {
     public void assertVersion(long expectedVersion) {
 
         if (!Objects.equals(getVersion(), expectedVersion)) {
-            throw new VersionMismatchException(getClass().getSimpleName(), getId(), expectedVersion);
+            throw new VersionMismatchException(getClass().getSimpleName(), expectedVersion);
         }
     }
 
@@ -3365,14 +3813,23 @@ public void execute(ArchiveProjectCommand command) {
 ```
 
 **D25. Domain events are private; integration events are a contract.** A domain
-event describes our model and may change whenever the model does. Other bounded
-contexts and systems never receive it directly. They receive an integration
-event: a separate type in `messaging.out`, designed as part of our published
-language, versioned (see D28) and mapped from the domain event by the publishing
-adapter.
+event describes our model and may change whenever the model does. Other modules,
+bounded contexts and systems never receive it directly. They receive an
+integration event: a separate record in the feature's `events` package, named
+`<DomainEvent>IntegrationEvent`, designed as part of our published language,
+versioned (see D28) and holding only plain values, so no typed identifier
+crosses the module (see D10).
 
-- **Publish deliberately.** Only events another context needs become integration
-  events. Most domain events stay internal.
+- **Publish deliberately.** Only events another module or context needs become
+  integration events. Most domain events stay internal.
+- **Translated once, in the transaction.** A package-private translator in
+  `messaging.out` listens to the domain event with a plain `@EventListener`,
+  maps it and publishes the integration event. A plain listener runs inside the
+  transaction that changed the aggregate (see D24), which is right here: the
+  integration event enters the publication registry together with the change,
+  and the translator only maps, so nothing else happens in that transaction.
+  Listeners in other modules and the externalization (see D26) receive the
+  same integration event, so the mapping has one home (see J21).
 - **Choose the payload on purpose.** An event notification carries identifiers
   and the consumer queries for the rest. Use it when the consumer needs the
   latest state or the data is sensitive. Event-carried state transfer carries
@@ -3381,6 +3838,56 @@ adapter.
 - **No entity dumps.** An integration event never serializes an entity or an
   aggregate as it is, because that turns our internal model into someone else's
   contract.
+
+```java
+// project.events: the contract, with the envelope of D28
+public record ProjectArchivedIntegrationEvent(UUID eventId,
+    long projectId,
+    Instant occurredAt,
+    int schemaVersion) {
+
+    public static final int SCHEMA_VERSION = 1;
+
+}
+
+// project.messaging.out
+@Component
+@RequiredArgsConstructor
+class ProjectIntegrationEventTranslator {
+
+    private final ApplicationEventPublisher eventPublisher;
+
+    // Runs in the transaction that archived the project, so both commit together.
+    @EventListener
+    void on(ProjectArchived projectArchived) {
+
+        eventPublisher.publishEvent(new ProjectArchivedIntegrationEvent(projectArchived.eventId(),
+                                                                        projectArchived.projectId().value(),
+                                                                        projectArchived.occurredAt(),
+                                                                        ProjectArchivedIntegrationEvent.SCHEMA_VERSION));
+    }
+
+}
+
+// billing.messaging.in: depends only on the project module's "events" interface
+@Component
+@RequiredArgsConstructor
+class ProjectEventsListener {
+
+    private final CloseProjectBilling closeProjectBilling;
+
+    // The service deduplicates on the event identifier (see D27).
+    @ApplicationModuleListener
+    void on(ProjectArchivedIntegrationEvent event) {
+
+        closeProjectBilling.execute(CloseProjectBillingCommand.builder()
+            .projectId(event.projectId())
+            .eventId(event.eventId())
+            .build());
+    }
+
+}
+```
 
 **D26. Transactional outbox across systems.** Whenever a change in our database
 must go together with an effect on another system, such as publishing an event,
@@ -3421,11 +3928,11 @@ spring.modulith.events.republish-outstanding-events-on-restart=false
 
 Modulith's event externalization delivers events to a broker after commit.
 Configure the externalization in the `messaging.out` adapter with
-`EventExternalizationConfiguration`, mapping each domain event to its
-integration event (see D25), rather than annotating domain events with
-`@Externalized`, which would put Modulith into `domain` (see D15). The receiving
-side must be idempotent (see D27), because the relay can deliver a record more
-than once.
+`EventExternalizationConfiguration`, selecting the integration events that the
+translator has already mapped (see D25), rather than annotating them with
+`@Externalized`: the routing to topics is adapter configuration, and the
+contract in `events` stays free of it. The receiving side must be idempotent
+(see D27), because the relay can deliver a record more than once.
 
 **D27. Idempotent, order-tolerant consumers.** A consumer is a driving adapter
 in `messaging.in`, in two steps. Receiving stores the message, as it arrived
@@ -3456,8 +3963,8 @@ the repository, as JSON Schema, Avro or AsyncAPI.
 
 - Every integration event carries an envelope: event identifier, type, schema
   version, occurrence time and the aggregate's identifier. The event identifier
-  is the domain event's `eventId` (see D24), never one generated while mapping,
-  because the mapping runs again on every redelivery.
+  is the domain event's `eventId` (see D24), copied by the translator (see
+  D25), never a new one: consumers deduplicate on it (see D27).
 - Changes are backward compatible: add optional fields, never rename, remove or
   change the meaning of one. A breaking change is a new version, published next
   to the old one until every consumer has moved.
@@ -3467,15 +3974,24 @@ the repository, as JSON Schema, Avro or AsyncAPI.
 ### Background work
 
 **D29. Safe scheduled jobs.** Scheduled jobs are driving adapters in
-`scheduler`: they call an application service and contain no business logic. In
+`scheduler`: they call an application service and contain no business logic.
+The one exception is upkeep with no business rule at all, such as resubmitting
+event publications (see D26): that job lives in `shared` and calls Spring
+Modulith directly. In
 a cluster, they use a distributed lock, such as ShedLock, and each job has its
-own on/off switch in configuration. A job builds its commands like any other
-adapter, so they validate themselves (see S34). A command the job can't build is
-a bug in the job, logged at `error`.
+own on/off switch in configuration. A job whose action takes input builds the
+command like any other adapter, so the command validates itself (see S34), and a
+command the job can't build is a bug in the job, logged at `error`. An action
+without input, such as a cleanup that only needs the current time from the
+injected `Clock`, has `execute()` and no command (see S11).
 
 ## 5. Testing
 
-**T1. Test every branch.** All code branches are tested.
+**T1. Test every branch of the required suite.** Every branch of the code that
+T4 and T5 require tests for is tested, and the gate of B9 measures exactly that
+code. Other adapter code, such as controllers and outbound clients, is covered
+by the optional tests of T6. A rule the suite can't meet would only teach
+everyone to ignore it.
 
 **T2. Readable tests.** Name test classes `<Subject>Test` (not `*Tests` or
 `*IT`), name tests `shouldXWhenY`, group them with `@Nested` and `@DisplayName`,
@@ -3485,18 +4001,99 @@ and assert with AssertJ.
 their data, write one parameterized test instead.
 
 **T4. Unit tests are mandatory.** Unit tests cover the domain, the application
-services, the commands' validation (see S34) and the mappers. A mapper test
-builds the generated implementation with its converters, such as
-`new ProjectEntityMapperImpl(new ProjectIdMapper(), ...)`, and checks the
-reconstitution and the constructor MapStruct chose (see S15 and S23), with no
-Spring context and no database.
+services, the commands' validation (see S34), the mappers, and the shared code
+that decides something. None of them needs a Spring context or a database.
 
-**T5. Integration tests are optional.** Unit tests are the required suite.
-Integration tests are a choice per project, so T6 is a set of hints, not rules,
-and nothing in the build requires them.
+- **Mappers.** A mapper test builds the generated implementation with its
+  converters, such as `new ProjectEntityMapperImpl(new ProjectIdMapper(), ...)`,
+  and checks the reconstitution and the constructor MapStruct chose (see S15 and
+  S23).
+- **The error handler.** `GlobalExceptionHandler` decides every status, code and
+  field list the API returns (see S40). A test in `shared.error` constructs
+  each exception, calls the handler method and asserts the status, the `code`
+  and the `errors`, so a broken mapping can't hide behind a passing controller.
+- **The patch applier.** `PatchApplier` implements RFC 7396 itself (see S33).
+  A test builds it with `JsonMapper.builder().build()` and the validator of
+  `Validation.buildDefaultValidatorFactory()`, and covers removal through
+  `null`, nested merges, an unknown field and the validation groups.
+- **`CommandCheck`**, because every command relies on it (see S34).
 
-**T6. Hints for integration tests.** When a project has them, or before it adds
-them:
+**T5. One integration test is mandatory: the repository round trip.** The
+design puts its subtlest code where unit tests can't reach: the dirty-checked
+update (see S8), assigned identifiers with a `null` version (see S45), the
+forced version increment (see D13) and the events published from the
+repository (see D24). Each aggregate's repository adapter therefore has one
+slice test, `@DataJpaTest` or the data store's equivalent, on the production
+engine (see T6), with the project's migrations, so the sequence and
+`ddl-auto=validate` run as in production. It covers:
+
+- **Save and load.** `nextIdentity`, `save` and `getById` return an equal
+  aggregate, and the creation event reaches the publisher.
+- **Update.** A change saved with `update` is stored, and the version goes up
+  by one.
+- **Inner entities**, where the aggregate has them. A change confined to one,
+  loaded through `getByIdForUpdate`, still increments the root's version.
+- **Stale writes.** A write with an outdated version fails at flush.
+- **Change history**, where the entity is `@FieldHistory`. The snapshot is
+  recorded (see S48).
+
+Flush and clear the persistence context between steps, or the test reads
+Hibernate's first-level cache instead of the database. The slice loads no
+configuration of its own, so import the adapter, its mapper implementation and
+converters, `AggregateEvents`, the auditing configuration with a fixed test
+auditor (see S47), and the database container of T6. On Boot 4, `@DataJpaTest` comes from
+`spring-boot-starter-data-jpa-test`. **On Boot 3**, it's part of
+`spring-boot-starter-test`. Every other integration test stays optional (see
+T6).
+
+```java
+@DataJpaTest
+@Import({JpaProjectRepository.class, ProjectEntityMapperImpl.class, ProjectIdMapper.class, DateMapper.class,
+    AuditMapper.class, AggregateEvents.class, JpaAuditingConfig.class, TestAuditorConfig.class,
+    PostgresContainerConfig.class})
+@RecordApplicationEvents
+class JpaProjectRepositoryTest {
+
+    @Autowired
+    private ProjectRepository projectRepository;
+
+    @Autowired
+    private TestEntityManager testEntityManager;
+
+    @Autowired
+    private ApplicationEvents applicationEvents;
+
+    @Test
+    void shouldIncrementTheVersionWhenAnUpdateIsFlushed() {
+
+        final ProjectId projectId = projectRepository.nextIdentity();
+        projectRepository.save(Project.draft(projectId, new ProjectName("Apollo"), 7L, Instant.EPOCH));
+        flushAndClear();
+
+        final Project stored = projectRepository.getById(projectId);
+        stored.rename(new ProjectName("Artemis"));
+        projectRepository.update(stored);
+        flushAndClear();
+
+        final Project updated = projectRepository.getById(projectId);
+
+        assertThat(updated.getName()).isEqualTo(new ProjectName("Artemis"));
+        assertThat(updated.getVersion()).isEqualTo(stored.getVersion() + 1);
+        assertThat(applicationEvents.stream(ProjectDrafted.class)).hasSize(1);
+    }
+
+    // Without it, the next read comes from Hibernate's first-level cache.
+    private void flushAndClear() {
+
+        testEntityManager.flush();
+        testEntityManager.clear();
+    }
+
+}
+```
+
+**T6. Hints for integration tests.** The last two hints are rules for the
+repository test of T5. The others apply when a project adds more:
 
 - **The cheapest guarantee is a Bruno collection.** Keep a Bruno collection of
   the API in the repository, next to the OpenAPI specification (see B8), with
@@ -3506,10 +4103,7 @@ them:
   together, without any test infrastructure in the build.
 - **Slice tests, where a layer earns one.** Controllers with `@WebMvcTest` or
   the GraphQL tester, outbound HTTP clients against WireMock, including timeouts
-  and remote errors, and repositories with the data store's slice test, such as
-  `@DataJpaTest`. The repository round trip (`save`, `getById`, `update`,
-  `getById`) covers what unit tests can't: the dirty-checked update and the
-  change history (see S8 and S48).
+  and remote errors. Repositories already have theirs (see T5).
 - **The production engine, never a substitute.** A repository test runs on the
   same database engine and major version as production. An in-memory database
   such as H2 can't run native migrations or native queries, such as sequences

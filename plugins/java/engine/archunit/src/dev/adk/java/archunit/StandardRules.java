@@ -6,6 +6,7 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static com.tngtech.archunit.library.Architectures.layeredArchitecture;
 import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.slices;
 
+import com.tngtech.archunit.base.DescribedPredicate;
 import com.tngtech.archunit.core.domain.JavaCall;
 import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaMethod;
@@ -19,6 +20,7 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * The standard's architecture rules, keyed by rule ID. Annotations and types
@@ -31,6 +33,10 @@ public final class StandardRules {
         "javax.validation..", "com.fasterxml..", "tools.jackson..", "..shared.error.."};
 
     private static final String SERVICE = "org.springframework.stereotype.Service";
+
+    private static final String MAPPER = "org.mapstruct.Mapper";
+
+    private static final String COMMAND_SUFFIX = "Command";
 
     private static final String DOMAIN = "..domain..";
 
@@ -60,21 +66,24 @@ public final class StandardRules {
             .and().areDeclaredInClassesThat().areInterfaces().and().arePublic()
             .should().haveNameMatching("(get|find)[A-Z]\\w*")
             .because("query services read with get* (never empty) and find* methods only (S24)"));
-        rules.put("S24-mapper", methods().that().areDeclaredInClassesThat().areAnnotatedWith("org.mapstruct.Mapper")
+        rules.put("S24-mapper", methods().that().areDeclaredInClassesThat().areAnnotatedWith(MAPPER)
             .and().arePublic().should().haveNameMatching("to[A-Z]\\w*|update[A-Z]\\w*")
             .because("mapper methods are to* or update* (S24)"));
         rules.put("S11", classes().that().areAnnotatedWith(SERVICE).and().areNotInterfaces()
             .should(haveOnlyPublicExecute())
             .because("an application service exposes exactly one public method, execute, taking one *Command (S11)"));
-        rules.put("S11-port", methods().that().areDeclaredInClassesThat().resideInAPackage(APPLICATION)
-            .and().areDeclaredInClassesThat().areInterfaces().and().haveName("execute")
-            .should(takeOneCommandAndReturnAnIdentifier())
-            .because("a port's execute takes one *Command and returns nothing or the identifier it created (S11)"));
+        rules.put("S11-port", classes().that().resideInAPackage(APPLICATION)
+            .and().areInterfaces().and().arePublic().and().areTopLevelClasses()
+            .and().haveSimpleNameNotEndingWith("Queries")
+            .should(declareOneExecute())
+            .because("a port declares one abstract execute, taking its own <Port>Command or nothing and returning"
+                + " nothing or the identifier it created (S11)"));
         rules.put("S11-builder", classes().that().resideInAPackage(APPLICATION)
-            .and().haveSimpleNameEndingWith("Command").and().areNotInterfaces()
+            .and().haveSimpleNameEndingWith(COMMAND_SUFFIX).and().areNotInterfaces()
             .and().areNotEnums().and().areTopLevelClasses()
             .should(haveStaticStepBuilder())
-            .because("a command is built with a step builder, through a static builder() returning its first step (S11)"));
+            .because("a command is built with a step builder, through a public static builder() returning its first"
+                + " step (S11)"));
         rules.put("S12", classes().that().areAnnotatedWith(SERVICE)
             .should().resideInAPackage(APPLICATION).andShould().haveSimpleNameEndingWith("Service")
             .because("@Service marks application services only, named <Port>Service in application (S12)"));
@@ -86,6 +95,11 @@ public final class StandardRules {
         rules.put("D15", noClasses().that().resideInAPackage(DOMAIN)
             .should().dependOnClassesThat().resideInAnyPackage(FRAMEWORKS)
             .because("domain classes are plain Java: no Spring, JPA, Jackson, Bean Validation or HTTP errors (D15)"));
+        rules.put("S19", noClasses().that().resideOutsideOfPackage("..mapping..")
+            .and().areNotAnnotatedWith(MAPPER).and().haveSimpleNameNotEndingWith("MapperImpl")
+            .should().dependOnClassesThat().resideInAPackage("..mapping..")
+            .because("converters in mapping serve MapStruct only: hand-written code converts through the value object"
+                + " itself (S19)"));
         rules.put("D19", noClasses().that().resideOutsideOfPackage("..persistence..")
             .should().callMethodWhere(JavaCall.Predicates.target(HasName.Predicates.name("reconstitute")))
             .because("only the persistence adapter reconstitutes stored aggregates (D19)"));
@@ -120,7 +134,7 @@ public final class StandardRules {
         rules.put("S6", classes().that().areAnnotatedWith("org.springframework.context.annotation.Configuration")
             .or().areAnnotatedWith("org.springframework.web.bind.annotation.RestController")
             .or().areAnnotatedWith("org.springframework.stereotype.Controller")
-            .or().areAnnotatedWith(SERVICE).or().haveSimpleNameEndingWith("Impl")
+            .or(arePortImplementations())
             .should().notBePublic()
             .because("managed classes and port implementations get the lowest visibility: callers depend on the port (S6)"));
         if (basePackage != null && !basePackage.isBlank()) {
@@ -168,7 +182,7 @@ public final class StandardRules {
     }
 
     private static boolean command(JavaClass type) {
-        return type.getSimpleName().endsWith("Command");
+        return type.getSimpleName().endsWith(COMMAND_SUFFIX);
     }
 
     // Compiler-generated members (bridge methods, lambdas) aren't the author's API.
@@ -200,33 +214,67 @@ public final class StandardRules {
     }
 
     /*
-     * An abstract execute() or execute(XCommand), returning void or an
-     * identifier (*Id). A default execute may also take a Function from the
+     * Application services, and classes outside domain that implement a
+     * feature's port. Domain events implement interfaces in domain and stay
+     * public, so domain is left out; the name doesn't matter (D6).
+     */
+    private static DescribedPredicate<JavaClass> arePortImplementations() {
+        return DescribedPredicate.describe("port implementations",
+            javaClass -> javaClass.isAnnotatedWith(SERVICE)
+                || (!javaClass.getPackageName().matches(".*\\.domain(\\..*)?")
+                    && javaClass.getAllRawInterfaces().stream().anyMatch(StandardRules::isFeaturePort)));
+    }
+
+    // A port is a public top-level interface in a feature's domain or application package.
+    private static boolean isFeaturePort(JavaClass javaInterface) {
+        return javaInterface.getModifiers().contains(JavaModifier.PUBLIC) && javaInterface.isTopLevelClass()
+            && javaInterface.getPackageName().matches(".*\\.(domain|application)(\\..*)?")
+            && !javaInterface.getPackageName().contains(".shared.");
+    }
+
+    /*
+     * One abstract execute() or execute(<Port>Command), returning void or an
+     * identifier (*Id). A default execute may take a Function from the
      * command's first step to its final step (the compiler then still checks
      * every mandatory value): never a list of separate arguments.
      */
-    private static ArchCondition<JavaMethod> takeOneCommandAndReturnAnIdentifier() {
-        return new ArchCondition<>("take one *Command and return void or an identifier") {
+    private static ArchCondition<JavaClass> declareOneExecute() {
+        return new ArchCondition<>("declare one abstract execute(<Port>Command) or execute()") {
             @Override
-            public void check(JavaMethod method, ConditionEvents events) {
-                if (generated(method)) {
+            public void check(JavaClass port, ConditionEvents events) {
+                List<JavaMethod> abstractMethods = port.getMethods().stream()
+                    .filter(method -> method.getModifiers().contains(JavaModifier.ABSTRACT))
+                    .filter(method -> !generated(method))
+                    .toList();
+                List<String> names = abstractMethods.stream().map(JavaMethod::getName).sorted().toList();
+                if (!names.equals(List.of("execute"))) {
+                    events.add(SimpleConditionEvent.violated(port, classLabel(port) + " declares abstract methods "
+                        + names + " instead of one execute in " + port.getSourceCodeLocation()));
                     return;
                 }
-                List<JavaClass> parameters = method.getRawParameterTypes();
-                boolean function = !method.getModifiers().contains(JavaModifier.ABSTRACT) && parameters.size() == 1
-                    && parameters.get(0).getName().equals("java.util.function.Function");
-                boolean oneCommand = parameters.isEmpty() || parameters.size() == 1 && command(parameters.get(0));
-                if (!oneCommand && !function) {
-                    events.add(SimpleConditionEvent.violated(method, method.getDescription() + " takes "
-                        + parameters.stream().map(JavaClass::getSimpleName).toList()
-                        + " instead of one <Port>Command in " + method.getSourceCodeLocation()));
+                JavaMethod execute = abstractMethods.get(0);
+                List<JavaClass> parameters = execute.getRawParameterTypes();
+                String commandName = port.getName() + COMMAND_SUFFIX;
+                if (!parameters.isEmpty() && !(parameters.size() == 1 && parameters.get(0).getName().equals(commandName))) {
+                    events.add(SimpleConditionEvent.violated(execute, execute.getDescription() + " takes "
+                        + parameters.stream().map(JavaClass::getSimpleName).toList() + " instead of one "
+                        + port.getSimpleName() + "Command or nothing in " + execute.getSourceCodeLocation()));
                 }
-                JavaClass result = method.getRawReturnType();
+                JavaClass result = execute.getRawReturnType();
                 if (!result.getName().equals("void") && !result.getSimpleName().endsWith("Id")) {
-                    events.add(SimpleConditionEvent.violated(method, method.getDescription() + " returns "
+                    events.add(SimpleConditionEvent.violated(execute, execute.getDescription() + " returns "
                         + result.getSimpleName() + ": return nothing, or the identifier of what it created, and read"
-                        + " the rest through a query service in " + method.getSourceCodeLocation()));
+                        + " the rest through a query service in " + execute.getSourceCodeLocation()));
                 }
+                port.getMethods().stream()
+                    .filter(method -> method.getName().equals("execute") && !abstractMethods.contains(method))
+                    .filter(method -> !generated(method))
+                    .filter(method -> !method.getRawParameterTypes().stream().map(JavaClass::getName).toList()
+                        .equals(List.of("java.util.function.Function")))
+                    .forEach(method -> events.add(SimpleConditionEvent.violated(method, method.getDescription()
+                        + " takes " + method.getRawParameterTypes().stream().map(JavaClass::getSimpleName).toList()
+                        + ": a default execute takes only a Function over the command's steps in "
+                        + method.getSourceCodeLocation())));
             }
         };
     }
@@ -241,15 +289,16 @@ public final class StandardRules {
             public void check(JavaClass javaClass, ConditionEvents events) {
                 JavaMethod builder = javaClass.getMethods().stream()
                     .filter(method -> method.getName().equals("builder") && method.getParameters().isEmpty()
-                        && method.getModifiers().contains(JavaModifier.STATIC))
+                        && method.getModifiers().containsAll(Set.of(JavaModifier.PUBLIC, JavaModifier.STATIC)))
                     .findFirst().orElse(null);
                 if (builder == null) {
                     events.add(SimpleConditionEvent.violated(javaClass, classLabel(javaClass)
-                        + " has no static builder() method in " + javaClass.getSourceCodeLocation()));
-                } else if (!builder.getRawReturnType().isInterface()) {
+                        + " has no public static builder() method in " + javaClass.getSourceCodeLocation()));
+                } else if (!builder.getRawReturnType().isInterface()
+                    || !builder.getRawReturnType().getEnclosingClass().map(javaClass::equals).orElse(false)) {
                     events.add(SimpleConditionEvent.violated(javaClass, classLabel(javaClass)
                         + "'s builder() returns " + builder.getRawReturnType().getSimpleName()
-                        + ", not the interface of a first step: use a step builder, not Lombok's @Builder, in "
+                        + ", not the interface of its own first step: use a nested step builder, not Lombok's @Builder, in "
                         + javaClass.getSourceCodeLocation()));
                 }
             }

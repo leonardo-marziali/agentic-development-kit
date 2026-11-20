@@ -1,6 +1,6 @@
 ---
 name: spring-rest-api-design
-description: 'Use when adding or changing REST endpoints, request and response DTOs, validation, OpenAPI annotations, pagination or error handling in a project that follows the java-standards opt-in. Covers Richardson level 2, standard HTTP and RFC features, resource naming, state changes as a PUT on the state, PATCH with JSON Merge Patch and JSON Patch, the three layers of validation, OpenAPI documentation, PageableDto and PageDto, ProblemDetail errors mapped from HTTP-free domain exception categories, bulk operations and controller paths kept in api-paths.properties (rules S26 to S43, S61 and S62).'
+description: 'Use when adding or changing REST endpoints, request and response DTOs, validation, OpenAPI annotations, pagination or error handling in a project that follows the java-standards opt-in. Covers Richardson level 2, standard HTTP and RFC features, resource naming, state changes as a PUT on the state, PATCH with JSON Merge Patch and JSON Patch validated with the groups of the PUT, the three layers of validation with limits owned by value objects, OpenAPI documentation, PageableDto and PageDto, ProblemDetail errors mapped from HTTP-free domain exception categories, optimistic-locking failures answered with 412, bulk operations and controller paths kept in api-paths.properties (rules S26 to S43, S61 and S62).'
 paths: '**/*.java, **/pom.xml, **/build.gradle*'
 ---
 
@@ -107,17 +107,20 @@ performs. A read is never a `POST`.
   accept both on the same path, routed by `consumes`.
 - **Patch the write DTO, not the entity.** Clients can then reach only writable
   fields.
-- **Validate after patching.** Spring validates the request body, which here is
-  the patch document, so the patched DTO has to be validated explicitly.
+- **Validate after patching, with the groups of the `PUT`.** Spring validates
+  the request body, which here is the patch document, so the patched DTO has to
+  be validated explicitly. It goes through the same validation groups as the
+  operation's `PUT` body (see S34), so both methods enforce the same rules.
 - **Protect against lost updates.** The read and the update run in separate
   transactions (see S9), so require `If-Match` and pass the version down as in
   S8 (see D13).
 - **Use the maintained artifact for JSON Patch.** Use
-  `io.github.vishwakarma:zjsonpatch`, which is the project's current home and
-  supports both Jackson generations through the same Java package: `JsonPatch`
-  for Jackson 2 and `Jackson3JsonPatch` for Jackson 3. Its Jackson dependency is
-  optional, so declare the one you use. The old
-  `com.flipkart.zjsonpatch:zjsonpatch` artifact stopped at 0.4.16 in 2023.
+  `io.github.vishwakarma:zjsonpatch`, which is the project's current home, with
+  `Jackson3JsonPatch` for Jackson 3. Its Jackson dependency is optional, so
+  declare it. The old `com.flipkart.zjsonpatch:zjsonpatch` artifact stopped at
+  0.4.16 in 2023. **On Boot 3** (Jackson 2), the same artifact offers
+  `JsonPatch`, and `PatchApplier` below uses `ObjectMapper` and catches the
+  checked `JsonProcessingException` instead.
 
 ```java
 // Controller
@@ -127,7 +130,8 @@ public ResponseEntity<ProjectReadDto> mergePatch(Long projectId, JsonNode mergeP
 
     final ProjectId id = new ProjectId(projectId);
     final ProjectWriteDto current = projectApiMapper.toWriteDto(projectQueries.getById(id));
-    final ProjectWriteDto patched = patchApplier.applyMergePatch(mergePatch, current, ProjectWriteDto.class);
+    final ProjectWriteDto patched = patchApplier.applyMergePatch(mergePatch, current, ProjectWriteDto.class,
+        OnUpdate.class);
 
     updateProjectDetails.execute(projectApiMapper.toUpdateDetailsCommand(id, patched, ETags.toVersion(ifMatch)));
 
@@ -139,30 +143,28 @@ public ResponseEntity<ProjectReadDto> mergePatch(Long projectId, JsonNode mergeP
                          .body(projectApiMapper.toReadDto(updatedProject, usersById));
 }
 
-/*
- * shared.web. The Jackson 2 API is shown. On Jackson 3, use JsonMapper and
- * Jackson3JsonPatch, whose exceptions are unchecked.
- */
+// shared.web. Jackson 3: JsonMapper, JsonNode and the exceptions are in tools.jackson.
 @Component
 @RequiredArgsConstructor
 public class PatchApplier {
 
-    private final ObjectMapper objectMapper;
+    private final JsonMapper jsonMapper;
 
     private final Validator validator;
 
-    public <T> T applyJsonPatch(JsonNode jsonPatch, T source, Class<T> type) {
+    // The groups are those of the operation's PUT body, such as OnUpdate (see S34).
+    public <T> T applyJsonPatch(JsonNode jsonPatch, T source, Class<T> type, Class<?>... groups) {
 
-        final JsonNode patched = JsonPatch.apply(jsonPatch, objectMapper.valueToTree(source));
+        final JsonNode patched = Jackson3JsonPatch.apply(jsonPatch, jsonMapper.valueToTree(source));
 
-        return readAndValidate(patched, type);
+        return readAndValidate(patched, type, groups);
     }
 
-    public <T> T applyMergePatch(JsonNode mergePatch, T source, Class<T> type) {
+    public <T> T applyMergePatch(JsonNode mergePatch, T source, Class<T> type, Class<?>... groups) {
 
-        final JsonNode patched = merge(objectMapper.valueToTree(source), mergePatch);
+        final JsonNode patched = merge(jsonMapper.valueToTree(source), mergePatch);
 
-        return readAndValidate(patched, type);
+        return readAndValidate(patched, type, groups);
     }
 
     // The merge algorithm defined in RFC 7396, section 2.
@@ -172,7 +174,7 @@ public class PatchApplier {
             return patch;
         }
 
-        final ObjectNode result = target instanceof ObjectNode objectNode ? objectNode : objectMapper.createObjectNode();
+        final ObjectNode result = target instanceof ObjectNode objectNode ? objectNode : jsonMapper.createObjectNode();
 
         patch.properties().forEach(entry -> {
             if (entry.getValue().isNull()) {
@@ -185,10 +187,10 @@ public class PatchApplier {
         return result;
     }
 
-    private <T> T readAndValidate(JsonNode patched, Class<T> type) {
+    private <T> T readAndValidate(JsonNode patched, Class<T> type, Class<?>... groups) {
 
         final T result = read(patched, type);
-        final Set<ConstraintViolation<T>> violations = validator.validate(result);
+        final Set<ConstraintViolation<T>> violations = validator.validate(result, groups);
 
         if (!violations.isEmpty()) {
             throw new ConstraintViolationException(violations);
@@ -203,11 +205,12 @@ public class PatchApplier {
      */
     private <T> T read(JsonNode patched, Class<T> type) {
 
+        // Jackson 3's exceptions are unchecked; this one is translated to our own (see S40).
         try {
-            return objectMapper.readerFor(type)
-                               .with(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
-                               .treeToValue(patched, type);
-        } catch (JsonProcessingException exception) {
+            return jsonMapper.readerFor(type)
+                             .with(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+                             .treeToValue(patched, type);
+        } catch (JacksonException exception) {
             throw new InvalidPatchResultException(exception);
         }
     }
@@ -215,7 +218,11 @@ public class PatchApplier {
 }
 ```
 
-Failures map to these statuses, following RFC 5789:
+Failures map to these statuses. A patched DTO that no longer reads as the DTO,
+or breaks its constraints, gets the same `400` and field list as a `PUT` body
+with the same fault (see S34). RFC 5789 also allows `422` there, but one rule
+gives one answer, whatever the method. `422` stays for a patch that can't be
+applied at all.
 
 | Failure                       | Exception                       | Status |
 | ----------------------------- | ------------------------------- | ------ |
@@ -224,8 +231,8 @@ Failures map to these statuses, following RFC 5789:
 | Wrong media type              | Handled by Spring               | `415`  |
 | Failed `test` operation       | `JsonPatchTestFailedException`  | `409`  |
 | Patch can't be applied        | `JsonPatchApplicationException` | `422`  |
-| Patched result has bad fields | `InvalidPatchResultException`   | `422`  |
-| Patched result fails rules    | `ConstraintViolationException`  | `422`  |
+| Patched result has bad fields | `InvalidPatchResultException`   | `400`  |
+| Patched result fails rules    | `ConstraintViolationException`  | `400`  |
 
 ## REST validation
 
@@ -238,7 +245,27 @@ ch. 4).
   field listed (see S42), and the annotations also document the contract (see
   S35). Use Jakarta Validation annotations, and create a custom annotation when
   the standard ones can't express the check. Use validation groups (`OnCreate`,
-  `OnUpdate`) when rules differ by operation.
+  `OnUpdate`) when rules differ by operation:
+  - **Each group extends `Default`**, so `@Validated(OnUpdate.class)` still
+    checks the constraints that have no group. Without it, those constraints
+    would silently stop running.
+  - **One operation, one set of groups.** A `PUT` body is validated with
+    `@Validated(OnUpdate.class)` on its `@RequestBody`, and the patched DTO of
+    the same resource with the same group (see S33).
+  - **One answer per broken rule.** Every DTO violation returns `400` with the
+    same field list, whether it comes from a `PUT` body, a patched DTO or a
+    command (see S40).
+  - **Constraints on DTOs, not on controller parameters.** A constraint such as
+    `@Positive` on a `@PathVariable` makes Spring validate the whole method, and
+    a body violation then arrives as `HandlerMethodValidationException` instead
+    of `MethodArgumentNotValidException`, which the handler of S40 covers.
+    Identifiers are checked by their value object anyway (see D22).
+
+  ```java
+  // shared.web
+  public interface OnUpdate extends Default {}
+  ```
+
 - **Commands** validate themselves in their compact constructors (see S11), so
   every adapter, REST, messaging or scheduler, passes through the same checks.
   `CommandCheck` collects every violation and throws one
@@ -246,13 +273,16 @@ ch. 4).
   messaging it sends the message to the dead-letter table (see D27). In a
   scheduled job it's a bug, logged at `error` (see D29).
 - **The domain** enforces business invariants, such as allowed state transitions
-  or a uniqueness that depends on other data. A violation throws a coded domain
-  exception (see S40 and S41), usually returned as `409` or `422`.
+  or a uniqueness that depends on other data, and its value objects enforce
+  their own limits (see D22). A violation throws a coded domain exception (see
+  S40 and S41): `400` for a value object that rejects its input, usually `409`
+  or `422` for the rest.
 
-A limit that both a DTO and a command check is one constant, defined once (see
-J21): on the aggregate when it's a fact of the domain, such as
-`Project.NAME_MAX_LENGTH`, and referenced from both, as in
-`@Size(max = Project.NAME_MAX_LENGTH)`.
+A limit is one constant, defined once (see J21) on the value object that
+enforces it, such as `ProjectName.MAX_LENGTH`. The DTO and the command reference
+it, as in `@Size(max = ProjectName.MAX_LENGTH)`, and repeat the check only so
+that a client learns about every invalid field at once. The value object stays
+the authority, whichever adapter or use case reaches the aggregate.
 
 ```java
 // shared.application
@@ -358,9 +388,9 @@ processed, and an invalid event goes to the dead-letter table (see D27).
 
 ## Pagination
 
-**S38. `Pageable` and `Page` start at the service.** Spring Data's types live in
-the service layer and below. Controllers use `PageableDto` and `PageDto`, and
-`PageMapper` converts between the two.
+**S38. `Pageable` and `Page` start at the query port.** Spring Data's types
+appear from the query ports inward, the one exception of S7. Controllers use
+`PageableDto` and `PageDto`, and `PageMapper` converts between the two.
 
 **S39. DTOs mirror Spring Data.** `PageableDto` and `PageDto` use the same field
 names and types as `Pageable` and `Page`, with OpenAPI annotations added. The
@@ -389,41 +419,17 @@ public class PageableDto {
 
 }
 
-@Value
 @Builder
-public class PageDto<T> {
-
-    @Schema(description = "Items on this page")
-    List<T> content;
-
-    @Schema(description = "Zero-based page index", example = "0")
-    int number;
-
-    @Schema(description = "Requested page size", example = "20")
-    int size;
-
-    @Schema(description = "Items on this page", example = "20")
-    int numberOfElements;
-
-    @Schema(description = "Items across all pages", example = "137")
-    long totalElements;
-
-    @Schema(description = "Total number of pages", example = "7")
-    int totalPages;
-
-    @Schema(description = "Whether this is the first page", example = "true")
-    boolean first;
-
-    @Schema(description = "Whether this is the last page", example = "false")
-    boolean last;
-
-    @Schema(description = "Whether this page has no items", example = "false")
-    boolean empty;
-
-    @Schema(description = "Sort criteria applied to this page")
-    List<SortOrderDto> sort;
-
-}
+public record PageDto<T>(@Schema(description = "Items on this page") List<T> content,
+    @Schema(description = "Zero-based page index", example = "0") int number,
+    @Schema(description = "Requested page size", example = "20") int size,
+    @Schema(description = "Items on this page", example = "20") int numberOfElements,
+    @Schema(description = "Items across all pages", example = "137") long totalElements,
+    @Schema(description = "Total number of pages", example = "7") int totalPages,
+    @Schema(description = "Whether this is the first page", example = "true") boolean first,
+    @Schema(description = "Whether this is the last page", example = "false") boolean last,
+    @Schema(description = "Whether this page has no items", example = "false") boolean empty,
+    @Schema(description = "Sort criteria applied to this page") List<SortOrderDto> sort) {}
 
 // Controller: one batched lookup for the owners on this page (see S49)
 final Page<ProjectReadModel> projects = projectQueries.findAll(pageMapper.toPageable(pageableDto));
@@ -465,6 +471,14 @@ table.
   `error` with one.
 - 5xx responses never expose internals such as bucket names, keys or parser
   messages.
+- **A lost race is a stale version too.** Hibernate checks `@Version` when the
+  commit flushes, after the service has returned, and Spring translates the
+  failure into `ObjectOptimisticLockingFailureException`. It isn't a domain
+  exception, so it needs its own handler, or the client gets a `500` for a
+  normal concurrent edit. The handler catches the parent,
+  `OptimisticLockingFailureException`, which Spring Data JDBC and MongoDB throw
+  too, and answers `412` with the code of `VersionMismatchException`,
+  `VERSION_MISMATCH`: either way, the client reads again and retries.
 - GraphQL needs its own exception resolver, because REST advice doesn't cover
   it.
 
@@ -495,6 +509,22 @@ public abstract non-sealed class AggregateNotFoundException extends DomainExcept
     protected AggregateNotFoundException(String code, String message) {
 
         super(code, message);
+    }
+
+}
+
+/*
+ * The one final category: a stale version is the same error for every
+ * aggregate, so it has one code, which the optimistic-locking handler reuses.
+ */
+public final class VersionMismatchException extends DomainException {
+
+    public static final String CODE = "VERSION_MISMATCH";
+
+    public VersionMismatchException(String aggregateType, long expectedVersion) {
+
+        super(CODE, "This %s has changed since version %d. Read it again and repeat your change."
+            .formatted(aggregateType.toLowerCase(), expectedVersion));
     }
 
 }
@@ -539,11 +569,56 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
         log.warn("Invalid {}: {}", exception.getCommandName(), exception.getViolations());
 
-        final ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST,
-            "Some fields are invalid. Fix them and send the request again.");
-        problem.setProperty("errors", exception.getViolations());
+        return ResponseEntity.badRequest().body(invalidFields(exception.getViolations()));
+    }
 
-        return ResponseEntity.badRequest().body(problem);
+    // A patched DTO that breaks its constraints (see S33): the same answer as a PUT body.
+    @ExceptionHandler
+    ResponseEntity<ProblemDetail> handleConstraintViolation(ConstraintViolationException exception) {
+
+        final List<FieldViolation> violations = exception.getConstraintViolations().stream()
+                                                         .map(violation -> new FieldViolation(violation.getPropertyPath().toString(),
+                                                                                              violation.getMessage()))
+                                                         .toList();
+
+        log.warn("Invalid patched request: {}", violations);
+
+        return ResponseEntity.badRequest().body(invalidFields(violations));
+    }
+
+    // A request body that breaks its constraints. Spring's default lists no fields (see S42).
+    @Override
+    protected @Nullable ResponseEntity<Object> handleMethodArgumentNotValid(MethodArgumentNotValidException exception,
+        HttpHeaders headers, HttpStatusCode status, WebRequest request) {
+
+        final BindingResult bindingResult = exception.getBindingResult();
+
+        // A class-level constraint names no field, so it's reported against the request.
+        final List<FieldViolation> violations = Stream.concat(
+            bindingResult.getFieldErrors().stream().map(error -> new FieldViolation(error.getField(), messageOf(error))),
+            bindingResult.getGlobalErrors().stream().map(error -> new FieldViolation("request", messageOf(error))))
+            .toList();
+
+        log.warn("Invalid request: {}", violations);
+
+        return handleExceptionInternal(exception, invalidFields(violations), headers, HttpStatus.BAD_REQUEST, request);
+    }
+
+    /*
+     * Another transaction committed between the version check (see D13) and the
+     * flush. Same status and code as VersionMismatchException: the client's
+     * version is stale either way. The library message goes to the log only.
+     */
+    @ExceptionHandler
+    ResponseEntity<ProblemDetail> handleOptimisticLockingFailure(OptimisticLockingFailureException exception) {
+
+        log.warn("Concurrent update rejected: {}", exception.getMessage());
+
+        final ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.PRECONDITION_FAILED,
+            "Someone changed this resource after your last read. Read it again and repeat your change.");
+        problem.setProperty("code", VersionMismatchException.CODE);
+
+        return ResponseEntity.status(HttpStatus.PRECONDITION_FAILED).body(problem);
     }
 
     // A missing If-Match on an update is 428 (RFC 6585), not Spring's default 400.
@@ -564,11 +639,26 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return super.handleServletRequestBindingException(exception, headers, status, request);
     }
 
+    // One body for every invalid input: DTOs, patched DTOs and commands (see S34).
+    private ProblemDetail invalidFields(List<FieldViolation> violations) {
+
+        final ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST,
+            "Some fields are invalid. Fix them and send the request again.");
+        problem.setProperty("errors", violations);
+
+        return problem;
+    }
+
+    private String messageOf(ObjectError error) {
+
+        return Objects.requireNonNullElse(error.getDefaultMessage(), "is invalid");
+    }
+
 }
 ```
 
-`HttpStatus.UNPROCESSABLE_CONTENT` is Spring Framework 7's name for `422`. On
-Spring Framework 6, use `UNPROCESSABLE_ENTITY`.
+`HttpStatus.UNPROCESSABLE_CONTENT` is Spring Framework 7's name for `422`.
+**On Boot 3** (Spring Framework 6), use `UNPROCESSABLE_ENTITY`.
 
 **S41. Coded domain errors.** Alongside technical errors, document custom domain
 errors with examples. Each has a stable, machine-readable code, such as
