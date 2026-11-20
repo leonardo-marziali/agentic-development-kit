@@ -1,3 +1,14 @@
+# [5.0.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v4.0.0...v5.0.0) (2026-11-20)
+
+
+* feat(java)!: align the plugin with the updated standard ([#61](https://github.com/leonardo-marziali/agentic-development-kit/issues/61)) ([aa227ec](https://github.com/leonardo-marziali/agentic-development-kit/commit/aa227ecff524a97aa4146464eeedb1fdef429b96))
+
+
+### BREAKING CHANGES
+
+* S6, S11, S14 and S19 report code they used to accept;
+re-run /java:setup to record a new ArchUnit baseline.
+
 # [4.0.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v3.1.1...v4.0.0) (2026-11-17)
 
 
