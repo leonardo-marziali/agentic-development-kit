@@ -17,6 +17,7 @@ const {
   autoSuppressEnabled,
   insertPyrightIgnores,
   insertNoqa,
+  parseRuffJson,
 } = require('../lib');
 const { mkScratchDir, rmScratchDir } = require('./helpers');
 
@@ -405,4 +406,16 @@ test("insertNoqa: comments ruff's noqa_row and preserves CRLF", (t) => {
   insertNoqa([ruffFinding(file, 2, 'E501', 3)]);
 
   assert.equal(fs.readFileSync(file, 'utf8'), 'x = """\r\nlong\r\n"""  # noqa: E501\r\n');
+});
+
+test('parseRuffJson: reads the findings array, also from behind launcher notices', () => {
+  const findings = [{ code: 'F841', filename: 'a.py', location: { row: 1, column: 1 } }];
+  assert.deepEqual(parseRuffJson(JSON.stringify(findings)), findings);
+  assert.deepEqual(parseRuffJson(`Installed 1 package\n${JSON.stringify(findings)}\n`), findings);
+});
+
+test('parseRuffJson: returns null for empty, non-array or unparseable input', () => {
+  assert.equal(parseRuffJson(''), null);
+  assert.equal(parseRuffJson('{"not": "an array"}'), null);
+  assert.equal(parseRuffJson('error: no [valid json'), null);
 });

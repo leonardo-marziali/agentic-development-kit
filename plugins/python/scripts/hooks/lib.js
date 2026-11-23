@@ -190,6 +190,32 @@ function pythonPathFor(configDir) {
 }
 
 /*
+A tool's JSON payload from a captured stream, or null. The stream isn't
+guaranteed to be pure JSON: a launcher (npx, uvx) can print its own
+notices around it. So parse the whole text when it is clean, and otherwise
+the span from the first `open` to the last `close`, which is the payload.
+`accept` says whether a parsed value has the expected shape.
+*/
+function extractJson(raw, open, close, accept) {
+  const parse = (text) => {
+    try {
+      const value = JSON.parse(text);
+      return accept(value) ? value : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const trimmed = (raw || '').trim();
+  if (!trimmed) return null;
+  const whole = parse(trimmed);
+  if (whole) return whole;
+  const start = trimmed.indexOf(open);
+  const end = trimmed.lastIndexOf(close);
+  return start === -1 || end <= start ? null : parse(trimmed.slice(start, end + 1));
+}
+
+/*
 Extracts pyright's --outputjson payload from a captured stream and keeps
 only error-severity diagnostics — warnings and information never block.
 
@@ -198,28 +224,8 @@ cold cache, so parse the whole thing when it's clean and otherwise fall
 back to the braced span. Returns null when no payload can be recovered.
 */
 function parsePyrightJson(raw) {
-  const trimmed = (raw || '').trim();
-  if (!trimmed) return null;
-
-  const attempt = (text) => {
-    try {
-      const parsed = JSON.parse(text);
-      return parsed && Array.isArray(parsed.generalDiagnostics) ? parsed : null;
-    } catch {
-      return null;
-    }
-  };
-
-  let parsed = attempt(trimmed);
-  if (!parsed) {
-    const start = trimmed.indexOf('{');
-    const end = trimmed.lastIndexOf('}');
-    if (start === -1 || end <= start) return null;
-    parsed = attempt(trimmed.slice(start, end + 1));
-  }
-  if (!parsed) return null;
-
-  return parsed.generalDiagnostics.filter((diag) => diag.severity === 'error');
+  const parsed = extractJson(raw, '{', '}', (v) => v && Array.isArray(v.generalDiagnostics));
+  return parsed ? parsed.generalDiagnostics.filter((diag) => diag.severity === 'error') : null;
 }
 
 /*
@@ -238,31 +244,9 @@ function formatPyrightReport(diags) {
     .join('\n');
 }
 
-/*
-Extracts `ruff check --output-format=json`'s array of findings from a
-captured stream. As with pyright, a launcher (uvx) can print its own
-notices around the payload, so parse the whole thing when it is clean and
-otherwise fall back to the bracketed span. Null when no array is found.
-*/
+// `ruff check --output-format=json`'s array of findings (see extractJson).
 function parseRuffJson(raw) {
-  const trimmed = (raw || '').trim();
-  if (!trimmed) return null;
-
-  const attempt = (text) => {
-    try {
-      const parsed = JSON.parse(text);
-      return Array.isArray(parsed) ? parsed : null;
-    } catch {
-      return null;
-    }
-  };
-
-  const whole = attempt(trimmed);
-  if (whole) return whole;
-  const start = trimmed.indexOf('[');
-  const end = trimmed.lastIndexOf(']');
-  if (start === -1 || end <= start) return null;
-  return attempt(trimmed.slice(start, end + 1));
+  return extractJson(raw, '[', ']', Array.isArray);
 }
 
 // Mirrors `ruff check --output-format=concise`: `path:row:col: CODE message`.
