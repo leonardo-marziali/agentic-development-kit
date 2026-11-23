@@ -21,27 +21,33 @@ function upperFormatter(text) {
 
 const TEN_LINES = Array.from({ length: 10 }, (_, i) => `line${i + 1}\n`).join('');
 
+// Runs `fn` in a scratch repo with `files` committed, then removes it.
+function withRepo(files, fn) {
+  const dir = mkScratchRepo(files);
+  try {
+    return fn(dir);
+  } finally {
+    rmScratchDir(dir);
+  }
+}
+
 function read(file) {
   return fs.readFileSync(file, 'utf8');
 }
 
 test('only formatter changes near the changed lines are applied', () => {
-  const dir = mkScratchRepo({ 'a.txt': TEN_LINES });
-  try {
+  withRepo({ 'a.txt': TEN_LINES }, (dir) => {
     const file = writeFile(dir, 'a.txt', TEN_LINES.replace('line5\n', 'edited5\n'));
 
     const result = formatInScope({ file, formatStdin: upperFormatter, context: 0 });
 
     assert.strictEqual(result.status, 'narrowed');
     assert.strictEqual(read(file), TEN_LINES.replace('line5\n', 'EDITED5\n'));
-  } finally {
-    rmScratchDir(dir);
-  }
+  });
 });
 
 test('the context margin widens what gets formatted', () => {
-  const dir = mkScratchRepo({ 'a.txt': TEN_LINES });
-  try {
+  withRepo({ 'a.txt': TEN_LINES }, (dir) => {
     const file = writeFile(dir, 'a.txt', TEN_LINES.replace('line5\n', 'edited5\n'));
 
     formatInScope({ file, formatStdin: upperFormatter });
@@ -57,28 +63,22 @@ test('the context margin widens what gets formatted', () => {
       'LINE7',
       'line8',
     ]);
-  } finally {
-    rmScratchDir(dir);
-  }
+  });
 });
 
 test('two distant edits format both regions and nothing in between', () => {
-  const dir = mkScratchRepo({ 'a.txt': TEN_LINES });
-  try {
+  withRepo({ 'a.txt': TEN_LINES }, (dir) => {
     const edited = TEN_LINES.replace('line2\n', 'x2\n').replace('line9\n', 'x9\n');
     const file = writeFile(dir, 'a.txt', edited);
 
     formatInScope({ file, formatStdin: upperFormatter, context: 0 });
 
     assert.strictEqual(read(file), edited.replace('x2\n', 'X2\n').replace('x9\n', 'X9\n'));
-  } finally {
-    rmScratchDir(dir);
-  }
+  });
 });
 
 test('a formatter hunk that changes the line count is applied in place', () => {
-  const dir = mkScratchRepo({ 'a.txt': 'a\nb\nc\nd\ne\nf\n' });
-  try {
+  withRepo({ 'a.txt': 'a\nb\nc\nd\ne\nf\n' }, (dir) => {
     const file = writeFile(dir, 'a.txt', 'a\nb\nc\nd\nEDIT\nf\n');
     // Splits line 5 in two, and splits line 1 in two (out of scope).
     const formatStdin = (text) => ({
@@ -91,14 +91,11 @@ test('a formatter hunk that changes the line count is applied in place', () => {
 
     assert.strictEqual(result.status, 'narrowed');
     assert.strictEqual(read(file), 'a\nb\nc\nd\nED\nIT\nf\n');
-  } finally {
-    rmScratchDir(dir);
-  }
+  });
 });
 
 test('a formatter deletion next to a changed line is applied', () => {
-  const dir = mkScratchRepo({ 'a.txt': 'a\nb\nc\nd\n' });
-  try {
+  withRepo({ 'a.txt': 'a\nb\nc\nd\n' }, (dir) => {
     const file = writeFile(dir, 'a.txt', 'a\nb\n\n\nc\nd\n');
     // Collapses the doubled blank line the edit introduced.
     const formatStdin = (text) => ({
@@ -110,70 +107,52 @@ test('a formatter deletion next to a changed line is applied', () => {
     formatInScope({ file, formatStdin, context: 0 });
 
     assert.strictEqual(read(file), 'a\nb\n\nc\nd\n');
-  } finally {
-    rmScratchDir(dir);
-  }
+  });
 });
 
 test('a file that differs from HEAD nowhere is left alone', () => {
-  const dir = mkScratchRepo({ 'a.txt': TEN_LINES });
-  try {
+  withRepo({ 'a.txt': TEN_LINES }, (dir) => {
     const file = path.join(dir, 'a.txt');
 
     const result = formatInScope({ file, formatStdin: upperFormatter });
 
     assert.strictEqual(result.status, 'unchanged');
     assert.strictEqual(read(file), TEN_LINES);
-  } finally {
-    rmScratchDir(dir);
-  }
+  });
 });
 
 test('output identical to the input is reported as unchanged', () => {
-  const dir = mkScratchRepo({ 'a.txt': 'A\n' });
-  try {
+  withRepo({ 'a.txt': 'A\n' }, (dir) => {
     const file = writeFile(dir, 'a.txt', 'A\nB\n');
 
     const result = formatInScope({ file, formatStdin: upperFormatter });
 
     assert.strictEqual(result.status, 'unchanged');
     assert.strictEqual(read(file), 'A\nB\n');
-  } finally {
-    rmScratchDir(dir);
-  }
+  });
 });
 
-test('an untracked file is formatted whole', () => {
-  const dir = mkScratchRepo({ 'keep.txt': 'x\n' });
-  try {
-    const file = writeFile(dir, 'new.txt', 'a\nb\n');
+for (const [where, makeDir, name] of [
+  ['an untracked file', () => mkScratchRepo({ 'keep.txt': 'x\n' }), 'new.txt'],
+  ['a file outside any repository', () => mkScratchDir(), 'a.txt'],
+]) {
+  test(`${where} is formatted whole`, () => {
+    const dir = makeDir();
+    try {
+      const file = writeFile(dir, name, 'a\nb\n');
 
-    const result = formatInScope({ file, formatStdin: upperFormatter });
+      const result = formatInScope({ file, formatStdin: upperFormatter });
 
-    assert.strictEqual(result.status, 'whole');
-    assert.strictEqual(read(file), 'A\nB\n');
-  } finally {
-    rmScratchDir(dir);
-  }
-});
-
-test('a file outside any repository is formatted whole', () => {
-  const dir = mkScratchDir();
-  try {
-    const file = writeFile(dir, 'a.txt', 'a\nb\n');
-
-    const result = formatInScope({ file, formatStdin: upperFormatter });
-
-    assert.strictEqual(result.status, 'whole');
-    assert.strictEqual(read(file), 'A\nB\n');
-  } finally {
-    rmScratchDir(dir);
-  }
-});
+      assert.strictEqual(result.status, 'whole');
+      assert.strictEqual(read(file), 'A\nB\n');
+    } finally {
+      rmScratchDir(dir);
+    }
+  });
+}
 
 test('a formatter failure leaves the file untouched', () => {
-  const dir = mkScratchRepo({ 'a.txt': TEN_LINES });
-  try {
+  withRepo({ 'a.txt': TEN_LINES }, (dir) => {
     const edited = TEN_LINES.replace('line5\n', 'BROKEN\n');
     const file = writeFile(dir, 'a.txt', edited);
 
@@ -182,14 +161,11 @@ test('a formatter failure leaves the file untouched', () => {
     assert.strictEqual(result.status, 'skipped');
     assert.match(result.reason, /syntax error/);
     assert.strictEqual(read(file), edited);
-  } finally {
-    rmScratchDir(dir);
-  }
+  });
 });
 
 test('a partial result the formatter cannot parse is never written', () => {
-  const dir = mkScratchRepo({ 'a.txt': TEN_LINES });
-  try {
+  withRepo({ 'a.txt': TEN_LINES }, (dir) => {
     const edited = TEN_LINES.replace('line5\n', 'edited5\n');
     const file = writeFile(dir, 'a.txt', edited);
     let calls = 0;
@@ -204,9 +180,7 @@ test('a partial result the formatter cannot parse is never written', () => {
     assert.strictEqual(result.status, 'skipped');
     assert.match(result.reason, /bad partial/);
     assert.strictEqual(read(file), edited);
-  } finally {
-    rmScratchDir(dir);
-  }
+  });
 });
 
 test('CRLF line endings are preserved on lines that are not formatted', () => {
@@ -224,22 +198,18 @@ test('CRLF line endings are preserved on lines that are not formatted', () => {
 });
 
 test('a final newline the formatter adds to a changed last line is kept', () => {
-  const dir = mkScratchRepo({ 'a.txt': 'a\nb\nc' });
-  try {
+  withRepo({ 'a.txt': 'a\nb\nc' }, (dir) => {
     const file = writeFile(dir, 'a.txt', 'a\nb\nedited');
     const formatStdin = (text) => ({ ok: true, stdout: `${text}\n`, stderr: '' });
 
     formatInScope({ file, formatStdin, context: 0 });
 
     assert.strictEqual(read(file), 'a\nb\nedited\n');
-  } finally {
-    rmScratchDir(dir);
-  }
+  });
 });
 
 test('the session base is diffed against instead of HEAD when given', () => {
-  const dir = mkScratchRepo({ 'a.txt': TEN_LINES });
-  try {
+  withRepo({ 'a.txt': TEN_LINES }, (dir) => {
     const { execFileSync } = require('node:child_process');
     const git = (...args) =>
       execFileSync('git', ['-C', dir, ...args], { stdio: 'pipe', encoding: 'utf8' });
@@ -270,7 +240,5 @@ test('the session base is diffed against instead of HEAD when given', () => {
 
     assert.strictEqual(result.status, 'narrowed');
     assert.strictEqual(read(file), TEN_LINES.replace('line5\n', 'EDITED5\n'));
-  } finally {
-    rmScratchDir(dir);
-  }
+  });
 });

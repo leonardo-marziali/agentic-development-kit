@@ -41,7 +41,14 @@ const MAX_BUFFER = 64 * 1024 * 1024;
  * survive a round trip: joining the chunks gives back the exact text.
  */
 function splitLines(text) {
-  return text.match(/[^\n]*\n|[^\n]+$/g) || [];
+  const lines = [];
+  let start = 0;
+  for (let end = text.indexOf('\n'); end !== -1; end = text.indexOf('\n', start)) {
+    lines.push(text.slice(start, end + 1));
+    start = end + 1;
+  }
+  if (start < text.length) lines.push(text.slice(start));
+  return lines;
 }
 
 /*
