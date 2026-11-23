@@ -13,6 +13,7 @@ const {
   fixableFiles,
   mergeRanges,
   widenRanges,
+  parseHunkHeader,
 } = require('../scope');
 const { mkScratchDir, rmScratchDir, writeFile, mkScratchRepo } = require('./helpers');
 
@@ -331,4 +332,20 @@ test('fixableFiles excludes any file with an out-of-scope finding', () => {
 test('no files means no work and no git invocations', () => {
   assert.strictEqual(changedRangesByFile([]).size, 0);
   assert.strictEqual(scopesFor().size, 0);
+});
+
+test('parseHunkHeader reads both sides of a hunk, defaulting omitted counts to 1', () => {
+  assert.deepStrictEqual(parseHunkHeader('@@ -3,2 +4,5 @@ ctx'), {
+    oldStart: 3,
+    oldCount: 2,
+    newStart: 4,
+    newCount: 5,
+  });
+  assert.deepStrictEqual(parseHunkHeader('@@ -7 +7,0 @@'), {
+    oldStart: 7,
+    oldCount: 1,
+    newStart: 7,
+    newCount: 0,
+  });
+  assert.strictEqual(parseHunkHeader('not a hunk'), null);
 });

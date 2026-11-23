@@ -426,7 +426,59 @@ Claude every pre-existing violation in it. See
   pre-existing violations would quietly "fix" lines that match the ref.
 - **`mergeRanges(ranges)`** / **`widenRanges(ranges, context)`** — the range
   arithmetic, exposed for testing and for callers with their own ranges.
+- **`parseHunkHeader(header)`** — both sides of one `@@ -a,b +c,d @@`
+  header as `{ oldStart, oldCount, newStart, newCount }`, or `null`.
 - **`DEFAULT_CONTEXT_LINES`** — `2`.
+
+### Scoped formatting (`format-scope.js`)
+
+A linter's findings can be filtered after the fact; a formatter's output
+can't, because the formatter rewrites the whole file. `formatInScope`
+narrows it instead: it formats the text in memory, diffs the result against
+the original, and writes back only the changes that touch the file's
+changed lines (the same scope, and the same ±2-line margin, as
+`scopesFor`).
+
+```js
+const { formatInScope, runBin } = require('@leonardo-marziali/ad-lfl-kit');
+
+const result = formatInScope({
+  file,
+  bases: readSessionBases(sessionDir),
+  formatStdin: (text) => {
+    const run = runBin('npx', ['-y', 'prettier', '--stdin-filepath', file], {
+      input: text,
+      encoding: 'utf8',
+    });
+    return { ok: run.status === 0, stdout: run.stdout, stderr: run.stderr };
+  },
+});
+// result.status: 'whole' | 'narrowed' | 'unchanged' | 'skipped'
+```
+
+- **`formatInScope({ file, formatStdin, bases, context })`** — formats
+  `file` in place. `formatStdin(text)` runs the formatter on `text` as if it
+  were the file's content and returns `{ ok, stdout, stderr }`. `bases` and
+  `context` mean what they do for `scopesFor`. The result is
+  `{ status, reason? }`:
+  - `whole`: the whole file was in scope (no repository, an untracked
+    file, a diff that couldn't be read), and the formatter's full output
+    was written, as a plain `--write` would have done.
+  - `narrowed`: only the formatter's changes near the changed lines were
+    applied.
+  - `unchanged`: nothing in scope needed formatting; the file wasn't
+    written.
+  - `skipped`: the formatter failed, and `reason` carries its message. The
+    file wasn't written.
+
+Formatter changes are matched against the changed lines one hunk at a time.
+A hunk that replaces N lines with N lines is split into N one-line hunks,
+so reformatting an already-messy file doesn't collapse into one hunk that
+overlaps every edit. A hunk that changes the line count can't be split
+safely, so it is applied whole or not at all. Because applying only some
+hunks could in principle leave text the formatter can't parse, the partial
+result goes through `formatStdin` once more and is written only if that
+succeeds.
 
 ### The loop (`loop.js`)
 

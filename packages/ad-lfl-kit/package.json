@@ -31,6 +31,7 @@
     "track.js",
     "base.js",
     "scope.js",
+    "format-scope.js",
     "guard.js",
     "loop.js"
   ],
