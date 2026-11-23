@@ -18,6 +18,12 @@
       "title": "Auto-suppress unfixable findings",
       "description": "When the fix loop hits its attempt cap, write inline `# noqa` / `# pyright: ignore[...]` comments into your files for whatever is still failing. Off by default: the remaining findings are only reported.",
       "default": false
+    },
+    "whole_files": {
+      "type": "boolean",
+      "title": "Work on whole files",
+      "description": "Check, auto-fix and format whole touched files even inside a git repository. Off by default: in a git repository only ruff/pyright findings on lines that differ from the session's starting commit block the stop, and formatting only touches those lines (outside one, whole files are always used).",
+      "default": false
     }
   }
 }

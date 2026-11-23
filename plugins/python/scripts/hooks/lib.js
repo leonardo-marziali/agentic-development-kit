@@ -9,7 +9,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { runBin } = require('@leonardo-marziali/ad-lfl-kit');
+const { runBin, formatInScope, changedRangesByFile } = require('@leonardo-marziali/ad-lfl-kit');
 
 /*
  * track-touched.js writes the list and check-and-loop.js reads it, so both
@@ -239,13 +239,63 @@ function formatPyrightReport(diags) {
 }
 
 /*
-`auto_suppress` in plugin.json's userConfig, surfaced to hook processes
-as CLAUDE_PLUGIN_OPTION_AUTO_SUPPRESS. Absent (plugin installed before
-the option existed, or never configured) reads as off.
+Extracts `ruff check --output-format=json`'s array of findings from a
+captured stream. As with pyright, a launcher (uvx) can print its own
+notices around the payload, so parse the whole thing when it is clean and
+otherwise fall back to the bracketed span. Null when no array is found.
 */
-function autoSuppressEnabled() {
-  const raw = (process.env.CLAUDE_PLUGIN_OPTION_AUTO_SUPPRESS || '').trim().toLowerCase();
+function parseRuffJson(raw) {
+  const trimmed = (raw || '').trim();
+  if (!trimmed) return null;
+
+  const attempt = (text) => {
+    try {
+      const parsed = JSON.parse(text);
+      return Array.isArray(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const whole = attempt(trimmed);
+  if (whole) return whole;
+  const start = trimmed.indexOf('[');
+  const end = trimmed.lastIndexOf(']');
+  if (start === -1 || end <= start) return null;
+  return attempt(trimmed.slice(start, end + 1));
+}
+
+// Mirrors `ruff check --output-format=concise`: `path:row:col: CODE message`.
+function formatRuffReport(findings) {
+  return findings
+    .map(({ filename, location, code, message }) => {
+      const prefix = code ? `${code} ` : '';
+      return `${filename}:${location.row}:${location.column}: ${prefix}${message}`;
+    })
+    .join('\n');
+}
+
+/*
+A boolean option from plugin.json's userConfig, surfaced to hook processes
+as CLAUDE_PLUGIN_OPTION_<NAME>. Absent (plugin installed before the option
+existed, or never configured) reads as off.
+*/
+function optionEnabled(name) {
+  const raw = (process.env[`CLAUDE_PLUGIN_OPTION_${name}`] || '').trim().toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'on';
+}
+
+// `auto_suppress`: write inline ignore comments for what's left at the cap.
+function autoSuppressEnabled() {
+  return optionEnabled('AUTO_SUPPRESS');
+}
+
+/*
+`whole_files`: check, fix and format whole touched files even inside a git
+repo, rather than only the lines that differ from the session base.
+*/
+function wholeFilesEnabled() {
+  return optionEnabled('WHOLE_FILES');
 }
 
 function groupRulesByFileAndLine(diags) {
@@ -296,6 +346,107 @@ function insertPyrightIgnores(diags) {
   return suppressed;
 }
 
+/*
+Formats one Python file with a resolved ruff (see resolveTool). Inside a
+git repo only ruff's changes on or near the lines that differ from the
+session base are written (ad-lfl-kit's formatInScope); outside one, for an
+untracked file, or with `wholeFile`, the whole file is formatted in place
+as `ruff format` would. --force-exclude keeps the project's `exclude`
+honoured for an explicitly named file, and on stdin an excluded file comes
+back unchanged.
+
+Returns `{ ok, status?, output? }`: `ok: false` with ruff's output when it
+could not format the file (a syntax error, a broken config).
+*/
+function formatWithRuff(ruff, file, { bases, wholeFile = false } = {}) {
+  const options = { cwd: path.dirname(file), encoding: 'utf8' };
+  const output = (result) => ((result.stdout || '') + (result.stderr || '')).trim();
+
+  /*
+   * Whole file in scope: run the plain `ruff format <file>`, exactly as
+   * before scoping existed, rather than a stdin round trip.
+   */
+  const whole = wholeFile || changedRangesByFile([file], { bases }).get(file)?.all !== false;
+  if (whole) {
+    const result = runResolved(ruff, ['format', '--force-exclude', file], options);
+    if (result.error) throw result.error;
+    return result.status === 0
+      ? { ok: true, status: 'whole' }
+      : { ok: false, output: output(result) };
+  }
+
+  const formatStdin = (text) => {
+    const result = runResolved(ruff, ['format', '--force-exclude', '--stdin-filename', file, '-'], {
+      ...options,
+      input: text,
+    });
+    if (result.error) throw result.error;
+    return { ok: result.status === 0, stdout: result.stdout || '', stderr: output(result) };
+  };
+  const result = formatInScope({ file, formatStdin, bases });
+  return result.status === 'skipped'
+    ? { ok: false, output: result.reason }
+    : { ok: true, status: result.status };
+}
+
+/*
+Appends `# noqa: CODE, ...` for the given ruff findings, merging into a
+noqa directive already on the line. It is the line-scoped counterpart of
+`ruff check --add-noqa`, which rewrites every finding in a file: used where
+a file also has findings on lines the session didn't change. Each comment
+goes on ruff's own `noqa_row` (the end of a multi-line string, say), and
+findings without a code (syntax errors) are left alone. Returns what was
+suppressed, for logging.
+*/
+// Ruff findings' codes per file, then per the row their noqa comment goes on.
+function groupCodesByFileAndRow(findings) {
+  const byFile = new Map();
+  for (const finding of findings) {
+    if (!finding.code) continue;
+    const row = finding.noqa_row ?? finding.location.row;
+    if (!byFile.has(finding.filename)) byFile.set(finding.filename, new Map());
+    const byRow = byFile.get(finding.filename);
+    if (!byRow.has(row)) byRow.set(row, new Set());
+    byRow.get(row).add(finding.code);
+  }
+  return byFile;
+}
+
+/*
+`line` with a noqa directive for `codes`, or null when it should be left
+alone: a blanket `# noqa` already covers it, and a comment after a line
+continuation would be a syntax error.
+*/
+function withNoqa(line, codes) {
+  const existing = /# noqa(?::\s*([A-Z0-9, ]+))?/i.exec(line);
+  if (existing && !existing[1]) return null;
+  if (existing) {
+    const merged = new Set([...existing[1].split(',').map((c) => c.trim()), ...codes]);
+    merged.delete('');
+    return line.replace(existing[0], `# noqa: ${[...merged].join(', ')}`);
+  }
+  if (line.trimEnd().endsWith('\\')) return null;
+  // Keep a CRLF file's \r, which trimEnd() would otherwise drop.
+  const eol = line.endsWith('\r') ? '\r' : '';
+  return `${line.trimEnd()}  # noqa: ${codes.join(', ')}${eol}`;
+}
+
+function insertNoqa(findings) {
+  const suppressed = [];
+  for (const [file, byRow] of groupCodesByFileAndRow(findings)) {
+    const lines = fs.readFileSync(file, 'utf8').split('\n');
+    for (const [row, codeSet] of byRow) {
+      const codes = [...codeSet];
+      const updated = row >= 1 && row <= lines.length ? withNoqa(lines[row - 1], codes) : null;
+      if (updated === null) continue;
+      lines[row - 1] = updated;
+      suppressed.push({ file, lineNumber: row, rules: codes });
+    }
+    fs.writeFileSync(file, lines.join('\n'));
+  }
+  return suppressed;
+}
+
 module.exports = {
   STATE_NAMESPACE,
   TOUCHED_FILES,
@@ -309,6 +460,11 @@ module.exports = {
   pythonPathFor,
   parsePyrightJson,
   formatPyrightReport,
+  parseRuffJson,
+  formatRuffReport,
   autoSuppressEnabled,
+  wholeFilesEnabled,
   insertPyrightIgnores,
+  insertNoqa,
+  formatWithRuff,
 };
