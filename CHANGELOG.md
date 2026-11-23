@@ -1,3 +1,10 @@
+# [5.3.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v5.2.0...v5.3.0) (2026-11-23)
+
+
+### Features
+
+* **plugins:** lint and format only the lines a session changed ([#64](https://github.com/leonardo-marziali/agentic-development-kit/issues/64)) ([3f1f34f](https://github.com/leonardo-marziali/agentic-development-kit/commit/3f1f34f7be0a6a19d850bc82a5d4afd757009ab1))
+
 # [5.2.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v5.1.0...v5.2.0) (2026-11-23)
 
 
