@@ -16,6 +16,8 @@ const {
   formatPyrightReport,
   autoSuppressEnabled,
   insertPyrightIgnores,
+  insertNoqa,
+  parseRuffJson,
 } = require('../lib');
 const { mkScratchDir, rmScratchDir } = require('./helpers');
 
@@ -113,7 +115,12 @@ test('resolveTool: prefers the project .venv over PATH', (t) => {
 
   const resolved = withPath([pathDir], () => resolveTool('ruff', { fromDir: root }));
 
-  assert.deepEqual(resolved, { name: 'ruff', prefix: [], extraDirs: [venvBin] });
+  assert.deepEqual(resolved, {
+    name: 'ruff',
+    prefix: [],
+    extraDirs: [venvBin],
+    exe: path.join(venvBin, process.platform === 'win32' ? 'ruff.exe' : 'ruff'),
+  });
 });
 
 test('resolveTool: ignores a .venv that lacks the tool', (t) => {
@@ -348,4 +355,67 @@ test('insertPyrightIgnores: preserves CRLF line endings', (t) => {
     fs.readFileSync(file, 'utf8'),
     'a: int = "x"  # pyright: ignore[reportAssignmentType]\r\nb = 1\r\n',
   );
+});
+
+function ruffFinding(filename, row, code, noqaRow) {
+  return { filename, code, location: { row, column: 1 }, noqa_row: noqaRow ?? row };
+}
+
+test('insertNoqa: appends one comment per line, merging codes on the same line', (t) => {
+  const file = path.join(scratch(t), 'mod.py');
+  fs.writeFileSync(file, 'a = 1\nb = 2\n');
+
+  const suppressed = insertNoqa([
+    ruffFinding(file, 1, 'F841'),
+    ruffFinding(file, 1, 'E501'),
+    ruffFinding(file, 2, 'F841'),
+  ]);
+
+  assert.equal(fs.readFileSync(file, 'utf8'), 'a = 1  # noqa: F841, E501\nb = 2  # noqa: F841\n');
+  assert.equal(suppressed.length, 2);
+});
+
+test('insertNoqa: merges into an existing noqa directive', (t) => {
+  const file = path.join(scratch(t), 'mod.py');
+  fs.writeFileSync(file, 'a = 1  # noqa: E501\n');
+
+  insertNoqa([ruffFinding(file, 1, 'F841'), ruffFinding(file, 1, 'E501')]);
+
+  assert.equal(fs.readFileSync(file, 'utf8'), 'a = 1  # noqa: E501, F841\n');
+});
+
+test('insertNoqa: leaves blanket noqa, continuation lines and codeless findings alone', (t) => {
+  const file = path.join(scratch(t), 'mod.py');
+  const text = 'a = 1  # noqa\nb = 1 + \\\n    2\nc = (\n';
+  fs.writeFileSync(file, text);
+
+  const suppressed = insertNoqa([
+    ruffFinding(file, 1, 'F841'),
+    ruffFinding(file, 2, 'F841'),
+    { filename: file, code: null, location: { row: 4, column: 1 }, noqa_row: 4 },
+  ]);
+
+  assert.equal(fs.readFileSync(file, 'utf8'), text);
+  assert.deepEqual(suppressed, []);
+});
+
+test("insertNoqa: comments ruff's noqa_row and preserves CRLF", (t) => {
+  const file = path.join(scratch(t), 'mod.py');
+  fs.writeFileSync(file, 'x = """\r\nlong\r\n"""\r\n');
+
+  insertNoqa([ruffFinding(file, 2, 'E501', 3)]);
+
+  assert.equal(fs.readFileSync(file, 'utf8'), 'x = """\r\nlong\r\n"""  # noqa: E501\r\n');
+});
+
+test('parseRuffJson: reads the findings array, also from behind launcher notices', () => {
+  const findings = [{ code: 'F841', filename: 'a.py', location: { row: 1, column: 1 } }];
+  assert.deepEqual(parseRuffJson(JSON.stringify(findings)), findings);
+  assert.deepEqual(parseRuffJson(`Installed 1 package\n${JSON.stringify(findings)}\n`), findings);
+});
+
+test('parseRuffJson: returns null for empty, non-array or unparseable input', () => {
+  assert.equal(parseRuffJson(''), null);
+  assert.equal(parseRuffJson('{"not": "an array"}'), null);
+  assert.equal(parseRuffJson('error: no [valid json'), null);
 });

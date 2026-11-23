@@ -208,13 +208,19 @@ test('missing ruff fails open: pyright still runs, ruff is skipped with a note',
 
   /*
   PATH minus every directory holding ruff or uvx; pyright still resolves,
-  from PATH or through npx beside node.
+  from PATH or through npx beside node. Where ruff is installed next to
+  node, dropping that directory drops node too, and pyright's
+  `#!/usr/bin/env node` shim then can't start: a directory holding only a
+  link to this node keeps it reachable without bringing ruff back.
   */
   const hasRuff = (dir) => ['ruff', 'uvx'].some((bin) => fs.existsSync(path.join(dir, bin)));
-  const pathWithoutRuff = (process.env.PATH || '')
-    .split(path.delimiter)
-    .filter((dir) => !hasRuff(dir))
-    .join(path.delimiter);
+  const nodeOnly = path.join(ctx.scratch, 'node-only-bin');
+  fs.mkdirSync(nodeOnly);
+  fs.symlinkSync(process.execPath, path.join(nodeOnly, path.basename(process.execPath)));
+  const pathWithoutRuff = [
+    nodeOnly,
+    ...(process.env.PATH || '').split(path.delimiter).filter((dir) => !hasRuff(dir)),
+  ].join(path.delimiter);
   const res = stop(ctx, { env: { PATH: pathWithoutRuff } });
 
   const out = res.json;

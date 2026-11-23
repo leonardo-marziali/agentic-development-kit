@@ -19,6 +19,13 @@ Plugin that formats files with [Prettier][prettier] as Claude edits them.
   are formatted on later tool calls, for up to 2 hours; what it writes
   after the last tool call isn't. Prettier is fast and deterministic per
   file, so this keeps diffs clean as you go.
+- **Only the lines you changed, inside a git repository.** There, only
+  Prettier's changes on or near the lines that differ from `HEAD` (plus 2
+  lines of context) are written, so an edit to an unformatted file doesn't
+  reformat all of it. If applying only some of Prettier's changes would
+  leave a file Prettier can't parse, the file is left as it is. Outside a
+  repository, for a file git doesn't track yet, or with
+  [`whole_files`](#options) on, the whole file is formatted.
 - `--ignore-unknown` lets Prettier itself decide whether it has a parser
   for the file; files it doesn't recognize are left untouched.
 - Runs from the file's own working directory, so Prettier's own
@@ -57,6 +64,13 @@ Once installed, this plugin automatically formats every file Claude edits
 or writes. Pre-existing files are never touched by the hook. Run
 `/prettier:format [path]` to explicitly format pre-existing files.
 
+### Options
+
+**`whole_files`** — default **off**. Formats whole files even inside a git
+repository. Turn it on for a repository that is already Prettier-clean,
+where formatting a whole file changes nothing beyond the lines you edited
+anyway.
+
 ### Configuration
 
 Configure Prettier the normal way, by adding a configuration file to
@@ -81,7 +95,9 @@ pnpm test
 ```
 
 It covers the `Edit`/`Write` matcher, the `node_modules`/`.git` guard,
-`--ignore-unknown` behavior for files Prettier can't parse, the
+changed-lines formatting inside a git repository (including untracked and
+`.prettierignore`d files and the `whole_files` option), `--ignore-unknown`
+behavior for files Prettier can't parse, the
 non-blocking exit behavior when Prettier fails, and cross-platform
 resolution and quoting of the `npx` shim. These are integration
 tests that shell out to the real `npx prettier` (same as the hook does at

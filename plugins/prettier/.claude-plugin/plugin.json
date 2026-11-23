@@ -10,5 +10,13 @@
   "homepage": "https://github.com/leonardo-marziali/agentic-development-kit",
   "repository": "https://github.com/leonardo-marziali/agentic-development-kit.git",
   "license": "Apache-2.0",
-  "keywords": ["prettier", "formatting", "hooks"]
+  "keywords": ["prettier", "formatting", "hooks"],
+  "userConfig": {
+    "whole_files": {
+      "type": "boolean",
+      "title": "Work on whole files",
+      "description": "Format whole files even inside a git repository. Off by default: in a git repository only the lines that differ from HEAD (plus 2 lines of context) are reformatted (outside one, whole files are always formatted).",
+      "default": false
+    }
+  }
 }

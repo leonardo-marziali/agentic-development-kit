@@ -8,6 +8,8 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
+const { runBin, formatInScope, changedRangesByFile } = require('@leonardo-marziali/ad-lfl-kit');
 
 /*
  * track-touched.js writes the list and check-and-loop.js reads it, so both
@@ -70,16 +72,22 @@ function executableNames(name) {
   return exts.map((ext) => name + ext.toLowerCase());
 }
 
-function hasExecutable(dir, name) {
-  return executableNames(name).some((candidate) => {
+// The full path of `name` (with its Windows extension) in `dir`, or null.
+function findExecutable(dir, name) {
+  for (const candidate of executableNames(name)) {
     const full = path.join(dir, candidate);
     try {
       fs.accessSync(full, fs.constants.X_OK);
-      return fs.statSync(full).isFile();
+      if (fs.statSync(full).isFile()) return full;
     } catch {
-      return false;
+      // Not there, or not executable: try the next candidate.
     }
-  });
+  }
+  return null;
+}
+
+function hasExecutable(dir, name) {
+  return findExecutable(dir, name) !== null;
 }
 
 function onPath(name) {
@@ -102,8 +110,10 @@ const FALLBACKS = {
 /*
 Resolves a tool in the order the project would expect: its own `.venv`
 first (so a pinned version wins), then PATH, then the tool's fallback
-runner. Returns { name, prefix, extraDirs } for runBin, or null when
-nothing can run it — callers fail open in that case rather than block.
+runner. Returns { name, prefix, extraDirs } for runBin — plus `exe`, the
+exact executable, for a venv tool — or null when nothing can run it;
+callers fail open in that case rather than block. Run the result with
+runResolved.
 
 The PATH search is done by hand because runBin's own resolution falls
 back to the bare name without knowing whether it exists, and the fallback
@@ -111,9 +121,8 @@ runner should only be reached when it doesn't.
 */
 function resolveTool(tool, { fromDir } = {}) {
   const venvBin = fromDir ? findVenvBinDir(fromDir) : null;
-  if (venvBin && hasExecutable(venvBin, tool)) {
-    return { name: tool, prefix: [], extraDirs: [venvBin] };
-  }
+  const venvExe = venvBin ? findExecutable(venvBin, tool) : null;
+  if (venvExe) return { name: tool, prefix: [], extraDirs: [venvBin], exe: venvExe };
   if (onPath(tool)) return { name: tool, prefix: [], extraDirs: [] };
 
   const fallback = FALLBACKS[tool];
@@ -125,6 +134,20 @@ function resolveTool(tool, { fromDir } = {}) {
     return { name: fallback.name, prefix: fallback.prefix, extraDirs: [] };
   }
   return null;
+}
+
+/*
+Runs a tool resolveTool found. A venv tool is spawned by its exact path:
+runBin looks beside the node binary before its `extraDirs`, so wherever a
+system ruff or pyright is installed next to node, passing the venv only as
+an extra dir would run that one instead of the project's pinned version.
+*/
+function runResolved(resolved, args, options = {}) {
+  if (resolved.exe) return spawnSync(resolved.exe, args, options);
+  return runBin(resolved.name, [...resolved.prefix, ...args], {
+    ...options,
+    extraDirs: resolved.extraDirs,
+  });
 }
 
 const CONFIG_NAMES = ['pyrightconfig.json', 'pyproject.toml'];
@@ -167,6 +190,32 @@ function pythonPathFor(configDir) {
 }
 
 /*
+A tool's JSON payload from a captured stream, or null. The stream isn't
+guaranteed to be pure JSON: a launcher (npx, uvx) can print its own
+notices around it. So parse the whole text when it is clean, and otherwise
+the span from the first `open` to the last `close`, which is the payload.
+`accept` says whether a parsed value has the expected shape.
+*/
+function extractJson(raw, open, close, accept) {
+  const parse = (text) => {
+    try {
+      const value = JSON.parse(text);
+      return accept(value) ? value : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const trimmed = (raw || '').trim();
+  if (!trimmed) return null;
+  const whole = parse(trimmed);
+  if (whole) return whole;
+  const start = trimmed.indexOf(open);
+  const end = trimmed.lastIndexOf(close);
+  return start === -1 || end <= start ? null : parse(trimmed.slice(start, end + 1));
+}
+
+/*
 Extracts pyright's --outputjson payload from a captured stream and keeps
 only error-severity diagnostics — warnings and information never block.
 
@@ -175,28 +224,8 @@ cold cache, so parse the whole thing when it's clean and otherwise fall
 back to the braced span. Returns null when no payload can be recovered.
 */
 function parsePyrightJson(raw) {
-  const trimmed = (raw || '').trim();
-  if (!trimmed) return null;
-
-  const attempt = (text) => {
-    try {
-      const parsed = JSON.parse(text);
-      return parsed && Array.isArray(parsed.generalDiagnostics) ? parsed : null;
-    } catch {
-      return null;
-    }
-  };
-
-  let parsed = attempt(trimmed);
-  if (!parsed) {
-    const start = trimmed.indexOf('{');
-    const end = trimmed.lastIndexOf('}');
-    if (start === -1 || end <= start) return null;
-    parsed = attempt(trimmed.slice(start, end + 1));
-  }
-  if (!parsed) return null;
-
-  return parsed.generalDiagnostics.filter((diag) => diag.severity === 'error');
+  const parsed = extractJson(raw, '{', '}', (v) => v && Array.isArray(v.generalDiagnostics));
+  return parsed ? parsed.generalDiagnostics.filter((diag) => diag.severity === 'error') : null;
 }
 
 /*
@@ -215,14 +244,42 @@ function formatPyrightReport(diags) {
     .join('\n');
 }
 
+// `ruff check --output-format=json`'s array of findings (see extractJson).
+function parseRuffJson(raw) {
+  return extractJson(raw, '[', ']', Array.isArray);
+}
+
+// Mirrors `ruff check --output-format=concise`: `path:row:col: CODE message`.
+function formatRuffReport(findings) {
+  return findings
+    .map(({ filename, location, code, message }) => {
+      const prefix = code ? `${code} ` : '';
+      return `${filename}:${location.row}:${location.column}: ${prefix}${message}`;
+    })
+    .join('\n');
+}
+
 /*
-`auto_suppress` in plugin.json's userConfig, surfaced to hook processes
-as CLAUDE_PLUGIN_OPTION_AUTO_SUPPRESS. Absent (plugin installed before
-the option existed, or never configured) reads as off.
+A boolean option from plugin.json's userConfig, surfaced to hook processes
+as CLAUDE_PLUGIN_OPTION_<NAME>. Absent (plugin installed before the option
+existed, or never configured) reads as off.
 */
-function autoSuppressEnabled() {
-  const raw = (process.env.CLAUDE_PLUGIN_OPTION_AUTO_SUPPRESS || '').trim().toLowerCase();
+function optionEnabled(name) {
+  const raw = (process.env[`CLAUDE_PLUGIN_OPTION_${name}`] || '').trim().toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'on';
+}
+
+// `auto_suppress`: write inline ignore comments for what's left at the cap.
+function autoSuppressEnabled() {
+  return optionEnabled('AUTO_SUPPRESS');
+}
+
+/*
+`whole_files`: check, fix and format whole touched files even inside a git
+repo, rather than only the lines that differ from the session base.
+*/
+function wholeFilesEnabled() {
+  return optionEnabled('WHOLE_FILES');
 }
 
 function groupRulesByFileAndLine(diags) {
@@ -273,6 +330,107 @@ function insertPyrightIgnores(diags) {
   return suppressed;
 }
 
+/*
+Formats one Python file with a resolved ruff (see resolveTool). Inside a
+git repo only ruff's changes on or near the lines that differ from the
+session base are written (ad-lfl-kit's formatInScope); outside one, for an
+untracked file, or with `wholeFile`, the whole file is formatted in place
+as `ruff format` would. --force-exclude keeps the project's `exclude`
+honoured for an explicitly named file, and on stdin an excluded file comes
+back unchanged.
+
+Returns `{ ok, status?, output? }`: `ok: false` with ruff's output when it
+could not format the file (a syntax error, a broken config).
+*/
+function formatWithRuff(ruff, file, { bases, wholeFile = false } = {}) {
+  const options = { cwd: path.dirname(file), encoding: 'utf8' };
+  const output = (result) => ((result.stdout || '') + (result.stderr || '')).trim();
+
+  /*
+   * Whole file in scope: run the plain `ruff format <file>`, exactly as
+   * before scoping existed, rather than a stdin round trip.
+   */
+  const whole = wholeFile || changedRangesByFile([file], { bases }).get(file)?.all !== false;
+  if (whole) {
+    const result = runResolved(ruff, ['format', '--force-exclude', file], options);
+    if (result.error) throw result.error;
+    return result.status === 0
+      ? { ok: true, status: 'whole' }
+      : { ok: false, output: output(result) };
+  }
+
+  const formatStdin = (text) => {
+    const result = runResolved(ruff, ['format', '--force-exclude', '--stdin-filename', file, '-'], {
+      ...options,
+      input: text,
+    });
+    if (result.error) throw result.error;
+    return { ok: result.status === 0, stdout: result.stdout || '', stderr: output(result) };
+  };
+  const result = formatInScope({ file, formatStdin, bases });
+  return result.status === 'skipped'
+    ? { ok: false, output: result.reason }
+    : { ok: true, status: result.status };
+}
+
+/*
+Appends `# noqa: CODE, ...` for the given ruff findings, merging into a
+noqa directive already on the line. It is the line-scoped counterpart of
+`ruff check --add-noqa`, which rewrites every finding in a file: used where
+a file also has findings on lines the session didn't change. Each comment
+goes on ruff's own `noqa_row` (the end of a multi-line string, say), and
+findings without a code (syntax errors) are left alone. Returns what was
+suppressed, for logging.
+*/
+// Ruff findings' codes per file, then per the row their noqa comment goes on.
+function groupCodesByFileAndRow(findings) {
+  const byFile = new Map();
+  for (const finding of findings) {
+    if (!finding.code) continue;
+    const row = finding.noqa_row ?? finding.location.row;
+    if (!byFile.has(finding.filename)) byFile.set(finding.filename, new Map());
+    const byRow = byFile.get(finding.filename);
+    if (!byRow.has(row)) byRow.set(row, new Set());
+    byRow.get(row).add(finding.code);
+  }
+  return byFile;
+}
+
+/*
+`line` with a noqa directive for `codes`, or null when it should be left
+alone: a blanket `# noqa` already covers it, and a comment after a line
+continuation would be a syntax error.
+*/
+function withNoqa(line, codes) {
+  const existing = /# noqa(?::\s*([A-Z0-9, ]+))?/i.exec(line);
+  if (existing && !existing[1]) return null;
+  if (existing) {
+    const merged = new Set([...existing[1].split(',').map((c) => c.trim()), ...codes]);
+    merged.delete('');
+    return line.replace(existing[0], `# noqa: ${[...merged].join(', ')}`);
+  }
+  if (line.trimEnd().endsWith('\\')) return null;
+  // Keep a CRLF file's \r, which trimEnd() would otherwise drop.
+  const eol = line.endsWith('\r') ? '\r' : '';
+  return `${line.trimEnd()}  # noqa: ${codes.join(', ')}${eol}`;
+}
+
+function insertNoqa(findings) {
+  const suppressed = [];
+  for (const [file, byRow] of groupCodesByFileAndRow(findings)) {
+    const lines = fs.readFileSync(file, 'utf8').split('\n');
+    for (const [row, codeSet] of byRow) {
+      const codes = [...codeSet];
+      const updated = row >= 1 && row <= lines.length ? withNoqa(lines[row - 1], codes) : null;
+      if (updated === null) continue;
+      lines[row - 1] = updated;
+      suppressed.push({ file, lineNumber: row, rules: codes });
+    }
+    fs.writeFileSync(file, lines.join('\n'));
+  }
+  return suppressed;
+}
+
 module.exports = {
   STATE_NAMESPACE,
   TOUCHED_FILES,
@@ -280,11 +438,17 @@ module.exports = {
   isIgnoredPath,
   findVenvBinDir,
   resolveTool,
+  runResolved,
   resolveConfigDir,
   groupByConfigDir,
   pythonPathFor,
   parsePyrightJson,
   formatPyrightReport,
+  parseRuffJson,
+  formatRuffReport,
   autoSuppressEnabled,
+  wholeFilesEnabled,
   insertPyrightIgnores,
+  insertNoqa,
+  formatWithRuff,
 };

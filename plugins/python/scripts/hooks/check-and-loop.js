@@ -9,6 +9,15 @@
  * counter, one message — so a session isn't bounced between two separate
  * blocking hooks.
  *
+ * Inside a git repository only findings on lines that differ from the
+ * session base (ad-lfl-kit's scope.js, ±2 lines) block; the rest are
+ * reported once on stderr and left alone. `ruff check --fix` rewrites whole
+ * files, so a file that also has findings on unchanged lines is not
+ * auto-fixed; formatting writes only ruff's changes near the changed lines;
+ * and auto-suppression only ever comments changed lines. Outside a
+ * repository, for an untracked file, or with the plugin's `whole_files`
+ * option on, whole files are checked, fixed and formatted as before.
+ *
  * The loop itself — attempt counting, the cap, the blocking payload, and
  * removing only this hook's own state files — is ad-lfl-kit's runFixLoop.
  * What happens at the cap depends on the plugin's `auto_suppress` user
@@ -35,8 +44,11 @@ const {
   loopStateDir,
   readTrackedFiles,
   trackSessionChanges,
-  runBin,
   runFixLoop,
+  scopesFor,
+  partitionByScope,
+  fixableFiles,
+  readSessionBases,
   SESSION_BASE_FILE,
 } = require('@leonardo-marziali/ad-lfl-kit');
 const {
@@ -45,12 +57,18 @@ const {
   isPythonFile,
   isIgnoredPath,
   resolveTool,
+  runResolved,
   groupByConfigDir,
   pythonPathFor,
   parsePyrightJson,
   formatPyrightReport,
+  parseRuffJson,
+  formatRuffReport,
   autoSuppressEnabled,
+  wholeFilesEnabled,
   insertPyrightIgnores,
+  insertNoqa,
+  formatWithRuff,
 } = require('./lib');
 
 /*
@@ -79,11 +97,7 @@ function runTool(tool, dir, args) {
     );
     return null;
   }
-  const result = runBin(resolved.name, [...resolved.prefix, ...args], {
-    cwd: dir,
-    encoding: 'utf8',
-    extraDirs: resolved.extraDirs,
-  });
+  const result = runResolved(resolved, args, { cwd: dir, encoding: 'utf8' });
   if (result.error) {
     warnOnce(`${tool} invocation failed: ${result.error.message}`);
     return null;
@@ -95,32 +109,46 @@ function output(result) {
   return ((result.stdout || '') + (result.stderr || '')).trim();
 }
 
-function ruffFix(groups) {
+/*
+ * Fixes, then formats, `fixable` (absolute paths) per group: fixes can
+ * leave code unformatted. Formatting is scoped like everything else here.
+ */
+function ruffFix(groups, fixable, bases) {
   for (const [dir, groupFiles] of groups) {
-    // Fixes can leave code unformatted, so format after fixing.
-    runTool('ruff', dir, ['check', '--fix', '--force-exclude', ...groupFiles]);
-    runTool('ruff', dir, ['format', '--force-exclude', ...groupFiles]);
+    const files = groupFiles.filter((file) => fixable.has(path.resolve(file)));
+    if (files.length === 0) continue;
+    runTool('ruff', dir, ['check', '--fix', '--force-exclude', ...files]);
+    const ruff = resolveTool('ruff', { fromDir: dir });
+    if (!ruff) continue;
+    for (const file of files) {
+      const result = formatWithRuff(ruff, path.resolve(file), {
+        bases,
+        wholeFile: wholeFilesEnabled(),
+      });
+      if (!result.ok) warnOnce(`formatting ${file} failed:\n${result.output}`);
+    }
   }
 }
 
 // Ruff exits 0 when clean, 1 on findings, 2 on anything else.
-function ruffCheck(groups) {
-  let report = '';
+function ruffFindings(groups) {
+  const findings = [];
   for (const [dir, groupFiles] of groups) {
     const result = runTool('ruff', dir, [
       'check',
       '--force-exclude',
-      '--output-format=concise',
+      '--output-format=json',
       ...groupFiles,
     ]);
     if (!result || result.status === 0) continue;
-    if (result.status === 1) {
-      report += `${output(result)}\n`;
+    const parsed = result.status === 1 ? parseRuffJson(result.stdout) : null;
+    if (parsed) {
+      findings.push(...parsed);
     } else {
       warnOnce(`ruff check failed in ${dir}; skipping it:\n${output(result)}`);
     }
   }
-  return report.trim();
+  return findings;
 }
 
 // Pyright exits 0 when clean, 1 on errors, 2+ on fatal/config/CLI errors.
@@ -142,26 +170,106 @@ function pyrightDiagnostics(groups) {
   return diags;
 }
 
-function check(groups) {
-  const ruffReport = ruffCheck(groups);
-  const pyrightReport = formatPyrightReport(pyrightDiagnostics(groups));
+/*
+ * Both tools' findings, tagged so one partition can scope them together:
+ * `file` and a 1-based `line` (pyright's JSON lines are 0-based).
+ */
+function collectFindings(groups) {
+  return [
+    ...ruffFindings(groups).map((raw) => ({
+      tool: 'ruff',
+      file: raw.filename,
+      line: raw.location.row,
+      raw,
+    })),
+    ...pyrightDiagnostics(groups).map((raw) => ({
+      tool: 'pyright',
+      file: raw.file,
+      line: raw.range.start.line + 1,
+      raw,
+    })),
+  ];
+}
 
+const rawOf = (findings, tool) => findings.filter((f) => f.tool === tool).map((f) => f.raw);
+
+function describe(findings) {
+  return [
+    formatRuffReport(rawOf(findings, 'ruff')),
+    formatPyrightReport(rawOf(findings, 'pyright')),
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+/*
+ * Checks every group and splits the findings into the ones this session is
+ * answerable for and the ones already there. With `whole_files` on,
+ * everything is. `outOfScopeRuffFiles` — files with pre-existing ruff
+ * findings — is what decides whether ruff's whole-file `--fix` and
+ * `--add-noqa` are safe; a pyright finding elsewhere doesn't matter to them.
+ */
+function analyze(groups, files, { bases, notes }) {
+  const findings = collectFindings(groups);
+  if (wholeFilesEnabled()) {
+    return { inScope: findings, outOfScopeRuffFiles: new Set() };
+  }
+
+  const scoped = partitionByScope(findings, { scopes: scopesFor(files, { bases }) });
+  if (scoped.outOfScope.length > 0) {
+    notes.add(
+      `${scoped.outOfScope.length} pre-existing ruff/pyright finding(s) on lines this ` +
+        `session did not change were not blocked on:\n${describe(scoped.outOfScope)}`,
+    );
+  }
+  const outOfScopeRuffFiles = new Set(
+    scoped.outOfScope.filter((f) => f.tool === 'ruff').map((f) => path.resolve(f.file)),
+  );
+  return { ...scoped, outOfScopeRuffFiles };
+}
+
+function toOutcome({ inScope }) {
   const sections = [];
+  const ruffReport = formatRuffReport(rawOf(inScope, 'ruff'));
+  const pyrightReport = formatPyrightReport(rawOf(inScope, 'pyright'));
   if (ruffReport) sections.push(`## ruff\n\n${ruffReport}`);
   if (pyrightReport) sections.push(`## pyright\n\n${pyrightReport}`);
   return { failed: sections.length > 0, report: sections.join('\n\n') };
 }
 
 /*
+ * Ruff's in-scope findings at the cap. A file with nothing of ruff's out of
+ * scope gets ruff's own `--add-noqa`, which knows every edge case; one that
+ * also has pre-existing findings gets line-scoped comments from insertNoqa,
+ * since `--add-noqa` would silence those too.
+ */
+function suppressRuff(groups, scoped) {
+  const inScopeRuff = rawOf(scoped.inScope, 'ruff');
+  const byAddNoqa = new Set();
+  for (const finding of inScopeRuff) {
+    const file = path.resolve(finding.filename);
+    if (!scoped.outOfScopeRuffFiles.has(file)) byAddNoqa.add(file);
+  }
+  for (const [dir, groupFiles] of groups) {
+    const files = groupFiles.filter((file) => byAddNoqa.has(path.resolve(file)));
+    if (files.length > 0)
+      runTool('ruff', dir, ['check', '--add-noqa', '--force-exclude', ...files]);
+  }
+  insertNoqa(inScopeRuff.filter((finding) => !byAddNoqa.has(path.resolve(finding.filename))));
+}
+
+/*
  * runFixLoop's onCap: attempts have run out, so the stop is going through
  * regardless. Report what's left, and — only when the user opted in via
  * auto_suppress — suppress it inline so the next session starts clean.
+ * Only in-scope findings are suppressed: pre-existing ones on lines this
+ * session didn't change are not its to silence.
  */
-function giveUp(groups, { outcome, maxAttempts }) {
+function giveUp(groups, analyzeNow, { outcome, maxAttempts }) {
   if (!autoSuppressEnabled()) {
     process.stderr.write(
       `python plugin: ruff/pyright findings remain after ${maxAttempts} fix attempts; ` +
-        'leaving them in place. Enable this plugin\'s "auto_suppress" option to have inline ' +
+        "leaving them in place. Enable this plugin's `auto_suppress` option to have inline " +
         '`# noqa` / `# pyright: ignore` comments written for whatever is still failing at the cap.\n' +
         `${outcome.report}\n`,
     );
@@ -170,14 +278,13 @@ function giveUp(groups, { outcome, maxAttempts }) {
 
   /*
    * Pyright first: its ignore comment is appended at the end of the line,
-   * and ruff's --add-noqa then merges its own code into the line's comment
-   * without moving anything pyright pointed at.
+   * and the noqa comment then goes after it without moving anything pyright
+   * pointed at.
    */
-  const suppressed = insertPyrightIgnores(pyrightDiagnostics(groups));
-  for (const [dir, groupFiles] of groups) {
-    runTool('ruff', dir, ['check', '--add-noqa', '--force-exclude', ...groupFiles]);
-  }
-  const remaining = check(groups);
+  const scoped = analyzeNow();
+  const suppressed = insertPyrightIgnores(rawOf(scoped.inScope, 'pyright'));
+  suppressRuff(groups, analyzeNow());
+  const remaining = toOutcome(analyzeNow());
 
   process.stderr.write(
     `python plugin: findings remained after ${maxAttempts} fix attempts; auto-suppressed ` +
@@ -186,7 +293,7 @@ function giveUp(groups, { outcome, maxAttempts }) {
         .map((s) => `  ${s.file}:${s.lineNumber} — pyright: ${s.rules.join(', ')}`)
         .join('\n') +
       (suppressed.length > 0 ? '\n' : '') +
-      '  ruff findings: suppressed with `# noqa` via `ruff check --add-noqa`\n' +
+      '  ruff findings: suppressed with `# noqa` comments\n' +
       (remaining.failed
         ? `Still unresolved (no rule to suppress, e.g. syntax errors):\n${remaining.report}\n`
         : ''),
@@ -194,12 +301,17 @@ function giveUp(groups, { outcome, maxAttempts }) {
 }
 
 const GUIDANCE = [
-  'Ruff auto-fixes and formatting were already applied. Fix the remaining ones directly,',
-  "respecting the project's ruff config (pyproject.toml / ruff.toml) and pyright config",
-  '(pyrightconfig.json / [tool.pyright]). If fixing one properly would mean writing',
+  'Ruff auto-fixes and formatting were already applied where that was safe. Fix the remaining',
+  "ones directly, respecting the project's ruff config (pyproject.toml / ruff.toml) and pyright",
+  'config (pyrightconfig.json / [tool.pyright]). If fixing one properly would mean writing',
   'incorrect code (e.g. a type error caused by an untyped third-party library), suppress',
   'that specific finding inline instead of forcing a fix: `# noqa: <CODE>` for ruff,',
   '`# pyright: ignore[<rule>]` for pyright.',
+].join(' ');
+
+const SCOPE_GUIDANCE = [
+  'Only findings on lines this session changed are listed; fix just those. A file that also',
+  'has findings on unchanged lines was not auto-fixed, so its fixable ones are listed too.',
 ].join(' ');
 
 // What happens once the attempts run out, per the auto_suppress option.
@@ -211,9 +323,10 @@ function capNotice(maxAttempts) {
 
 function buildMessage({ attempt, maxAttempts, outcome }) {
   const heading = `ruff/pyright found unresolved issues in Python files edited this session (attempt ${attempt}/${maxAttempts}):`;
+  const guidance = wholeFilesEnabled() ? GUIDANCE : `${GUIDANCE} ${SCOPE_GUIDANCE}`;
   return {
     stopReason: 'Python files touched in this session still have ruff or pyright findings.',
-    systemMessage: [heading, outcome.report, `${GUIDANCE} ${capNotice(maxAttempts)}`].join('\n\n'),
+    systemMessage: [heading, outcome.report, `${guidance} ${capNotice(maxAttempts)}`].join('\n\n'),
   };
 }
 
@@ -240,18 +353,47 @@ function main() {
   const dir = loopStateDir({ dir: sessionDir, input });
   const files = readTrackedFiles(path.join(dir, TOUCHED_FILES)).filter(isPythonFile);
   const groups = groupByConfigDir(files);
+  // Diff against the session base, so lines already committed stay in scope.
+  const ctx = { bases: readSessionBases(sessionDir), notes: new Set() };
+  const analyzeNow = () => analyze(groups, files, ctx);
+
+  // Set when nothing was fixed, so `check` needn't run both tools again.
+  let current = null;
 
   const result = runFixLoop({
     input,
     dir,
     stateFiles: OWN_STATE_FILES,
     files,
-    fix: () => ruffFix(groups),
-    check: () => check(groups),
-    onCap: (cap) => giveUp(groups, cap),
+    /*
+     * Check first: fixableFiles needs to know what's out of scope, so this is
+     * the kit's check → fix → re-check ordering, with the re-check as `check`.
+     */
+    fix: () => {
+      current = null;
+      const scoped = analyzeNow();
+      const withRuffFindings = [
+        ...new Set(rawOf(scoped.inScope, 'ruff').map((f) => path.resolve(f.filename))),
+      ];
+      // Only ruff's own pre-existing findings are at risk from `ruff check --fix`.
+      const fixable = new Set(
+        fixableFiles({ files: withRuffFindings, outOfScopeFiles: scoped.outOfScopeRuffFiles }),
+      );
+      if (fixable.size === 0) {
+        current = scoped;
+        return;
+      }
+      ruffFix(groups, fixable, ctx.bases);
+    },
+    check: () => {
+      current = current || analyzeNow();
+      return toOutcome(current);
+    },
+    onCap: (cap) => giveUp(groups, analyzeNow, cap),
     buildMessage,
   });
 
+  for (const note of ctx.notes) process.stderr.write(`python plugin: ${note}\n`);
   if (result.reason === 'error') {
     process.stderr.write(`python plugin: check invocation failed: ${result.error.message}\n`);
   }

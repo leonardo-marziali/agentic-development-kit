@@ -17,6 +17,12 @@ A `PostToolUse` hook (on `Edit`/`Write`) runs `ruff format` on each `.py` /
 are never touched, and neither are files the project's ruff `exclude`
 covers.
 
+Inside a git repository only ruff's changes on or near the lines that
+differ from the commit the session started from are written, so an edit to
+an unformatted file doesn't reformat all of it. Outside a repository, for
+a file git doesn't track yet, or with [`whole_files`](#options) on, the
+whole file is formatted.
+
 ### Lint and type-check fix loop
 
 - **Session-scoped**: only Python files created or edited _during the
@@ -34,6 +40,14 @@ covers.
   2. `ruff check`, to see what is left;
   3. `pyright`, once per project config (see
      [Configuration](#configuration)).
+- **Only the lines you changed, inside a git repository.** There, only
+  findings on lines that differ from the commit the session started from
+  (plus 2 lines of context) block the stop. Older findings elsewhere in
+  the same file are listed once and left alone, and `ruff check --fix`
+  skips a file that has any, because it rewrites whole files. Outside a
+  repository, and for files git doesn't track yet, whole files are
+  checked. [`whole_files`](#options) switches back to whole files
+  everywhere.
 - **Autonomous fix loop**: if ruff findings or pyright **errors** remain,
   the `Stop` hook blocks the session from ending and hands Claude both
   reports in one message, so it keeps fixing them itself. Both tools share
@@ -118,10 +132,24 @@ failing:
 
 - pyright: `# pyright: ignore[<rule>]`. Errors without a rule name (syntax
   errors, mostly) are only reported.
-- ruff: `# noqa: <CODE>`, written with `ruff check --add-noqa`.
+- ruff: `# noqa: <CODE>`, written with `ruff check --add-noqa`. In a git
+  repository, a file that also has findings on unchanged lines gets the
+  comments on its changed lines only.
 
 It is off by default because editing your files to silence a checker
 should be opt-in. With it off, the remaining findings are simply reported.
+In a git repository only findings on changed lines are suppressed.
+
+**`whole_files`** (default **off**). Checks, auto-fixes and formats whole
+touched files even inside a git repository. Turn it on for a repository
+that is already ruff- and pyright-clean, where whole-file checks cost
+nothing extra and also catch the case below.
+
+Checking only changed lines has one blind spot. Some findings an edit
+causes are reported on a line it didn't touch: remove the last use of an
+import and F401 fires on the import, or change a function's signature and
+pyright reports the unchanged caller. These are listed as pre-existing
+rather than blocking.
 
 ## Configuration
 
@@ -167,7 +195,8 @@ The suite covers:
 
 - format-on-edit, including config and `exclude` handling and the venv
   lookup order;
-- session scoping;
+- session scoping, and changed-lines scoping inside a git repository
+  (checks, `--fix`, formatting, auto-suppression and `whole_files`);
 - the fix loop: safe ruff fixes, blocking on ruff and pyright findings,
   pyright warnings not blocking, and per-package pyright configs;
 - the 3-attempt cap under both `auto_suppress` settings;

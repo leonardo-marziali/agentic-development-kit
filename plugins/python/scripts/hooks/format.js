@@ -8,6 +8,12 @@ plugin's hook. Lint findings are left to the Stop-hook loop
 (check-and-loop.js); formatting either applies or it doesn't, so there is
 nothing to loop on here.
 
+Inside a git repo only ruff's changes on or near the lines that differ from
+the session base are written, so an edit to an unformatted file doesn't
+reformat all of it (see formatWithRuff in lib.js). Outside a repo, for an
+untracked file, or with the plugin's `whole_files` option on, the whole
+file is formatted.
+
 Ruff discovers pyproject.toml / ruff.toml per file by itself, and
 --force-exclude makes the project's `exclude` apply even though the file
 is passed explicitly.
@@ -15,8 +21,15 @@ is passed explicitly.
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { readHookInput, runBin } = require('@leonardo-marziali/ad-lfl-kit');
-const { isPythonFile, isIgnoredPath, resolveTool } = require('./lib');
+const { readHookInput, stateDir, readSessionBases } = require('@leonardo-marziali/ad-lfl-kit');
+const {
+  STATE_NAMESPACE,
+  isPythonFile,
+  isIgnoredPath,
+  resolveTool,
+  wholeFilesEnabled,
+  formatWithRuff,
+} = require('./lib');
 
 function main() {
   const input = readHookInput();
@@ -43,23 +56,19 @@ function main() {
 
   let result;
   try {
-    result = runBin(ruff.name, [...ruff.prefix, 'format', '--force-exclude', absPath], {
-      cwd,
-      encoding: 'utf8',
-      extraDirs: ruff.extraDirs,
+    result = formatWithRuff(ruff, absPath, {
+      bases: readSessionBases(
+        stateDir({ sessionId: input.session_id, namespace: STATE_NAMESPACE }),
+      ),
+      wholeFile: wholeFilesEnabled(),
     });
   } catch (err) {
     process.stderr.write(`python plugin: ruff format invocation failed: ${err.message}\n`);
     return;
   }
 
-  if (result.error) {
-    process.stderr.write(`python plugin: ruff format invocation failed: ${result.error.message}\n`);
-    return;
-  }
-  if (result.status !== 0) {
-    const output = ((result.stdout || '') + (result.stderr || '')).trim();
-    process.stderr.write(`python plugin: formatting ${absPath} failed:\n${output}\n`);
+  if (!result.ok) {
+    process.stderr.write(`python plugin: formatting ${absPath} failed:\n${result.output}\n`);
   }
 }
 

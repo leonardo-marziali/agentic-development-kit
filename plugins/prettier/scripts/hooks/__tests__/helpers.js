@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { spawnSync } = require('node:child_process');
+const { spawnSync, execFileSync } = require('node:child_process');
 
 const HOOKS_DIR = path.join(__dirname, '..');
 
@@ -59,8 +59,39 @@ function runHook(scriptName, stdinObj, { env = {} } = {}) {
   return { ...result, json };
 }
 
+/*
+A throwaway git repo with `files` committed, for the changed-lines tests.
+Identity and signing are passed per invocation so the suite behaves the
+same with no global git config, and hooks and templates can't interfere.
+*/
+function mkScratchRepo(files = {}) {
+  const dir = fs.realpathSync(mkScratchDir('prettier-plugin-repo-'));
+  const git = (...args) => execFileSync('git', ['-C', dir, ...args], { stdio: 'pipe' });
+  git('init', '--quiet', '--initial-branch=main');
+  for (const [name, contents] of Object.entries(files)) {
+    fs.mkdirSync(path.dirname(path.join(dir, name)), { recursive: true });
+    fs.writeFileSync(path.join(dir, name), contents);
+  }
+  git('add', '--all');
+  git(
+    '-c',
+    'user.email=test@example.com',
+    '-c',
+    'user.name=Test',
+    '-c',
+    'commit.gpgsign=false',
+    'commit',
+    '--quiet',
+    '--no-verify',
+    '-m',
+    'initial',
+  );
+  return dir;
+}
+
 module.exports = {
   mkScratchDir,
+  mkScratchRepo,
   rmScratchDir,
   uniqueSessionId,
   runHook,
