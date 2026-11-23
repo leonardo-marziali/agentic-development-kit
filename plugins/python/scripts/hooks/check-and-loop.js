@@ -35,7 +35,6 @@ const {
   loopStateDir,
   readTrackedFiles,
   trackSessionChanges,
-  runBin,
   runFixLoop,
   SESSION_BASE_FILE,
 } = require('@leonardo-marziali/ad-lfl-kit');
@@ -45,6 +44,7 @@ const {
   isPythonFile,
   isIgnoredPath,
   resolveTool,
+  runResolved,
   groupByConfigDir,
   pythonPathFor,
   parsePyrightJson,
@@ -79,11 +79,7 @@ function runTool(tool, dir, args) {
     );
     return null;
   }
-  const result = runBin(resolved.name, [...resolved.prefix, ...args], {
-    cwd: dir,
-    encoding: 'utf8',
-    extraDirs: resolved.extraDirs,
-  });
+  const result = runResolved(resolved, args, { cwd: dir, encoding: 'utf8' });
   if (result.error) {
     warnOnce(`${tool} invocation failed: ${result.error.message}`);
     return null;

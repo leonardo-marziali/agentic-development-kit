@@ -15,8 +15,8 @@ is passed explicitly.
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { readHookInput, runBin } = require('@leonardo-marziali/ad-lfl-kit');
-const { isPythonFile, isIgnoredPath, resolveTool } = require('./lib');
+const { readHookInput } = require('@leonardo-marziali/ad-lfl-kit');
+const { isPythonFile, isIgnoredPath, resolveTool, runResolved } = require('./lib');
 
 function main() {
   const input = readHookInput();
@@ -43,10 +43,9 @@ function main() {
 
   let result;
   try {
-    result = runBin(ruff.name, [...ruff.prefix, 'format', '--force-exclude', absPath], {
+    result = runResolved(ruff, ['format', '--force-exclude', absPath], {
       cwd,
       encoding: 'utf8',
-      extraDirs: ruff.extraDirs,
     });
   } catch (err) {
     process.stderr.write(`python plugin: ruff format invocation failed: ${err.message}\n`);

@@ -8,6 +8,8 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
+const { runBin } = require('@leonardo-marziali/ad-lfl-kit');
 
 /*
  * track-touched.js writes the list and check-and-loop.js reads it, so both
@@ -70,16 +72,22 @@ function executableNames(name) {
   return exts.map((ext) => name + ext.toLowerCase());
 }
 
-function hasExecutable(dir, name) {
-  return executableNames(name).some((candidate) => {
+// The full path of `name` (with its Windows extension) in `dir`, or null.
+function findExecutable(dir, name) {
+  for (const candidate of executableNames(name)) {
     const full = path.join(dir, candidate);
     try {
       fs.accessSync(full, fs.constants.X_OK);
-      return fs.statSync(full).isFile();
+      if (fs.statSync(full).isFile()) return full;
     } catch {
-      return false;
+      // Not there, or not executable: try the next candidate.
     }
-  });
+  }
+  return null;
+}
+
+function hasExecutable(dir, name) {
+  return findExecutable(dir, name) !== null;
 }
 
 function onPath(name) {
@@ -102,8 +110,10 @@ const FALLBACKS = {
 /*
 Resolves a tool in the order the project would expect: its own `.venv`
 first (so a pinned version wins), then PATH, then the tool's fallback
-runner. Returns { name, prefix, extraDirs } for runBin, or null when
-nothing can run it — callers fail open in that case rather than block.
+runner. Returns { name, prefix, extraDirs } for runBin — plus `exe`, the
+exact executable, for a venv tool — or null when nothing can run it;
+callers fail open in that case rather than block. Run the result with
+runResolved.
 
 The PATH search is done by hand because runBin's own resolution falls
 back to the bare name without knowing whether it exists, and the fallback
@@ -111,9 +121,8 @@ runner should only be reached when it doesn't.
 */
 function resolveTool(tool, { fromDir } = {}) {
   const venvBin = fromDir ? findVenvBinDir(fromDir) : null;
-  if (venvBin && hasExecutable(venvBin, tool)) {
-    return { name: tool, prefix: [], extraDirs: [venvBin] };
-  }
+  const venvExe = venvBin ? findExecutable(venvBin, tool) : null;
+  if (venvExe) return { name: tool, prefix: [], extraDirs: [venvBin], exe: venvExe };
   if (onPath(tool)) return { name: tool, prefix: [], extraDirs: [] };
 
   const fallback = FALLBACKS[tool];
@@ -125,6 +134,20 @@ function resolveTool(tool, { fromDir } = {}) {
     return { name: fallback.name, prefix: fallback.prefix, extraDirs: [] };
   }
   return null;
+}
+
+/*
+Runs a tool resolveTool found. A venv tool is spawned by its exact path:
+runBin looks beside the node binary before its `extraDirs`, so wherever a
+system ruff or pyright is installed next to node, passing the venv only as
+an extra dir would run that one instead of the project's pinned version.
+*/
+function runResolved(resolved, args, options = {}) {
+  if (resolved.exe) return spawnSync(resolved.exe, args, options);
+  return runBin(resolved.name, [...resolved.prefix, ...args], {
+    ...options,
+    extraDirs: resolved.extraDirs,
+  });
 }
 
 const CONFIG_NAMES = ['pyrightconfig.json', 'pyproject.toml'];
@@ -280,6 +303,7 @@ module.exports = {
   isIgnoredPath,
   findVenvBinDir,
   resolveTool,
+  runResolved,
   resolveConfigDir,
   groupByConfigDir,
   pythonPathFor,

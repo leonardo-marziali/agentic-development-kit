@@ -113,7 +113,12 @@ test('resolveTool: prefers the project .venv over PATH', (t) => {
 
   const resolved = withPath([pathDir], () => resolveTool('ruff', { fromDir: root }));
 
-  assert.deepEqual(resolved, { name: 'ruff', prefix: [], extraDirs: [venvBin] });
+  assert.deepEqual(resolved, {
+    name: 'ruff',
+    prefix: [],
+    extraDirs: [venvBin],
+    exe: path.join(venvBin, process.platform === 'win32' ? 'ruff.exe' : 'ruff'),
+  });
 });
 
 test('resolveTool: ignores a .venv that lacks the tool', (t) => {
