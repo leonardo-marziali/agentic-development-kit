@@ -49,10 +49,13 @@ ENV JAVA_HOME=/usr/lib/jvm/default-jdk
 ENV PUPPETEER_SKIP_DOWNLOAD=true \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
-# Where an optional host wiki is mounted (see the README). `wiki status
-# --all`, which the wiki-lookup skill runs, lists every LLM_WIKI_PATH entry
-# holding a wiki.toml and skips the rest, so an empty mount point is harmless.
-ENV LLM_WIKI_PATH=/home/node/llm-wiki
+# Where optional host wikis are mounted (see the README): one wiki, or a
+# folder of wikis. The `wiki` wrapper adds this directory and each direct
+# subdirectory holding a wiki.toml to LLM_WIKI_PATH on every call, so
+# `wiki status --all` (the wiki-lookup skill's first step) lists them all. An
+# empty mount point is harmless. LLM_WIKI_PATH itself is left unset, for
+# extra wikis mounted elsewhere (':'-separated).
+ENV LLM_WIKI_SCAN_DIR=/home/node/llm-wiki
 
 # Run on every start (see the postStartCommand in devcontainer.json):
 # claude-attribution applies CLAUDE_ATTRIBUTION to ~/.claude/settings.json,

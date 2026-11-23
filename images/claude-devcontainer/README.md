@@ -100,11 +100,16 @@ the container, add this to your `devcontainer.json`:
 "runArgs": ["-v", "${localEnv:LLM_WIKI_HOST_PATH:llm-wiki-none}:/home/node/llm-wiki"]
 ```
 
-and set `LLM_WIKI_HOST_PATH` on the host to the wiki's root (the directory
-holding `wiki.toml`, created with `wiki init`):
+and set `LLM_WIKI_HOST_PATH` on the host to either of these:
+
+- **one wiki:** its root, the directory holding `wiki.toml` (created with
+  `wiki init`);
+- **a folder of wikis:** a directory whose direct subdirectories are wiki
+  roots. Subdirectories without a `wiki.toml` are ignored.
 
 ```sh
-export LLM_WIKI_HOST_PATH="$HOME/wikis/payments"
+export LLM_WIKI_HOST_PATH="$HOME/wikis/payments"   # one wiki
+export LLM_WIKI_HOST_PATH="$HOME/wikis"            # every wiki in it
 ```
 
 - **It is optional.** When the variable is unset, the fallback name
@@ -117,18 +122,47 @@ export LLM_WIKI_HOST_PATH="$HOME/wikis/payments"
   profile. An `--env-file` such as `.env` only sets variables inside the
   container and does not work here. Rebuild the container after changing
   it.
-- **How the CLI finds it.** The image sets
-  `LLM_WIKI_PATH=/home/node/llm-wiki`, so `wiki status --all` (the skill's
-  first step) lists the mounted wiki without any registration. Check with
-  `wiki status --all` in a container terminal.
+- **How the CLI finds them.** The image sets
+  `LLM_WIKI_SCAN_DIR=/home/node/llm-wiki`, and its `wiki` command is a small
+  wrapper around the real CLI. On every call it adds that directory, if it
+  is a wiki, and each direct subdirectory that is one to `LLM_WIKI_PATH`. So
+  `wiki status --all` (the skill's first step) lists every mounted wiki
+  without any registration. Check with `wiki status --all` in a container
+  terminal.
 - **It is writable,** so `wiki ingest` works in the container. Ingest runs
   headless Claude Code, which needs `claude auth login`, and commits to the
   wiki, which needs git `user.name` and `user.email`. The image marks the
-  mount point as a git `safe.directory`, so a wiki owned by a different host
-  UID is accepted. For lookups only, append `:ro` to the mount.
-- **Mount the wiki's own repository.** git cannot see a parent repository
+  mount point and its direct subdirectories as git `safe.directory`, so
+  wikis owned by a different host UID are accepted. For lookups only,
+  append `:ro` to the mount.
+- **Mount each wiki's own repository.** git cannot see a parent repository
   outside the mount, so a wiki kept as a folder inside a bigger repository
   can be read and searched, but `wiki ingest` will not work on it.
+
+#### Wikis in several host folders
+
+One variable gives one mount, so wikis spread across the host need one more
+`-v` each. Mount them under the scan directory and the wrapper finds them
+like any other subdirectory:
+
+```json
+"runArgs": [
+  "-v", "${localEnv:LLM_WIKI_HOST_PATH:llm-wiki-none}:/home/node/llm-wiki",
+  "-v", "${localEnv:HOME}/work/team-docs/wiki:/home/node/llm-wiki/team-docs"
+]
+```
+
+When the outer mount is itself a host folder, Docker creates an empty
+`team-docs` directory in that host folder as the mount point. To avoid it,
+mount the wiki somewhere else and list it in `LLM_WIKI_PATH` instead. The
+CLI reads that variable directly, the wrapper adds to it rather than
+replacing it, and entries are separated by `:` (not `;`):
+
+```json
+"containerEnv": {
+  "LLM_WIKI_PATH": "/home/node/wikis/team-docs:/home/node/wikis/ops"
+}
+```
 
 `wiki skill install` runs at build time and on every start, so the skill
 stays in step with the image's CLI even when `~/.claude` is a persisted

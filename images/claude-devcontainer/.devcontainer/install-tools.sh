@@ -32,8 +32,9 @@ SONAR_CLI_VERSION="${SONAR_CLI_VERSION:-${LATEST}}"
 RUFF_VERSION="${RUFF_VERSION:-${LATEST}}"
 LLM_WIKI_VERSION="${LLM_WIKI_VERSION:-${LATEST}}"
 EDITORCONFIG_CHECKER_VERSION="${EDITORCONFIG_CHECKER_VERSION:-${LATEST}}"
-# Where a host wiki is mounted (see the README); the Dockerfile points
-# LLM_WIKI_PATH here.
+# Where host wikis are mounted (see the README): one wiki, or a folder of
+# wikis. The Dockerfile points LLM_WIKI_SCAN_DIR here and the `wiki` wrapper
+# (wiki-shim.sh) scans it.
 readonly LLM_WIKI_MOUNT="/home/node/llm-wiki"
 
 # Every download is HTTPS-only, redirects included.
@@ -90,12 +91,14 @@ if [[ "${LLM_WIKI_VERSION}" != "${LATEST}" ]]; then
 fi
 python3 -m venv /opt/llm-wiki
 /opt/llm-wiki/bin/pip install --no-cache-dir --only-binary=:all: "${llm_wiki_spec}"
-ln -sf /opt/llm-wiki/bin/wiki /usr/local/bin/wiki
+install -m 0755 "${SCRIPT_DIR}/wiki-shim.sh" /usr/local/bin/wiki
 wiki --help >/dev/null
 # A bind-mounted host wiki is a git repo owned by the host user's UID, which
 # need not match the container user's; without this git refuses to touch it
-# ("dubious ownership") and `wiki ingest` fails.
+# ("dubious ownership") and `wiki ingest` fails. The `/*` entry covers the
+# wikis inside a mounted folder of wikis.
 git config --system --add safe.directory "${LLM_WIKI_MOUNT}"
+git config --system --add safe.directory "${LLM_WIKI_MOUNT}/*"
 
 # marksman (markdown LSP)
 if [[ "${MARKSMAN_VERSION}" == "${LATEST}" ]]; then
