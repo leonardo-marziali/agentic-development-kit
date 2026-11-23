@@ -26,11 +26,33 @@ grep -q '<svg' "${mmdc_dir}/out.svg" || { echo "mmdc produced no SVG" >&2; exit 
 rm -rf "${mmdc_dir}"
 wiki --help >/dev/null
 
-# llm-wiki: the wiki-lookup skill, and where the CLI looks for a mounted wiki.
+# llm-wiki: the wiki-lookup skill, and where the CLI looks for mounted wikis.
 [[ -f "${HOME}/.claude/skills/wiki-lookup/SKILL.md" ]] \
   || { echo "missing skill: wiki-lookup" >&2; exit 1; }
-[[ "${LLM_WIKI_PATH:-}" == "/home/node/llm-wiki" ]] \
-  || { echo "LLM_WIKI_PATH not set to /home/node/llm-wiki" >&2; exit 1; }
+[[ "${LLM_WIKI_SCAN_DIR:-}" == "/home/node/llm-wiki" ]] \
+  || { echo "LLM_WIKI_SCAN_DIR not set to /home/node/llm-wiki" >&2; exit 1; }
+
+# The `wiki` wrapper must find a mount point that is one wiki, a folder of
+# wikis, and wikis already listed in LLM_WIKI_PATH. Throwaway git identity
+# and registry, so the user's own are untouched and nothing comes from them.
+wiki_dir="$(mktemp -d)"
+printf '[user]\n\tname = smoke\n\temail = smoke@example.invalid\n' >"${wiki_dir}/gitconfig"
+export GIT_CONFIG_GLOBAL="${wiki_dir}/gitconfig"
+for w in single many/alpha many/beta elsewhere; do
+  LLM_WIKI_HOME="${wiki_dir}/init-home" wiki init "${wiki_dir}/${w}" --name "${w##*/}" >/dev/null
+done
+mkdir "${wiki_dir}/many/not-a-wiki"
+wiki_names() {
+  LLM_WIKI_HOME="${wiki_dir}/empty-home" LLM_WIKI_SCAN_DIR="$1" LLM_WIKI_PATH="${2:-}" \
+    wiki status --all --format json \
+    | python3 -c 'import json,sys; print(" ".join(sorted(r["name"] for r in json.load(sys.stdin))))'
+}
+[[ "$(wiki_names "${wiki_dir}/single")" == "single" ]] \
+  || { echo "wiki: single-wiki mount not found" >&2; exit 1; }
+[[ "$(wiki_names "${wiki_dir}/many" "${wiki_dir}/elsewhere")" == "alpha beta elsewhere" ]] \
+  || { echo "wiki: folder of wikis or LLM_WIKI_PATH entry not found" >&2; exit 1; }
+unset GIT_CONFIG_GLOBAL
+rm -rf "${wiki_dir}"
 
 expected=(
   markdown@agentic-development-kit
