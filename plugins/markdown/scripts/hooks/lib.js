@@ -97,13 +97,40 @@ function parseViolationsJson(raw) {
 }
 
 /*
-`auto_suppress` in plugin.json's userConfig, surfaced to hook processes
-as CLAUDE_PLUGIN_OPTION_AUTO_SUPPRESS. Absent (plugin installed before
-the option existed, or never configured) reads as off.
+A boolean option from plugin.json's userConfig, surfaced to hook processes
+as CLAUDE_PLUGIN_OPTION_<NAME>. Absent (plugin installed before the option
+existed, or never configured) reads as off.
 */
-function autoSuppressEnabled() {
-  const raw = (process.env.CLAUDE_PLUGIN_OPTION_AUTO_SUPPRESS || '').trim().toLowerCase();
+function optionEnabled(name) {
+  const raw = (process.env[`CLAUDE_PLUGIN_OPTION_${name}`] || '').trim().toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'on';
+}
+
+// `auto_suppress`: write inline disable comments for what's left at the cap.
+function autoSuppressEnabled() {
+  return optionEnabled('AUTO_SUPPRESS');
+}
+
+/*
+`whole_files`: check and fix whole touched files even inside a git repo,
+rather than only the lines that differ from the session base.
+*/
+function wholeFilesEnabled() {
+  return optionEnabled('WHOLE_FILES');
+}
+
+/*
+One violation from markdownlint-cli's --json output, in the same shape as
+its default text output, so a report reads the way it always did.
+*/
+function formatViolation(violation) {
+  const column = violation.errorRange ? `:${violation.errorRange[0]}` : '';
+  const detail = violation.errorDetail ? ` [${violation.errorDetail}]` : '';
+  const context = violation.errorContext ? ` [Context: "${violation.errorContext}"]` : '';
+  return (
+    `${violation.fileName}:${violation.lineNumber}${column} error ` +
+    `${violation.ruleNames.join('/')} ${violation.ruleDescription}${detail}${context}`
+  );
 }
 
 /*
@@ -184,5 +211,7 @@ module.exports = {
   groupByConfigDir,
   parseViolationsJson,
   autoSuppressEnabled,
+  wholeFilesEnabled,
+  formatViolation,
   insertSuppressions,
 };

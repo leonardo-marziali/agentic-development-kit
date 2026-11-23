@@ -20,6 +20,14 @@ linting via markdownlint.
   through the `Stop` hook). `Stop` hooks then run `markdownlint-cli --fix`
   on just that set of files; a subagent's `SubagentStop` on only the
   files that subagent touched.
+- **Only the lines you changed, inside a git repository.** There, only
+  violations on lines that differ from the commit the session started
+  from (plus 2 lines of context) block the stop. Older violations
+  elsewhere in the same file are listed once and left alone, and
+  `--fix` skips a file that has any, because it rewrites whole files.
+  Outside a repository, and for files git doesn't track yet, whole files
+  are checked. [`whole_files`](#options) switches back to whole files
+  everywhere.
 - **Autonomous fix loop**: if violations remain after `--fix`, the `Stop`
   hook blocks the session from ending and hands Claude the remaining
   findings, so it keeps fixing them itself. This repeats up to 3 attempts
@@ -111,15 +119,28 @@ Pre-existing markdown files are never touched by these hooks. Run
 
 ### Options
 
-The plugin declares one option, prompted when you enable it and changeable
-later from the plugin's configuration:
+The plugin declares two options, prompted when you enable it and
+changeable later from the plugin's configuration:
 
 **`auto_suppress`** — default **off**.
 
 When the fix loop hits its 3-attempt cap, this writes inline
 `markdownlint-disable` comments into your files for whatever is still
 failing. It is off by default: editing your files to silence a linter is
-opt-in, and with it off the remaining violations are simply reported.
+opt-in, and with it off the remaining violations are simply reported. In a
+git repository only violations on changed lines are suppressed.
+
+**`whole_files`** — default **off**.
+
+Checks and auto-fixes whole touched files even inside a git repository.
+Turn it on for a repository that is already markdownlint-clean, where
+whole-file checks cost nothing extra and also catch the case below.
+
+Checking only changed lines has one blind spot. Some violations an edit
+causes are reported on a line it didn't touch: delete the last use of a
+link reference and MD053 fires on the definition, or rename a heading and
+MD051 fires on a link to it elsewhere. These are listed as pre-existing
+rather than blocking.
 
 ### Configuration
 
@@ -155,7 +176,9 @@ pnpm test
 ```
 
 It covers session-scoping (only tracked files get linted, pre-existing ones
-never do), the autonomous fix loop and its 3-attempt cap under both
+never do), changed-lines scoping inside a git repository (including that
+`--fix` and auto-suppression leave other lines alone, and the `whole_files`
+option), the autonomous fix loop and its 3-attempt cap under both
 `auto_suppress` settings, cross-platform resolution of the `npx` shim, and
 `.markdownlint.{json,jsonc,yaml,yml}` resolution — including nested/monorepo
 configs. The integration tests shell out to the real `npx markdownlint-cli`

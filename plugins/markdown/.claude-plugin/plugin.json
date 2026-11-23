@@ -17,6 +17,12 @@
       "title": "Auto-suppress unfixable violations",
       "description": "When the fix loop hits its attempt cap, write inline markdownlint-disable comments into your files for whatever is still failing. Off by default: the remaining violations are only reported.",
       "default": false
+    },
+    "whole_files": {
+      "type": "boolean",
+      "title": "Work on whole files",
+      "description": "Check and auto-fix whole touched files even inside a git repository. Off by default: in a git repository only markdownlint violations on lines that differ from the session's starting commit block the stop (outside one, whole files are always checked).",
+      "default": false
     }
   }
 }
