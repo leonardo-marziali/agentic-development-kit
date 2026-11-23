@@ -1,3 +1,10 @@
+# [5.2.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v5.1.0...v5.2.0) (2026-11-23)
+
+
+### Features
+
+* **ad-lfl-kit:** format only the lines a session changed ([#63](https://github.com/leonardo-marziali/agentic-development-kit/issues/63)) ([a24d40a](https://github.com/leonardo-marziali/agentic-development-kit/commit/a24d40a3216048e84ed99d9c8a76e251e9bc3602))
+
 # [5.1.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v5.0.0...v5.1.0) (2026-11-23)
 
 
