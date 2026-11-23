@@ -1,3 +1,10 @@
+# [5.1.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v5.0.0...v5.1.0) (2026-11-23)
+
+
+### Features
+
+* **devcontainer:** discover several llm wikis under the mount point ([#62](https://github.com/leonardo-marziali/agentic-development-kit/issues/62)) ([5577b9d](https://github.com/leonardo-marziali/agentic-development-kit/commit/5577b9d26bba3d2e2e896426ad97436efbde1961))
+
 # [5.0.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v4.0.0...v5.0.0) (2026-11-20)
 
 
