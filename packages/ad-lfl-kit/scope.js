@@ -38,7 +38,7 @@ const DEFAULT_CONTEXT_LINES = 2;
  */
 const MAX_BUFFER = 64 * 1024 * 1024;
 
-const HUNK_HEADER = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/;
+const HUNK_HEADER = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
 
 function git(args, cwd) {
   return runBin('git', args, { cwd, encoding: 'utf8', maxBuffer: MAX_BUFFER });
@@ -103,12 +103,27 @@ function readPathSet(result, root) {
  * blank line under a heading, say) is reported against whatever now sits
  * there.
  */
-function rangeFromHunk(header) {
+/*
+ * Both sides of one `@@ -a,b +c,d @@` header. An omitted count means 1, as
+ * in git's own output. Null for anything that isn't a hunk header.
+ */
+function parseHunkHeader(header) {
   const match = HUNK_HEADER.exec(header);
   if (!match) return null;
+  const count = (raw) => (raw === undefined ? 1 : Number(raw));
+  return {
+    oldStart: Number(match[1]),
+    oldCount: count(match[2]),
+    newStart: Number(match[3]),
+    newCount: count(match[4]),
+  };
+}
 
-  const start = Number(match[1]);
-  const count = match[2] === undefined ? 1 : Number(match[2]);
+function rangeFromHunk(header) {
+  const hunk = parseHunkHeader(header);
+  if (!hunk) return null;
+
+  const { newStart: start, newCount: count } = hunk;
   if (count > 0) return [start, start + count - 1];
 
   const at = Math.max(start, 1);
@@ -350,4 +365,5 @@ module.exports = {
   fixableFiles,
   mergeRanges,
   widenRanges,
+  parseHunkHeader,
 };

@@ -14,6 +14,7 @@ module.exports = {
   ...require('./track'),
   ...require('./base'),
   ...require('./scope'),
+  ...require('./format-scope'),
   ...require('./guard'),
   ...require('./loop'),
 };
