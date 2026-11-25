@@ -6,7 +6,7 @@
     "@leonardo-marziali/ad-lfl-kit": "5.3.0"
   },
   "scripts": {
-    "test": "node --test \"scripts/hooks/__tests__/*.test.js\"",
-    "test:coverage": "mkdir -p coverage && node --test --experimental-test-coverage --test-coverage-exclude=\"**/__tests__/**\" --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info \"scripts/hooks/__tests__/*.test.js\""
+    "test": "node --test --test-concurrency=1 \"scripts/hooks/__tests__/*.test.js\"",
+    "test:coverage": "mkdir -p coverage && node --test --test-concurrency=1 --experimental-test-coverage --test-coverage-exclude=\"**/__tests__/**\" --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info \"scripts/hooks/__tests__/*.test.js\""
   }
 }

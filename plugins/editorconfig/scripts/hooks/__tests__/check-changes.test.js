@@ -228,3 +228,33 @@ test(
     assert.match(res.json.warnings.join('\n'), /could not run.*cannot download/s);
   },
 );
+
+test(
+  'a checker wrapper that crashes but exits 0 is exit 2, never clean',
+  { skip: REAL_CHECKER_BESIDE_NODE || process.platform === 'win32' },
+  (t) => {
+    const ctx = setup(t);
+    fs.writeFileSync(ctx.file, ORIGINAL.replace('line 15', '\tline 15'));
+    const bin = path.join(path.dirname(ctx.project), 'bin');
+    fs.mkdirSync(bin);
+    // What the npm wrapper prints when two first runs race for its download.
+    fs.writeFileSync(
+      path.join(bin, 'editorconfig-checker'),
+      [
+        '#!/bin/sh',
+        'echo "Error: ENOENT: no such file or directory, scandir \'.../bin/latest/bin\'" >&2',
+        'echo "    at async findProgram (file:///.../dist/index.js:10:9995)" >&2',
+        'exit 0',
+        '',
+      ].join('\n'),
+      { mode: 0o755 },
+    );
+
+    const res = cli(ctx, ['--format', 'json', '--', ctx.file], {
+      PATH: `${bin}${path.delimiter}${process.env.PATH}`,
+    });
+
+    assert.equal(res.status, 2, res.stdout);
+    assert.match(res.json.warnings.join('\n'), /could not run.*ENOENT/s);
+  },
+);
