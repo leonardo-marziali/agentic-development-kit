@@ -31,10 +31,9 @@
  * broken config, a bad flag), is reported on stderr and skipped: a broken
  * toolchain must not trap the session in a loop.
  *
- * Pyright reads exactly one config per run, so files are grouped by their
- * nearest pyrightconfig.json / pyproject.toml (see lib.js) and each group is
- * checked with `-p` pointed there. Ruff resolves config per file itself, but
- * runs per group too, so each group uses the ruff from its own `.venv`.
+ * The analysis and fix steps live in checks.js, shared with the standalone
+ * changed-lines CLI (scripts/check-changes.js); this script adds tracking,
+ * session bases, the loop and auto-suppression around them.
  */
 
 const path = require('node:path');
@@ -45,9 +44,6 @@ const {
   readTrackedFiles,
   trackSessionChanges,
   runFixLoop,
-  scopesFor,
-  partitionByScope,
-  fixableFiles,
   readSessionBases,
   SESSION_BASE_FILE,
 } = require('@leonardo-marziali/ad-lfl-kit');
@@ -56,20 +52,13 @@ const {
   TOUCHED_FILES,
   isPythonFile,
   isIgnoredPath,
-  resolveTool,
-  runResolved,
   groupByConfigDir,
-  pythonPathFor,
-  parsePyrightJson,
-  formatPyrightReport,
-  parseRuffJson,
-  formatRuffReport,
   autoSuppressEnabled,
   wholeFilesEnabled,
   insertPyrightIgnores,
   insertNoqa,
-  formatWithRuff,
 } = require('./lib');
+const { runTool, ruffFix, rawOf, analyze, fixTargets, toOutcome } = require('./checks');
 
 /*
  * The state directory is keyed by session id and may be shared with other
@@ -89,154 +78,6 @@ function warnOnce(message) {
   process.stderr.write(`python plugin: ${message}\n`);
 }
 
-function runTool(tool, dir, args) {
-  const resolved = resolveTool(tool, { fromDir: dir });
-  if (!resolved) {
-    warnOnce(
-      `${tool} not found (no .venv, PATH or ${tool === 'ruff' ? 'uvx' : 'npx'}); skipping it.`,
-    );
-    return null;
-  }
-  const result = runResolved(resolved, args, { cwd: dir, encoding: 'utf8' });
-  if (result.error) {
-    warnOnce(`${tool} invocation failed: ${result.error.message}`);
-    return null;
-  }
-  return result;
-}
-
-function output(result) {
-  return ((result.stdout || '') + (result.stderr || '')).trim();
-}
-
-/*
- * Fixes, then formats, `fixable` (absolute paths) per group: fixes can
- * leave code unformatted. Formatting is scoped like everything else here.
- */
-function ruffFix(groups, fixable, bases) {
-  for (const [dir, groupFiles] of groups) {
-    const files = groupFiles.filter((file) => fixable.has(path.resolve(file)));
-    if (files.length === 0) continue;
-    runTool('ruff', dir, ['check', '--fix', '--force-exclude', ...files]);
-    const ruff = resolveTool('ruff', { fromDir: dir });
-    if (!ruff) continue;
-    for (const file of files) {
-      const result = formatWithRuff(ruff, path.resolve(file), {
-        bases,
-        wholeFile: wholeFilesEnabled(),
-      });
-      if (!result.ok) warnOnce(`formatting ${file} failed:\n${result.output}`);
-    }
-  }
-}
-
-// Ruff exits 0 when clean, 1 on findings, 2 on anything else.
-function ruffFindings(groups) {
-  const findings = [];
-  for (const [dir, groupFiles] of groups) {
-    const result = runTool('ruff', dir, [
-      'check',
-      '--force-exclude',
-      '--output-format=json',
-      ...groupFiles,
-    ]);
-    if (!result || result.status === 0) continue;
-    const parsed = result.status === 1 ? parseRuffJson(result.stdout) : null;
-    if (parsed) {
-      findings.push(...parsed);
-    } else {
-      warnOnce(`ruff check failed in ${dir}; skipping it:\n${output(result)}`);
-    }
-  }
-  return findings;
-}
-
-// Pyright exits 0 when clean, 1 on errors, 2+ on fatal/config/CLI errors.
-function pyrightDiagnostics(groups) {
-  const diags = [];
-  for (const [dir, groupFiles] of groups) {
-    const args = ['--outputjson', '-p', dir];
-    const python = pythonPathFor(dir);
-    if (python) args.push('--pythonpath', python);
-    const result = runTool('pyright', dir, [...args, ...groupFiles]);
-    if (!result || result.status === 0) continue;
-    const parsed = result.status === 1 ? parsePyrightJson(result.stdout) : null;
-    if (parsed) {
-      diags.push(...parsed);
-    } else {
-      warnOnce(`pyright failed in ${dir}; skipping it:\n${output(result)}`);
-    }
-  }
-  return diags;
-}
-
-/*
- * Both tools' findings, tagged so one partition can scope them together:
- * `file` and a 1-based `line` (pyright's JSON lines are 0-based).
- */
-function collectFindings(groups) {
-  return [
-    ...ruffFindings(groups).map((raw) => ({
-      tool: 'ruff',
-      file: raw.filename,
-      line: raw.location.row,
-      raw,
-    })),
-    ...pyrightDiagnostics(groups).map((raw) => ({
-      tool: 'pyright',
-      file: raw.file,
-      line: raw.range.start.line + 1,
-      raw,
-    })),
-  ];
-}
-
-const rawOf = (findings, tool) => findings.filter((f) => f.tool === tool).map((f) => f.raw);
-
-function describe(findings) {
-  return [
-    formatRuffReport(rawOf(findings, 'ruff')),
-    formatPyrightReport(rawOf(findings, 'pyright')),
-  ]
-    .filter(Boolean)
-    .join('\n');
-}
-
-/*
- * Checks every group and splits the findings into the ones this session is
- * answerable for and the ones already there. With `whole_files` on,
- * everything is. `outOfScopeRuffFiles` — files with pre-existing ruff
- * findings — is what decides whether ruff's whole-file `--fix` and
- * `--add-noqa` are safe; a pyright finding elsewhere doesn't matter to them.
- */
-function analyze(groups, files, { bases, notes }) {
-  const findings = collectFindings(groups);
-  if (wholeFilesEnabled()) {
-    return { inScope: findings, outOfScopeRuffFiles: new Set() };
-  }
-
-  const scoped = partitionByScope(findings, { scopes: scopesFor(files, { bases }) });
-  if (scoped.outOfScope.length > 0) {
-    notes.add(
-      `${scoped.outOfScope.length} pre-existing ruff/pyright finding(s) on lines this ` +
-        `session did not change were not blocked on:\n${describe(scoped.outOfScope)}`,
-    );
-  }
-  const outOfScopeRuffFiles = new Set(
-    scoped.outOfScope.filter((f) => f.tool === 'ruff').map((f) => path.resolve(f.file)),
-  );
-  return { ...scoped, outOfScopeRuffFiles };
-}
-
-function toOutcome({ inScope }) {
-  const sections = [];
-  const ruffReport = formatRuffReport(rawOf(inScope, 'ruff'));
-  const pyrightReport = formatPyrightReport(rawOf(inScope, 'pyright'));
-  if (ruffReport) sections.push(`## ruff\n\n${ruffReport}`);
-  if (pyrightReport) sections.push(`## pyright\n\n${pyrightReport}`);
-  return { failed: sections.length > 0, report: sections.join('\n\n') };
-}
-
 /*
  * Ruff's in-scope findings at the cap. A file with nothing of ruff's out of
  * scope gets ruff's own `--add-noqa`, which knows every edge case; one that
@@ -253,7 +94,7 @@ function suppressRuff(groups, scoped) {
   for (const [dir, groupFiles] of groups) {
     const files = groupFiles.filter((file) => byAddNoqa.has(path.resolve(file)));
     if (files.length > 0)
-      runTool('ruff', dir, ['check', '--add-noqa', '--force-exclude', ...files]);
+      runTool('ruff', dir, ['check', '--add-noqa', '--force-exclude', ...files], warnOnce);
   }
   insertNoqa(inScopeRuff.filter((finding) => !byAddNoqa.has(path.resolve(finding.filename))));
 }
@@ -354,7 +195,7 @@ function main() {
   const files = readTrackedFiles(path.join(dir, TOUCHED_FILES)).filter(isPythonFile);
   const groups = groupByConfigDir(files);
   // Diff against the session base, so lines already committed stay in scope.
-  const ctx = { bases: readSessionBases(sessionDir), notes: new Set() };
+  const ctx = { bases: readSessionBases(sessionDir), notes: new Set(), warn: warnOnce };
   const analyzeNow = () => analyze(groups, files, ctx);
 
   // Set when nothing was fixed, so `check` needn't run both tools again.
@@ -372,18 +213,12 @@ function main() {
     fix: () => {
       current = null;
       const scoped = analyzeNow();
-      const withRuffFindings = [
-        ...new Set(rawOf(scoped.inScope, 'ruff').map((f) => path.resolve(f.filename))),
-      ];
-      // Only ruff's own pre-existing findings are at risk from `ruff check --fix`.
-      const fixable = new Set(
-        fixableFiles({ files: withRuffFindings, outOfScopeFiles: scoped.outOfScopeRuffFiles }),
-      );
+      const fixable = fixTargets(scoped);
       if (fixable.size === 0) {
         current = scoped;
         return;
       }
-      ruffFix(groups, fixable, ctx.bases);
+      ruffFix(groups, fixable, ctx);
     },
     check: () => {
       current = current || analyzeNow();
