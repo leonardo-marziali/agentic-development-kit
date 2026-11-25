@@ -1,8 +1,8 @@
 'use strict';
 
 /*
- * The shared pipeline behind the Stop hook and the /java:check and
- * /java:format CLIs: plan a repository's files (config, profile, modules),
+ * The shared pipeline behind the Stop hook, the /java:check and /java:format
+ * CLIs and the standalone changed-lines CLI (scripts/check-changes.js): plan a repository's files (config, profile, modules),
  * run the engine per module (format + source rules), the build-file checks
  * and the registered sections (NullAway, ArchUnit), and render one report.
  */
@@ -30,11 +30,33 @@ const SECTION_MIN_MS = 20 * 1000;
 require('./nullaway');
 require('./archunit');
 
+/*
+ * Warnings go to stderr, once each. `failed` marks one that means part of the
+ * check did not run (no engine, an engine error, a skipped section); the
+ * standalone CLI (scripts/check-changes.js) sets a sink to collect them and
+ * exits 2 on any failed one, where the hook only reports it.
+ */
 const warned = new Set();
-function warnOnce(message) {
+let warningSink = null;
+
+function setWarningSink(sink) {
+  warningSink = sink;
+}
+
+function warnOnce(message, { failed = false } = {}) {
   if (warned.has(message)) return;
   warned.add(message);
-  process.stderr.write(`java plugin: ${message}\n`);
+  if (warningSink) warningSink(message, { failed });
+  else process.stderr.write(`java plugin: ${message}\n`);
+}
+
+/*
+ * What sections are handed as `warn`: a skip (a module that could not be
+ * compiled or resolved, a tool that could not run) counts as failed unless
+ * the section marks the warning `info`.
+ */
+function sectionWarn(message, { info = false } = {}) {
+  warnOnce(message, { failed: !info });
 }
 
 // The engine install, or a stand-in when JAVA_PLUGIN_ENGINE_CMD overrides it.
@@ -44,6 +66,7 @@ function engineManifest() {
   if (!manifest) {
     warnOnce(
       'the Java engine is not installed (or needs a JDK 21+); skipping formatting and Java checks. Run /java:setup.',
+      { failed: true },
     );
   }
   return manifest;
@@ -143,6 +166,7 @@ function engineFindings(repo, manifest) {
     for (const error of result.errors) {
       warnOnce(
         `${error.path === '-' ? 'engine' : path.relative(repo.repoRoot, error.path)}: ${error.message}`,
+        { failed: true },
       );
     }
     findings.push(...result.findings);
@@ -201,10 +225,11 @@ function check(repos, manifest, { changedLinesOnly = true } = {}) {
       if (timeLeft() < SECTION_MIN_MS) {
         warnOnce(
           `the time budget for this stop is used up; skipping ${extra.name} (it runs again on the next stop).`,
+          { failed: true },
         );
         continue;
       }
-      const { findings } = extra.run({ ...repo, manifest, warn: warnOnce });
+      const { findings } = extra.run({ ...repo, manifest, warn: sectionWarn });
       sections.push(
         section(extra.name, repo.repoRoot, findings, {
           scope: changedLinesOnly ? (extra.scope ?? 'lines') : 'all',
@@ -230,7 +255,16 @@ function check(repos, manifest, { changedLinesOnly = true } = {}) {
   const blockingSections = [
     ...new Set(present.filter((s) => s.blocking.length > 0).map((s) => s.name)),
   ];
-  return { failed, report, blockingSections };
+  return { failed, report, blockingSections, sections: present };
 }
 
-module.exports = { warnOnce, engineManifest, moduleRootOf, groupBy, planRepo, check, formatRanges };
+module.exports = {
+  warnOnce,
+  setWarningSink,
+  engineManifest,
+  moduleRootOf,
+  groupBy,
+  planRepo,
+  check,
+  formatRanges,
+};

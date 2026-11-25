@@ -198,7 +198,11 @@ function runNullAway({
       maxBuffer: 32 * 1024 * 1024,
     });
     if (result.error)
-      return { findings: [], notes: [...notes, `javac could not run: ${result.error.message}`] };
+      return {
+        findings: [],
+        notes: [...notes, `javac could not run: ${result.error.message}`],
+        failed: true,
+      };
     const output = `${result.stdout}\n${result.stderr}`;
     const findings = parseNullAway(output);
     // NullAway runs in javac's flow phase, which other compile errors stop it reaching.
@@ -209,6 +213,7 @@ function runNullAway({
       notes.push(
         `the changed files didn't compile, so NullAway didn't run (fix these first):\n${otherErrors.slice(0, 5).join('\n')}`,
       );
+      return { findings, notes, failed: true };
     }
     return { findings, notes };
   } finally {
@@ -264,6 +269,7 @@ function runSection({ config, modules, manifest, warn }) {
     if (!mode) {
       warn(
         `no JSpecify or Spring nullness annotations on the classpath of ${moduleRoot}; skipping NullAway there.`,
+        { info: true },
       );
       continue;
     }
@@ -282,7 +288,7 @@ function runSection({ config, modules, manifest, warn }) {
       javaLevel: level,
       encoding: module.info.encoding,
     });
-    for (const note of result.notes) warn(note);
+    for (const note of result.notes) warn(note, { info: !result.failed });
     findings.push(...result.findings);
   }
   return { findings };
