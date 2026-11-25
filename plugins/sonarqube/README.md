@@ -298,6 +298,67 @@ run the integration test. The script never edits the lock itself.
 See [docs/SLOOP_PROTOCOL_NOTES.md](docs/SLOOP_PROTOCOL_NOTES.md) for how
 the plugin talks to SLOOP, and what was verified against a live backend.
 
+## Checking changes without the hooks
+
+`scripts/check-changes.js` runs the Stop hook's local analysis and blocking
+policy as a standalone command, for where the plugin's hooks can't run: a
+git pre-commit hook, CI, or a Claude account whose policy allows managed
+hooks only. It shares the hook's code, so it reaches the same verdict on the
+same lines.
+
+```sh
+node scripts/check-changes.js [--fix] [--format json|text] \
+  [--ref <ref>] -- <absolute paths...>
+```
+
+A secret blocks wherever it is in a file; other issues block at or above
+`min_blocking_severity` (as `CLAUDE_PLUGIN_OPTION_MIN_BLOCKING_SEVERITY`,
+default HIGH) on changed lines. The engine's data dir is found the way the
+hook finds it: `SONARLINT_HOME`, then `CLAUDE_PLUGIN_DATA`, then the
+per-user cache dir. Outside Claude Code, set `CLAUDE_PLUGIN_DATA` to the
+plugin's data dir to use the engine the plugin installed. Lines are scoped
+against `--ref` (default `HEAD`), widened by 2 lines; there is no session,
+so no session base. An untracked file, or one outside any repository, is
+checked whole. Paths the plugin wouldn't check are ignored, never an error.
+
+Without `--fix` nothing is written. There is no fix step: `--fix` is
+accepted and changes nothing.
+
+`--format json` prints one object on stdout:
+
+```json
+{
+  "plugin": "sonarqube",
+  "checked": ["/abs/a"],
+  "fixed": ["/abs/a"],
+  "findings": [
+    {
+      "file": "/abs/a",
+      "line": 12,
+      "rule": "…",
+      "message": "…",
+      "severity": "…"
+    }
+  ],
+  "outOfScope": [{ "file": "/abs/a", "count": 3 }],
+  "warnings": ["…"]
+}
+```
+
+`checked` lists the paths that matched; `fixed` the files `--fix` changed;
+`findings` the blocking findings left; `outOfScope` how many pre-existing
+findings each file has on lines that didn't change. `--format text` (the
+default) prints the report the Stop hook shows Claude on stdout and the
+hook's notes on stderr.
+
+Exit codes:
+
+- `0`: nothing blocking is left (after the fix, with `--fix`).
+- `1`: blocking findings remain.
+- `2`: the check could not run — SLOOP not installed, a crashed daemon, a
+  timeout, or a bad argument. A check that did not run is never reported as
+  `0`.
+
 ## Testing
 
 ```bash
