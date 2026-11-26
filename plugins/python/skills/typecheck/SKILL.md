@@ -3,7 +3,7 @@ name: typecheck
 description: Use when the user asks to "type check", "run pyright", "fix type errors", or wants pyright run over Python files this session never touched. Type-checks Python files with pyright, including pre-existing ones, and fixes the errors.
 argument-hint: '[file paths...] | [natural-language description of files to include]'
 disable-model-invocation: true
-allowed-tools: Bash(pyright *) Bash(npx -y pyright *) Bash(.venv/bin/pyright *) Bash(git diff *) Bash(git status *) Read Edit Grep Glob
+allowed-tools: Bash(pyright *) Bash(npx -y pyright *) Bash(.venv/bin/pyright *) Bash(git diff *) Bash(git status *) Read Edit Grep Glob Bash(node *check-changes.js *)
 ---
 
 # Python Type Check
@@ -14,6 +14,21 @@ This skill is the explicit opt-in for type-checking **pre-existing**
 code — files this session didn't create or edit. The plugin's Stop hook
 only ever checks files touched during the current session; use this
 skill whenever the user wants existing code checked too.
+
+**Only the changed lines?** When the user wants just their changes checked —
+the verdict the Stop hook would give, on lines that differ from a commit
+(default `HEAD`), ±2 lines — run the plugin's changed-lines command instead
+of this skill's steps, with absolute paths:
+
+```sh
+node "${CLAUDE_PLUGIN_ROOT}/scripts/check-changes.js" \
+  [--fix] [--ref <ref>] -- <absolute paths...>
+```
+
+It prints the hook's ruff and pyright report; exit 0 means nothing blocking,
+1 blocking findings, 2 the check could not run (say so; never treat 2 as
+clean). `--fix` applies the hook's own fixes to those lines first. Without
+`--fix` it writes nothing.
 
 ## 1. Pick the pyright binary
 

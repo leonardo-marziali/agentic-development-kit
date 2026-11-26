@@ -26,10 +26,9 @@
  * remainder. Editing a user's files to silence a linter is a surprising
  * thing to do unasked, so it's opt-in rather than the default.
  *
- * markdownlint-cli only resolves .markdownlint.* config relative to its own
- * process cwd (not per-file, not walking up from cwd), so files are grouped
- * by their nearest config directory (see lib.js) and linted per group with
- * cwd set there — otherwise a config file wouldn't reliably apply.
+ * The analysis and fix steps live in checks.js, shared with the standalone
+ * changed-lines CLI (scripts/check-changes.js); this script adds tracking,
+ * session bases and the loop around them.
  */
 
 const fs = require('node:fs');
@@ -40,11 +39,7 @@ const {
   loopStateDir,
   readTrackedFiles,
   trackSessionChanges,
-  runBin,
   runFixLoop,
-  scopesFor,
-  partitionByScope,
-  fixableFiles,
   readSessionBases,
   SESSION_BASE_FILE,
 } = require('@leonardo-marziali/ad-lfl-kit');
@@ -53,12 +48,11 @@ const {
   TOUCHED_FILES,
   isMarkdownFile,
   groupByConfigDir,
-  parseViolationsJson,
   autoSuppressEnabled,
   wholeFilesEnabled,
-  formatViolation,
   insertSuppressions,
 } = require('./lib');
+const { fixGroups, analyze, fixTargets, toOutcome } = require('./checks');
 
 /*
  * The state directory is keyed by session id and may be shared with other
@@ -70,68 +64,6 @@ const {
  * clearing it once the loop passes starts the next turn from a fresh base.
  */
 const OWN_STATE_FILES = [TOUCHED_FILES, 'attempts.json', SESSION_BASE_FILE];
-
-function markdownlint(dir, args) {
-  return runBin('npx', ['-y', 'markdownlint-cli', ...args], { cwd: dir, encoding: 'utf8' });
-}
-
-/*
- * Lints every group with --json. markdownlint-cli writes that to stderr, but
- * npx can add its own notices to either stream, so try both and let
- * parseViolationsJson dig the payload out. A group that failed without a
- * parseable payload (a broken config, a crashed CLI) is kept as raw text:
- * it still blocks, as it did before violations were scoped.
- */
-function lintGroups(groups) {
-  const violations = [];
-  const unparsed = [];
-  for (const [dir, groupFiles] of groups) {
-    const result = markdownlint(dir, ['--json', ...groupFiles]);
-    if (result.error) throw result.error;
-    if (result.status === 0) continue;
-    const parsed = parseViolationsJson(result.stderr) || parseViolationsJson(result.stdout);
-    if (parsed) violations.push(...parsed);
-    else unparsed.push(((result.stdout || '') + (result.stderr || '')).trim());
-  }
-  return { violations, unparsed };
-}
-
-function fixGroups(groups, fixable) {
-  for (const [dir, groupFiles] of groups) {
-    const files = groupFiles.filter((file) => fixable.has(path.resolve(file)));
-    if (files.length > 0) markdownlint(dir, ['--fix', ...files]);
-  }
-}
-
-/*
- * Lints and splits the violations into the ones this session is answerable
- * for and the ones already there. With `whole_files` on, everything is.
- */
-function analyze(groups, files, { bases, notes }) {
-  const { violations, unparsed } = lintGroups(groups);
-  if (wholeFilesEnabled()) {
-    return { inScope: violations, outOfScopeFiles: new Set(), unparsed };
-  }
-
-  const scoped = partitionByScope(violations, {
-    scopes: scopesFor(files, { bases }),
-    getFile: (violation) => violation.fileName,
-    getLine: (violation) => violation.lineNumber,
-  });
-  if (scoped.outOfScope.length > 0) {
-    notes.add(
-      `${scoped.outOfScope.length} pre-existing markdownlint violation(s) on lines this ` +
-        'session did not change were not blocked on:\n' +
-        scoped.outOfScope.map(formatViolation).join('\n'),
-    );
-  }
-  return { ...scoped, unparsed };
-}
-
-function toOutcome({ inScope, unparsed }) {
-  const report = [...inScope.map(formatViolation), ...unparsed].join('\n');
-  return { failed: report.length > 0, report };
-}
 
 /*
  * runFixLoop's onCap: attempts have run out, so the stop is going through
@@ -239,10 +171,7 @@ function main() {
     fix: () => {
       current = null;
       const scoped = analyze(groups, files, ctx);
-      const withFindings = [...new Set(scoped.inScope.map((v) => path.resolve(v.fileName)))];
-      const fixable = new Set(
-        fixableFiles({ files: withFindings, outOfScopeFiles: scoped.outOfScopeFiles }),
-      );
+      const fixable = fixTargets(scoped);
       if (fixable.size === 0) {
         current = scoped;
         return;

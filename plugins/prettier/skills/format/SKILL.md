@@ -3,7 +3,7 @@ name: format
 description: Use when the user asks to "format with Prettier", "run prettier", "format these files", or wants Prettier run over files this session never touched. Formats files with Prettier, including pre-existing ones.
 argument-hint: '[file paths...] | [natural-language description of files to include]'
 disable-model-invocation: true
-allowed-tools: Bash(npx -y prettier *) Bash(git diff *) Bash(git status *) Read Grep Glob
+allowed-tools: Bash(npx -y prettier *) Bash(git diff *) Bash(git status *) Read Grep Glob Bash(node *check-changes.js *)
 ---
 
 # Prettier Format
@@ -14,6 +14,21 @@ This skill is the explicit opt-in for formatting **pre-existing** files —
 files this session didn't create or edit. The plugin's hook only ever
 formats a file immediately after Claude edits or writes it; use this
 skill whenever the user wants existing files formatted too.
+
+**Only the changed lines?** When the user wants just their changes checked —
+the verdict the Stop hook would give, on lines that differ from a commit
+(default `HEAD`), ±2 lines — run the plugin's changed-lines command instead
+of this skill's steps, with absolute paths:
+
+```sh
+node "${CLAUDE_PLUGIN_ROOT}/scripts/check-changes.js" \
+  [--fix] [--ref <ref>] -- <absolute paths...>
+```
+
+It prints the hook's Prettier report; exit 0 means nothing blocking, 1
+blocking findings, 2 the check could not run (say so; never treat 2 as
+clean). `--fix` applies the hook's own fixes to those lines first. Without
+`--fix` it writes nothing.
 
 ## 1. Resolve the target
 

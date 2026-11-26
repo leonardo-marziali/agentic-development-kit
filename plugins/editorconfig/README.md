@@ -102,6 +102,65 @@ your own plugin setup.
   fixer may touch the same file. A finding that causes is picked up by the next
   loop attempt.
 
+## Checking changes without the hooks
+
+`scripts/check-changes.js` runs the Stop hook's EditorConfig check as a
+standalone command, for where the plugin's hooks can't run: a git pre-commit
+hook, CI, or a Claude account whose policy allows managed hooks only. It
+shares the hook's code, so it reaches the same verdict on the same lines.
+
+```sh
+node scripts/check-changes.js [--fix] [--format json|text] \
+  [--ref <ref>] -- <absolute paths...>
+```
+
+It checks the given files against their `.editorconfig`, with the hook's
+backend choice: the ec4j Maven or Gradle plugin where the build declares it,
+`editorconfig-checker` otherwise (and wherever ec4j can't be narrowed to the
+given files). Lines are scoped against `--ref` (default `HEAD`), widened by
+2 lines; there is no session, so no session base. An untracked file, or one
+outside any repository, is checked whole. Paths the plugin wouldn't check
+are ignored, never an error.
+
+Without `--fix` nothing is written. With `--fix`, `editorconfig-checker
+--fix` or ec4j's format runs once on the files the hook would fix — those
+with an in-scope violation and none out of scope — and the files are checked
+again.
+
+`--format json` prints one object on stdout:
+
+```json
+{
+  "plugin": "editorconfig",
+  "checked": ["/abs/a"],
+  "fixed": ["/abs/a"],
+  "findings": [
+    {
+      "file": "/abs/a",
+      "line": 12,
+      "rule": "…",
+      "message": "…",
+      "severity": "…"
+    }
+  ],
+  "outOfScope": [{ "file": "/abs/a", "count": 3 }],
+  "warnings": ["…"]
+}
+```
+
+`checked` lists the paths that matched; `fixed` the files `--fix` changed;
+`findings` the blocking findings left; `outOfScope` how many pre-existing
+findings each file has on lines that didn't change. `--format text` (the
+default) prints the report the Stop hook shows Claude on stdout and the
+hook's notes on stderr.
+
+Exit codes:
+
+- `0`: nothing blocking is left (after the fix, with `--fix`).
+- `1`: blocking findings remain.
+- `2`: the check could not run — no usable checker, or a crashed tool, or a
+  bad argument. A check that did not run is never reported as `0`.
+
 ## Testing
 
 ```bash

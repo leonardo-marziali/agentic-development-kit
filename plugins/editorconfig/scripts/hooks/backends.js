@@ -45,10 +45,23 @@ function runCheckerProcess(args, cwd) {
     : runBin('npx', ['-y', CHECKER_PACKAGE, ...args], options);
 }
 
+/*
+ * The npm wrapper exits 0 even when it crashes before running the binary
+ * (two first runs racing to download it, say), leaving only a Node stack
+ * trace on stderr. That is a tool that didn't run, not a clean result.
+ */
+function crashedWrapper(result) {
+  const stderr = result.stderr || '';
+  return /^\w*Error: /m.test(stderr) && /^\s+at .+/m.test(stderr);
+}
+
 function runCheckerOn({ files, cwd, fix, extraArgs }) {
   const args = ['-format', 'gcc', '-no-color', ...extraArgs, ...(fix ? ['--fix'] : []), ...files];
   const result = runCheckerProcess(args, cwd);
   assertSpawned(result, 'editorconfig-checker');
+  if (result.status === 0 && crashedWrapper(result)) {
+    throw new ToolFailure(`editorconfig-checker: ${outputOf(result)}`);
+  }
   if (result.status === 0) return [];
 
   const findings = parseCheckerFindings(result.stdout, cwd);

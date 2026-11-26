@@ -219,6 +219,67 @@ compiler, is replaced by the plugin's pinned Lombok for NullAway.
 - Formatting changes only the lines Claude changed; `/java:format` is the
   explicit way to reformat whole files.
 
+## Checking changes without the hooks
+
+`scripts/check-changes.js` runs the Stop hook's Java standard pipeline as a
+standalone command, for where the plugin's hooks can't run: a git pre-commit
+hook, CI, or a Claude account whose policy allows managed hooks only. It
+shares the hook's code, so it reaches the same verdict on the same lines.
+
+```sh
+node scripts/check-changes.js [--fix] [--format json|text] \
+  [--ref <ref>] -- <absolute paths...>
+```
+
+It runs the source rules, the build-file checks and the NullAway and
+ArchUnit sections on the given `.java` and build files, as configured in
+each repository's `.claude/java-standards.json` (ArchUnit findings block per
+file, as in the hook). Files outside the configured scope, or in no git
+repository, are ignored, as the hook ignores them. Unlike the hook it has no
+165 s time budget, so no section is skipped for time. Lines are scoped
+against `--ref` (default `HEAD`), widened by 2 lines; there is no session,
+so no session base. An untracked file, or one outside any repository, is
+checked whole. Paths the plugin wouldn't check are ignored, never an error.
+
+Without `--fix` nothing is written. With `--fix` the engine first formats
+the changed ranges with the project's Eclipse profile, as the hook does, and
+the rules are then checked on the result.
+
+`--format json` prints one object on stdout:
+
+```json
+{
+  "plugin": "java",
+  "checked": ["/abs/a"],
+  "fixed": ["/abs/a"],
+  "findings": [
+    {
+      "file": "/abs/a",
+      "line": 12,
+      "rule": "…",
+      "message": "…",
+      "severity": "…"
+    }
+  ],
+  "outOfScope": [{ "file": "/abs/a", "count": 3 }],
+  "warnings": ["…"]
+}
+```
+
+`checked` lists the paths that matched; `fixed` the files `--fix` changed;
+`findings` the blocking findings left; `outOfScope` how many pre-existing
+findings each file has on lines that didn't change. `--format text` (the
+default) prints the report the Stop hook shows Claude on stdout and the
+hook's notes on stderr.
+
+Exit codes:
+
+- `0`: nothing blocking is left (after the fix, with `--fix`).
+- `1`: blocking findings remain.
+- `2`: the check could not run — the engine not installed or failing, a file
+  it can't parse, a NullAway or ArchUnit run that had to be skipped, or a bad
+  argument. A check that did not run is never reported as `0`.
+
 ## Development
 
 ```bash

@@ -357,6 +357,7 @@ function buildJavaHome(level, { searchRoots = defaultSearchRoots(), warn } = {})
   if (home === null && warn) {
     warn(
       `no JDK ${level} found for the build tool; using JAVA_HOME. Add one to the plugin's jdk_homes option (/config).`,
+      { info: true },
     );
   }
   return home;

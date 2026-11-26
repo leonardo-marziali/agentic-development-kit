@@ -16,6 +16,21 @@ reports **every** finding in the files it is given, which is what you want
 before cleaning up existing code. A project without
 `.claude/java-standards.json` is checked with the default settings.
 
+**Only the changed lines?** When the user wants just their changes checked —
+the verdict the Stop hook would give, on lines that differ from a commit
+(default `HEAD`), ±2 lines — run the plugin's changed-lines command instead
+of this skill's steps, with absolute paths:
+
+```sh
+node "${CLAUDE_PLUGIN_ROOT}/scripts/check-changes.js" \
+  [--fix] [--ref <ref>] -- <absolute paths...>
+```
+
+It prints the hook's Java standard report; exit 0 means nothing blocking, 1
+blocking findings, 2 the check could not run (say so; never treat 2 as
+clean). `--fix` applies the hook's own fixes to those lines first. Without
+`--fix` it writes nothing.
+
 ## 1. Resolve the target
 
 - **No arguments**: every tracked `.java`, `pom.xml` and `build.gradle(.kts)`

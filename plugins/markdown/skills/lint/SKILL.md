@@ -3,7 +3,7 @@ name: lint
 description: Use when the user asks to "lint markdown", "fix markdown lint errors", "run markdownlint", or wants markdownlint run over docs this session never touched. Lints and auto-fixes markdown files, including pre-existing ones.
 argument-hint: '[file paths...] | [natural-language description of files to include]'
 disable-model-invocation: true
-allowed-tools: Bash(npx -y markdownlint-cli *) Read Edit Grep Glob
+allowed-tools: Bash(npx -y markdownlint-cli *) Read Edit Grep Glob Bash(node *check-changes.js *)
 ---
 
 # Markdown Linting
@@ -14,6 +14,21 @@ This skill is the explicit opt-in for linting **pre-existing** markdown —
 files this session didn't create or edit. The plugin's hooks only ever
 auto-lint files touched during the current session; use this skill
 whenever the user wants existing docs checked or cleaned up too.
+
+**Only the changed lines?** When the user wants just their changes checked —
+the verdict the Stop hook would give, on lines that differ from a commit
+(default `HEAD`), ±2 lines — run the plugin's changed-lines command instead
+of this skill's steps, with absolute paths:
+
+```sh
+node "${CLAUDE_PLUGIN_ROOT}/scripts/check-changes.js" \
+  [--fix] [--ref <ref>] -- <absolute paths...>
+```
+
+It prints the hook's markdownlint report; exit 0 means nothing blocking, 1
+blocking findings, 2 the check could not run (say so; never treat 2 as
+clean). `--fix` applies the hook's own fixes to those lines first. Without
+`--fix` it writes nothing.
 
 ## 1. Resolve the target
 

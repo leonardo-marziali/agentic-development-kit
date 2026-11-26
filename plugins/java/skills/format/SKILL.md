@@ -20,6 +20,21 @@ names, else a committed Eclipse formatter export, else
 `.settings/org.eclipse.jdt.core.prefs`. Only a project that opted in with
 `.claude/java-standards.json` falls back to the plugin's default profile.
 
+**Only the changed lines?** When the user wants just their changes checked —
+the verdict the Stop hook would give, on lines that differ from a commit
+(default `HEAD`), ±2 lines — run the plugin's changed-lines command instead
+of this skill's steps, with absolute paths:
+
+```sh
+node "${CLAUDE_PLUGIN_ROOT}/scripts/check-changes.js" \
+  [--fix] [--ref <ref>] -- <absolute paths...>
+```
+
+It prints the hook's Java standard report; exit 0 means nothing blocking, 1
+blocking findings, 2 the check could not run (say so; never treat 2 as
+clean). `--fix` applies the hook's own fixes to those lines first. Without
+`--fix` it writes nothing.
+
 ## 1. Resolve the target
 
 - **No arguments**: every tracked `.java` file of the repository

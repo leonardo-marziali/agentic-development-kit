@@ -303,23 +303,35 @@ test('a broken build falls back to the checker', (t) => {
   assert.equal(fs.readFileSync(file, 'utf8'), 'trailing\n');
 });
 
-test('a checker that cannot run warns without blocking and keeps state', (t) => {
-  const ctx = setup(t);
-  const file = path.join(ctx.project, 'a.txt');
-  fs.writeFileSync(file, 'one\n\ttwo\n');
-  touch(ctx, file);
-  const bin = path.join(path.dirname(ctx.project), 'bin');
-  fs.mkdirSync(bin);
-  const fake = path.join(bin, 'editorconfig-checker');
-  fs.writeFileSync(fake, '#!/bin/sh\necho "cannot download" >&2\nexit 1\n', { mode: 0o755 });
+/*
+editorconfig-checker installed beside node is found before anything on PATH,
+so there the fake below can't stand in for it.
+*/
+const REAL_CHECKER_BESIDE_NODE = fs.existsSync(
+  path.join(path.dirname(process.execPath), 'editorconfig-checker'),
+);
 
-  const res = stop(ctx, { PATH: `${bin}${path.delimiter}${process.env.PATH}` });
+test(
+  'a checker that cannot run warns without blocking and keeps state',
+  { skip: REAL_CHECKER_BESIDE_NODE && 'editorconfig-checker is installed beside node' },
+  (t) => {
+    const ctx = setup(t);
+    const file = path.join(ctx.project, 'a.txt');
+    fs.writeFileSync(file, 'one\n\ttwo\n');
+    touch(ctx, file);
+    const bin = path.join(path.dirname(ctx.project), 'bin');
+    fs.mkdirSync(bin);
+    const fake = path.join(bin, 'editorconfig-checker');
+    fs.writeFileSync(fake, '#!/bin/sh\necho "cannot download" >&2\nexit 1\n', { mode: 0o755 });
 
-  assert.equal(res.status, 0);
-  assert.equal(res.json, undefined);
-  assert.match(res.stderr, /could not run.*NOT checked/s);
-  assert.match(res.stderr, /cannot download/);
-});
+    const res = stop(ctx, { PATH: `${bin}${path.delimiter}${process.env.PATH}` });
+
+    assert.equal(res.status, 0);
+    assert.equal(res.json, undefined);
+    assert.match(res.stderr, /could not run.*NOT checked/s);
+    assert.match(res.stderr, /cannot download/);
+  },
+);
 
 function commitMore(project) {
   git(project, 'add', '-A');

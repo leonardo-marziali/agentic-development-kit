@@ -80,6 +80,67 @@ paths from formatting entirely.
 
 [prettier-config]: https://prettier.io/docs/configuration
 
+## Checking changes without the hooks
+
+`scripts/check-changes.js` runs the formatting hook as a changed-lines check
+as a standalone command, for where the plugin's hooks can't run: a git
+pre-commit hook, CI, or a Claude account whose policy allows managed hooks
+only. It shares the hook's code, so it reaches the same verdict on the same
+lines.
+
+```sh
+node scripts/check-changes.js [--fix] [--format json|text] \
+  [--ref <ref>] -- <absolute paths...>
+```
+
+A finding is a run of lines Prettier would rewrite on or near the changed
+lines — what the hook would write there; rewrites elsewhere count as
+`outOfScope`. `whole_files` (as `CLAUDE_PLUGIN_OPTION_WHOLE_FILES`) is
+honoured, and files Prettier has no parser for, or `.prettierignore` lists,
+are passed over. Lines are scoped against `--ref` (default `HEAD`), widened
+by 2 lines; there is no session, so no session base. An untracked file, or
+one outside any repository, is checked whole. Paths the plugin wouldn't
+check are ignored, never an error.
+
+Without `--fix` nothing is written. With `--fix` each file is formatted
+exactly as the hook formats it (only the changed lines, through ad-lfl-kit's
+`formatInScope`), then checked again.
+
+`--format json` prints one object on stdout:
+
+```json
+{
+  "plugin": "prettier",
+  "checked": ["/abs/a"],
+  "fixed": ["/abs/a"],
+  "findings": [
+    {
+      "file": "/abs/a",
+      "line": 12,
+      "rule": "…",
+      "message": "…",
+      "severity": "…"
+    }
+  ],
+  "outOfScope": [{ "file": "/abs/a", "count": 3 }],
+  "warnings": ["…"]
+}
+```
+
+`checked` lists the paths that matched; `fixed` the files `--fix` changed;
+`findings` the blocking findings left; `outOfScope` how many pre-existing
+findings each file has on lines that didn't change. `--format text` (the
+default) prints the report the Stop hook shows Claude on stdout and the
+hook's notes on stderr.
+
+Exit codes:
+
+- `0`: nothing blocking is left (after the fix, with `--fix`).
+- `1`: blocking findings remain.
+- `2`: the check could not run — Prettier missing or failing, or a file it
+  can't parse, or a bad argument. A check that did not run is never reported
+  as `0`.
+
 ## Testing
 
 The hook (`scripts/hooks/format.js`) has a versioned test suite under

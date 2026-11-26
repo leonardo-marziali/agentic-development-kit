@@ -3,10 +3,10 @@
   "private": true,
   "description": "Runtime dependencies and test tooling for the editorconfig plugin's hooks. Claude Code installs `dependencies` from package-lock.json when it caches the plugin; the hooks themselves still shell out to editorconfig-checker, Gradle or Maven.",
   "dependencies": {
-    "@leonardo-marziali/ad-lfl-kit": "2.17.0"
+    "@leonardo-marziali/ad-lfl-kit": "5.4.0"
   },
   "scripts": {
-    "test": "node --test \"scripts/hooks/__tests__/*.test.js\"",
-    "test:coverage": "mkdir -p coverage && node --test --experimental-test-coverage --test-coverage-exclude=\"**/__tests__/**\" --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info \"scripts/hooks/__tests__/*.test.js\""
+    "test": "node --test --test-concurrency=1 \"scripts/hooks/__tests__/*.test.js\"",
+    "test:coverage": "mkdir -p coverage && node --test --test-concurrency=1 --experimental-test-coverage --test-coverage-exclude=\"**/__tests__/**\" --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info \"scripts/hooks/__tests__/*.test.js\""
   }
 }

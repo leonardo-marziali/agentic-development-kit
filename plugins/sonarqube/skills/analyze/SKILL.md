@@ -3,7 +3,7 @@ name: analyze
 description: Use when the user asks to "run sonar", "run SonarQube", "run SonarLint", "scan for secrets", "check this for Sonar issues", or wants SonarQube analysis over code this session never touched. Runs SonarQube for IDE's engine locally, adds what SonarQube Server or Cloud recorded for the same files, and works through the findings.
 argument-hint: '[file paths...] | [natural-language description of files to include]'
 disable-model-invocation: true
-allowed-tools: Bash(node *sonarlint.js *) Read Edit Grep Glob
+allowed-tools: Bash(node *sonarlint.js *) Read Edit Grep Glob Bash(CLAUDE_PLUGIN_DATA=* node *check-changes.js *)
 ---
 
 # SonarQube Analysis
@@ -28,6 +28,21 @@ If it exits 2 saying SLOOP is not installed, the engine's automatic
 install at session start hasn't finished yet or has failed. Run `sonarlint
 doctor` and tell the user what it says. Don't run the installer without
 asking. The server check in step 3 doesn't need the engine, so still run it.
+
+**Only the changed lines?** When the user wants just their changes checked —
+the verdict the Stop hook would give, on lines that differ from a commit
+(default `HEAD`), ±2 lines — run the plugin's changed-lines command instead
+of this skill's steps, with absolute paths:
+
+```sh
+CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA}" \
+  node "${CLAUDE_PLUGIN_ROOT}/scripts/check-changes.js" \
+  [--ref <ref>] -- <absolute paths...>
+```
+
+It prints the hook's SonarQube report; exit 0 means nothing blocking, 1
+blocking findings, 2 the check could not run (say so; never treat 2 as
+clean). It has no fix step and never writes a file.
 
 ## 1. Resolve the target
 
