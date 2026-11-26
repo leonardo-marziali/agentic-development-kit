@@ -1,3 +1,10 @@
+# [5.4.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v5.3.0...v5.4.0) (2026-11-26)
+
+
+### Features
+
+* **ad-lfl-kit:** add the shared check-changes command line ([#67](https://github.com/leonardo-marziali/agentic-development-kit/issues/67)) ([e9e19cf](https://github.com/leonardo-marziali/agentic-development-kit/commit/e9e19cfa1da217583b415dab937a1141ae6742d3))
+
 # [5.3.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v5.2.0...v5.3.0) (2026-11-23)
 
 
