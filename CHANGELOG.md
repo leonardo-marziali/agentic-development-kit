@@ -1,3 +1,10 @@
+# [5.5.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v5.4.0...v5.5.0) (2026-11-26)
+
+
+### Features
+
+* **plugins:** add a standalone changed-lines check CLI ([#66](https://github.com/leonardo-marziali/agentic-development-kit/issues/66)) ([2bb16e0](https://github.com/leonardo-marziali/agentic-development-kit/commit/2bb16e0ffb3c24208a8f9d95249cdf0a80e719a2))
+
 # [5.4.0](https://github.com/leonardo-marziali/agentic-development-kit/compare/v5.3.0...v5.4.0) (2026-11-26)
 
 
