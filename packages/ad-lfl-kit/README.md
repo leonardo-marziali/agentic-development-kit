@@ -504,6 +504,65 @@ stopReason }`: `reason` is what Claude is told to fix (cut to
   hooks that block a stop outside `runFixLoop`.
 - **`DEFAULT_MAX_ATTEMPTS`** — `3`. **`MAX_REASON_CHARS`** — `9500`.
 
+### Checking changes without hooks (`check-changes.js`)
+
+The command line a plugin's `scripts/check-changes.js` shares, for callers
+that can't run hooks (a git pre-commit hook, or a Claude rule where the
+`allowManagedHooksOnly` policy applies). It runs the Stop hook's check on
+the lines changed since a git ref:
+
+```sh
+node scripts/check-changes.js [--fix] [--format json|text] [--ref <ref>] \
+  -- <paths...>
+```
+
+- **`runCheckChanges({ plugin, matches, check }, argv, io?)`** — parses
+  `argv`, keeps the paths that exist and pass `matches(file)` (the rest are
+  ignored), and calls `check(files, { fix, bases })` once if any are left.
+  `bases` is `--ref` (default `HEAD`) as the session bases the scoping
+  helpers take, so `scopesFor`, `formatInScope` and the rest scope to the
+  lines changed since that commit. `check` returns `{ findings,
+outOfScope, notes, failures, report }`:
+  - `findings`: the blocking in-scope findings, as `{ file, line, rule,
+message, severity }`
+  - `outOfScope`: the findings left alone outside the changed lines, in
+    any shape with a `file`
+  - `notes`: what the hook would print on stderr
+  - `failures`: why any part of the check did not run
+  - `report`: the text the Stop hook would show Claude
+
+  Any field can be left out. With `--format json` it prints `{ plugin,
+checked, fixed, findings, outOfScope: [{ file, count }], warnings }`,
+  where `fixed` lists the files whose bytes changed during a `--fix` run.
+  With `--format text` (the default) it prints `report` on stdout and each
+  warning on stderr, prefixed with the plugin name.
+
+  It returns the exit code: `0` when no blocking finding is left, `1` when
+  some are, `2` when the check could not run. Exit 2 covers a usage error,
+  an explicit `--ref` that doesn't name a commit, any `failures`, and a
+  `check` that throws, and it wins over `1`. The default `HEAD` in a
+  repository with no commits is not an error: there is no base, so its
+  files are checked whole. `io` (`{ stdout, stderr }`, anything with
+  `write`) defaults to the process streams.
+
+- **`parseCheckChangesArgs(argv)`** — just the argument parsing, as
+  `{ fix, format, ref, paths }`. It throws on an unknown option, a missing
+  value or a format other than `json`/`text`.
+- **`CHECK_CHANGES_USAGE`** — the usage line printed on a usage error.
+
+A plugin's script is then only its own part:
+
+```js
+#!/usr/bin/env node
+const { runCheckChanges } = require('@leonardo-marziali/ad-lfl-kit');
+
+const COMMAND = { plugin: 'demo', matches: isDemoFile, check };
+
+if (require.main === module) {
+  process.exitCode = runCheckChanges(COMMAND, process.argv.slice(2));
+}
+```
+
 ## Design notes
 
 - **Every module is plain CommonJS with zero runtime dependencies** and no

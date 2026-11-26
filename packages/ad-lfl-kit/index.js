@@ -17,4 +17,5 @@ module.exports = {
   ...require('./format-scope'),
   ...require('./guard'),
   ...require('./loop'),
+  ...require('./check-changes'),
 };

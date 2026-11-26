@@ -33,7 +33,8 @@
     "scope.js",
     "format-scope.js",
     "guard.js",
-    "loop.js"
+    "loop.js",
+    "check-changes.js"
   ],
   "engines": {
     "node": ">=24.20.0"
